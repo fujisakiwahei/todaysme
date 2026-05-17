@@ -35,32 +35,13 @@ comment on column public.service_connections.access_token_encrypted is
 comment on column public.service_connections.refresh_token_encrypted is
   'AES-256-GCM で暗号化した refresh token。iv / authTag / ciphertext を含む blob。クライアントへ返してはならない。';
 
+-- service_connections は暗号化トークンを含むため、anon / authenticated には
+-- 一切ポリシーを付与しない。RLS が有効かつポリシー不在の状態にすることで、
+-- supabase クライアント経由（auth.uid() ロール）からはアクセス不能となる。
+-- 読み書きは Nuxt server API が service_role キーで RLS を bypass して行う前提。
+-- 仕様 §12.1: トークンはクライアントに送らない / ログに出さない。
 alter table public.service_connections enable row level security;
-
-create policy "service_connections_select_own"
-  on public.service_connections
-  for select
-  to authenticated
-  using (auth.uid() = user_id);
-
-create policy "service_connections_insert_own"
-  on public.service_connections
-  for insert
-  to authenticated
-  with check (auth.uid() = user_id);
-
-create policy "service_connections_update_own"
-  on public.service_connections
-  for update
-  to authenticated
-  using (auth.uid() = user_id)
-  with check (auth.uid() = user_id);
-
-create policy "service_connections_delete_own"
-  on public.service_connections
-  for delete
-  to authenticated
-  using (auth.uid() = user_id);
+alter table public.service_connections force row level security;
 
 -- =============================================================================
 -- daily_sync_statuses
