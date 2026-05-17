@@ -2,17 +2,19 @@
 export default defineNuxtConfig({
   compatibilityDate: "2025-07-15",
   devtools: { enabled: true },
-  modules: [
-    "@pinia/nuxt",
-    // "@sentry/nuxt/module"
-  ],
+
+  modules: ["@pinia/nuxt", "@sentry/nuxt/module"],
+
   css: ["~/assets/styles/style.scss"],
+
   typescript: {
     typeCheck: true,
   },
+
   sourcemap: {
     client: "hidden",
   },
+
   // sentry: {
   //   org: "...",
   //   project: "...",
@@ -29,5 +31,11 @@ export default defineNuxtConfig({
         },
       },
     },
+  },
+
+  sentry: {
+    org: "saki-llc",
+    project: "todaysme",
+    autoInjectServerSentry: "top-level-import",
   },
 });
