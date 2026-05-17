@@ -34,6 +34,7 @@ create trigger on_auth_user_created
 
 -- -----------------------------------------------------------------------------
 -- RLS
+-- auth.uid() は、JWTに含まれている
 -- -----------------------------------------------------------------------------
 alter table public.users enable row level security;
 
