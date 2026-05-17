@@ -12,7 +12,8 @@
     "format": "prettier --write .",
     "lint:style": "stylelint \"app/**/*.{css,scss,vue}\" --fix",
     "prepare": "husky",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:unit": "node --test --experimental-strip-types --no-warnings 'server/**/*.test.ts' 'shared/**/*.test.ts'"
   },
   "dependencies": {
     "@pinia/nuxt": "^0.11.3",

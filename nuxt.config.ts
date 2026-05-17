@@ -16,6 +16,23 @@ export default defineNuxtConfig({
 
   typescript: {
     typeCheck: true,
+    tsConfig: {
+      compilerOptions: {
+        // *.test.ts から Node 標準テストランナーで .ts 拡張子つきの
+        // 相対 import を行うため (noEmit 時のみ有効化できる)
+        allowImportingTsExtensions: true,
+      },
+    },
+  },
+
+  nitro: {
+    typescript: {
+      tsConfig: {
+        compilerOptions: {
+          allowImportingTsExtensions: true,
+        },
+      },
+    },
   },
 
   sourcemap: {
