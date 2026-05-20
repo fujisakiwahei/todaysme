@@ -10,6 +10,7 @@
 export * from "./common";
 export * from "./errors";
 export * from "./summary";
+export * from "./connections";
 export * from "./oura";
 export * from "./google";
 export * from "./toggl";

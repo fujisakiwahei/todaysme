@@ -28,3 +28,17 @@ export const ouraSleepResponseSchema = z.object({
 
 export type OuraSleepItem = z.infer<typeof ouraSleepItemSchema>;
 export type OuraSleepResponse = z.infer<typeof ouraSleepResponseSchema>;
+
+// -----------------------------------------------------------------------------
+// `POST https://api.ouraring.com/oauth/token` のレスポンス (Issue #52)
+// -----------------------------------------------------------------------------
+export const ouraTokenResponseSchema = z.object({
+  access_token: z.string(),
+  refresh_token: z.string().optional(),
+  token_type: z.string().optional(),
+  // 秒。Oura は約 8640000 秒 (100 日) を返す。
+  expires_in: z.number().int().optional(),
+  scope: z.string().optional(),
+});
+
+export type OuraTokenResponse = z.infer<typeof ouraTokenResponseSchema>;
