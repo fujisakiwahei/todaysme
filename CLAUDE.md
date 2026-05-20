@@ -45,14 +45,13 @@ Nuxt 4 (SSR) + Supabase (PostgreSQL + Auth) + Vercel 構成。MVP は単一ユ�
 | `pnpm format` | Prettier フォーマット |
 | `pnpm sass` | SCSS のコンパイル（UI 実装後・テスト前に必ず実行） |
 | `supabase start` / `supabase stop` | ローカル Supabase 起動・停止 |
-| `pnpm exec playwright test` | Playwright テスト実行 |
 
 ## 実装時の必須ルール
 
 ### UI 実装時
 - **デザインは `desine-tone/` ディレクトリの内容をベースにする**。独自にトーンを作らない。
 - 実装後、**テスト前に SCSS のコンパイル（`pnpm sass`）を必ず実行**する。
-- UI を実装したら、**Playwright で必ず動作確認**する。実行できない場合（環境依存・ローカル Supabase 未起動など）は、勝手に省略せずユーザーに確認する。
+- UI を実装したら、**Playwright MCP（ブラウザ操作）で必ず動作確認**する。テストファイルは書かない（後述「テストファイル」を参照）。実行できない場合（環境依存・ローカル Supabase 未起動など）は、勝手に省略せずユーザーに確認する。
 
 ### コード規約
 - TypeScript strict。
@@ -60,6 +59,10 @@ Nuxt 4 (SSR) + Supabase (PostgreSQL + Auth) + Vercel 構成。MVP は単一ユ�
 - 外部サービストークンは **AES-256-GCM で暗号化**して `service_connections` に保存。**クライアントに返さない / ログに出さない**（仕様 §12.1）。
 - 全 user 紐づきテーブルで **RLS を有効化**（`auth.uid()` で行制限）。
 - SCSS は `app/assets/styles/variables` と `mixins` が `additionalData` で全 SCSS に自動 inject される（`nuxt.config.ts`）。各ファイルで `@use` する必要はない。
+
+### テストファイル
+- **ユーザーから明示的な指示がない限り、テストファイル（`*.test.ts` / `*.spec.ts` などユニット / e2e テスト用のファイル）を生成しない**。開発段階での予期せぬエラーを防ぐため（Issue #63）。
+- UI の動作確認は Playwright MCP（ブラウザ操作）で都度行う。Playwright のテストファイル（`tests/` 配下や `*.spec.ts`）も同様に明示指示がない限り作らない。
 
 ### Git / PR
 - `main` への直接 push は不可（保護ブランチ）。feature branch → PR → Vercel Preview で確認 → マージ。
