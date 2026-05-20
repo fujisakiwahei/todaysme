@@ -148,6 +148,23 @@ describe("external API schemas", () => {
     assert.equal(result.success, false);
   });
 
+  it("googleEventsListResponseSchema は cancelled の id のみ event を受ける", () => {
+    // nextSyncToken 差分同期で返る削除通知は id 以外欠落しうる (SPEC §3)
+    const parsed = googleEventsListResponseSchema.parse({
+      items: [{ id: "evt-cancelled", status: "cancelled" }],
+    });
+    assert.equal(parsed.items.length, 1);
+    assert.equal(parsed.items[0]?.status, "cancelled");
+    assert.equal(parsed.items[0]?.start, undefined);
+  });
+
+  it("googleEventsListResponseSchema は confirmed で start/end 省略を弾く", () => {
+    const result = googleEventsListResponseSchema.safeParse({
+      items: [{ id: "evt-conf", status: "confirmed" }],
+    });
+    assert.equal(result.success, false);
+  });
+
   it("togglTimeEntriesResponseSchema は配列レスポンスを受ける", () => {
     const parsed = togglTimeEntriesResponseSchema.parse([
       {
