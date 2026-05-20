@@ -7,7 +7,7 @@
 // =============================================================================
 import { z } from "zod";
 
-import { isoDateTimeSchema } from "./common.ts";
+import { isoDateTimeSchema } from "./common";
 
 export const togglTimeEntrySchema = z.object({
   id: z.number().int(),

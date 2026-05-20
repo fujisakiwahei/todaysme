@@ -14,7 +14,7 @@ import {
   computeWakeRange,
   overlaps,
   targetDateOf,
-} from "./wakeRange.ts";
+} from "./wakeRange";
 
 describe("targetDateOf", () => {
   it("UTC 表現の wake_at を Asia/Tokyo の起床日に変換する", () => {

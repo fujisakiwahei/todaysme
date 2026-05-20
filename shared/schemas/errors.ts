@@ -4,7 +4,7 @@
 // =============================================================================
 import { z } from "zod";
 
-import { serviceProviderSchema } from "./common.ts";
+import { serviceProviderSchema } from "./common";
 
 export const apiErrorItemSchema = z.object({
   service: serviceProviderSchema,

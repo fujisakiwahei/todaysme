@@ -7,7 +7,7 @@
 // =============================================================================
 import { z } from "zod";
 
-import { isoDateSchema, isoDateTimeSchema } from "./common.ts";
+import { isoDateSchema, isoDateTimeSchema } from "./common";
 
 const googleEventDateSchema = z
   .object({
@@ -30,8 +30,8 @@ export const googleCalendarEventSchema = z.object({
 
 export const googleEventsListResponseSchema = z.object({
   items: z.array(googleCalendarEventSchema),
-  nextPageToken: z.string().optional(),
-  nextSyncToken: z.string().optional(),
+  nextPageToken: z.string().optional(), // リクエストで返しきれない件数があるときのページネーションのようなもの
+  nextSyncToken: z.string().optional(), // 次回の取得で、未取得のイベントだけを参照するために使う。「今回はここまで取得したよ」を表す。
 });
 
 export type GoogleCalendarEvent = z.infer<typeof googleCalendarEventSchema>;

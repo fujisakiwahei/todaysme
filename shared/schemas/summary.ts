@@ -17,8 +17,8 @@ import {
   syncStatusSchema,
   timezoneSchema,
   uuidSchema,
-} from "./common.ts";
-import { apiErrorItemSchema } from "./errors.ts";
+} from "./common";
+import { apiErrorItemSchema } from "./errors";
 
 // -----------------------------------------------------------------------------
 // リクエスト

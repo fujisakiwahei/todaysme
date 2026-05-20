@@ -12,14 +12,14 @@ import {
   isoDateTimeSchema,
   serviceProviderSchema,
   syncStatusSchema,
-} from "./common.ts";
+} from "./common";
 import {
   googleEventsListResponseSchema,
   ouraSleepResponseSchema,
   summaryRequestSchema,
   summaryResponseSchema,
   togglTimeEntriesResponseSchema,
-} from "./index.ts";
+} from "./index";
 
 describe("common schemas", () => {
   it("isoDateSchema は YYYY-MM-DD を受け、'today' を弾く", () => {

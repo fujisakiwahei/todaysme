@@ -7,7 +7,7 @@
 // =============================================================================
 import { z } from "zod";
 
-import { isoDateSchema, isoDateTimeSchema } from "./common.ts";
+import { isoDateSchema, isoDateTimeSchema } from "./common";
 
 // `GET /v2/usercollection/sleep` の各エントリ
 // https://cloud.ouraring.com/v2/docs#tag/Sleep-Routes

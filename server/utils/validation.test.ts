@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 
 import { z } from "zod";
 
-import { parseExternal, parseOrThrow } from "./validation.ts";
+import { parseExternal, parseOrThrow } from "./validation";
 
 describe("parseOrThrow", () => {
   const schema = z.object({ name: z.string() });
