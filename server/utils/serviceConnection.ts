@@ -32,6 +32,12 @@ export interface UpsertServiceConnectionInput {
   userId: string;
   provider: ServiceProvider;
   accessToken: string;
+  // refresh_token は 3 状態を区別する:
+  //   - undefined → 既存の refresh_token を保持する (Google は再認可時に
+  //                 refresh_token を返さないことがあり、null 上書きすると
+  //                 オフラインアクセスが失われる)
+  //   - null       → 明示的に null へ上書き (refresh 概念のない Toggl 等)
+  //   - string     → 新しい値で上書き
   refreshToken?: string | null;
   expiresInSeconds?: number | null;
   scopes?: readonly string[] | string | null;
@@ -49,10 +55,26 @@ export async function upsertServiceConnection(
   const now = new Date();
 
   const accessEnc = packEncrypted(encrypt(input.accessToken));
-  const refreshEnc =
-    input.refreshToken != null && input.refreshToken !== ""
-      ? packEncrypted(encrypt(input.refreshToken))
-      : null;
+
+  let refreshEnc: string | null;
+  if (input.refreshToken === undefined) {
+    const { data: existing, error: existingErr } = await admin
+      .from(SERVICE_CONNECTIONS_TABLE)
+      .select("refresh_token_encrypted")
+      .eq("user_id", input.userId)
+      .eq("provider", input.provider)
+      .maybeSingle();
+    if (existingErr) {
+      throw new Error(
+        `failed to read existing refresh_token: ${existingErr.message}`,
+      );
+    }
+    refreshEnc = existing?.refresh_token_encrypted ?? null;
+  } else if (input.refreshToken === null || input.refreshToken === "") {
+    refreshEnc = null;
+  } else {
+    refreshEnc = packEncrypted(encrypt(input.refreshToken));
+  }
 
   const tokenExpiresAt =
     input.expiresInSeconds != null && input.expiresInSeconds > 0

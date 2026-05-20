@@ -23,6 +23,19 @@ export default defineEventHandler(async (event) => {
   const query = parseOrThrow(oauthCallbackQuerySchema, raw);
 
   const nonce = getCookie(event, GOOGLE_STATE_COOKIE) ?? "";
+
+  // SEC: state 検証を error 分岐より先に行う。エラー応答だけで cookie を
+  //      消費させてしまうと、攻撃者が偽の error コールバックを user に踏ま
+  //      せることで進行中の OAuth フローを妨害できてしまうため。
+  let userId: string;
+  try {
+    const payload = verifyOauthState(query.state, nonce);
+    userId = payload.uid;
+  } catch (e) {
+    const reason = e instanceof OauthStateError ? e.message : "invalid_state";
+    return redirectToSettings(event, { provider: "google", error: reason });
+  }
+
   deleteCookie(event, GOOGLE_STATE_COOKIE, { path: "/" });
 
   if (query.error) {
@@ -38,22 +51,15 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  let userId: string;
-  try {
-    const payload = verifyOauthState(query.state, nonce);
-    userId = payload.uid;
-  } catch (e) {
-    const reason = e instanceof OauthStateError ? e.message : "invalid_state";
-    return redirectToSettings(event, { provider: "google", error: reason });
-  }
-
   try {
     const token = await exchangeGoogleCode(query.code);
     await upsertServiceConnection({
       userId,
       provider: "google",
       accessToken: token.access_token,
-      refreshToken: token.refresh_token ?? null,
+      // Google は再認可時に refresh_token を返さないことがあるため、
+      // undefined のまま渡して既存の refresh_token を保持させる。
+      refreshToken: token.refresh_token,
       expiresInSeconds: token.expires_in ?? null,
       scopes: token.scope ?? null,
     });

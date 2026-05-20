@@ -28,8 +28,22 @@ export default defineEventHandler(async (event) => {
   const raw = getQuery(event);
   const query = parseOrThrow(oauthCallbackQuerySchema, raw);
 
-  // cookie は使い切り
   const nonce = getCookie(event, OURA_STATE_COOKIE) ?? "";
+
+  // SEC: state 検証を error 分岐より先に行う。エラー応答だけで cookie を
+  //      消費させてしまうと、攻撃者が偽の error コールバックを user に踏ま
+  //      せることで進行中の OAuth フローを妨害できてしまうため。
+  let userId: string;
+  try {
+    const payload = verifyOauthState(query.state, nonce);
+    userId = payload.uid;
+  } catch (e) {
+    const reason = e instanceof OauthStateError ? e.message : "invalid_state";
+    // state 不一致なら cookie は消さずに残す (本物の進行中フローを守る)
+    return redirectToSettings(event, { provider: "oura", error: reason });
+  }
+
+  // state OK → cookie を使い切る
   deleteCookie(event, OURA_STATE_COOKIE, { path: "/" });
 
   if (query.error) {
@@ -45,22 +59,14 @@ export default defineEventHandler(async (event) => {
     });
   }
 
-  let userId: string;
-  try {
-    const payload = verifyOauthState(query.state, nonce);
-    userId = payload.uid;
-  } catch (e) {
-    const reason = e instanceof OauthStateError ? e.message : "invalid_state";
-    return redirectToSettings(event, { provider: "oura", error: reason });
-  }
-
   try {
     const token = await exchangeOuraCode(query.code);
     await upsertServiceConnection({
       userId,
       provider: "oura",
       accessToken: token.access_token,
-      refreshToken: token.refresh_token ?? null,
+      // refresh_token が無ければ undefined のまま渡し、既存の値を保持させる
+      refreshToken: token.refresh_token,
       expiresInSeconds: token.expires_in ?? null,
       scopes: token.scope ?? null,
     });
