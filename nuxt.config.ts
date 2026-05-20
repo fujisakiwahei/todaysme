@@ -23,6 +23,13 @@ export default defineNuxtConfig({
         allowImportingTsExtensions: true,
       },
     },
+    // shared/ (Nuxt 4) の tsconfig にも同じフラグを通す。
+    // shared/schemas/*.ts 間の `.ts` 付き相対 import (および schemas.test.ts) を許可。
+    sharedTsConfig: {
+      compilerOptions: {
+        allowImportingTsExtensions: true,
+      },
+    },
   },
 
   nitro: {

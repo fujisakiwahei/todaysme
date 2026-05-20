@@ -66,6 +66,14 @@ Nuxt 4 (SSR) + Supabase (PostgreSQL + Auth) + Vercel 構成。MVP は単一ユ�
 - pre-commit で `lint-staged`（`eslint --fix` + `prettier --write`）が走る。
 - CI（`.github/workflows/ci-check.yml`）で `pnpm lint` / `pnpm nuxi typecheck` / `pnpm build` が実行される。
 
+### Zod スキーマ（`shared/schemas/`）
+- 配置: `shared/schemas/` 直下にサービス / 用途別ファイル（`common.ts` / `errors.ts` / `summary.ts` / `oura.ts` / `google.ts` / `toggl.ts`）。利用側は barrel の `shared/schemas/index.ts` から import する。
+- 命名規約: スキーマ実体は `<対象>Schema`（例: `summaryRequestSchema`）。`z.infer` した型は `<対象>` をそのまま PascalCase で（例: `SummaryRequest`）。
+- export 方針: スキーマと推論型を **必ずペアで named export**。default export は禁止。`shared/schemas/index.ts` から `export *` で再公開する。
+- 重複定義の禁止: `provider` / `source` / `status` / `target_date` 等 DB 制約と対応する enum は `common.ts` に一度だけ定義し、他ファイルからは import して再利用する。
+- 検証は **`server/utils/validation.ts` の `parseOrThrow` / `parseExternal`** を経由する（直接 `.parse()` を呼ばない）。`parseExternal` は失敗時に 502 を投げ、サービス名を `statusMessage` に乗せる。
+- ログイン情報の型は定義しない（Google OAuth に一任。Issue #54）。
+
 ## 環境変数
 
 `.env.example` をコピーして `.env` を作成する（`cp .env.example .env`）。
