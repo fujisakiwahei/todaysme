@@ -10,7 +10,21 @@ export default defineNuxtConfig({
     },
   },
 
-  modules: ["@pinia/nuxt", "@sentry/nuxt/module", "@nuxt/eslint"],
+  modules: [
+    "@pinia/nuxt",
+    "@sentry/nuxt/module",
+    "@nuxt/eslint",
+    "@nuxtjs/supabase",
+  ],
+
+  supabase: {
+    url: process.env.NUXT_PUBLIC_SUPABASE_URL,
+    key: process.env.NUXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,
+    serviceKey: process.env.SUPABASE_SECRET_KEY,
+    // ルート単位の認証ガードは app/middleware/auth.ts で行うため
+    // モジュール組み込みの自動リダイレクトは無効化する
+    redirect: false,
+  },
 
   css: ["~/assets/styles/style.scss"],
 
