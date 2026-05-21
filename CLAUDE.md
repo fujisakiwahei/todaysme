@@ -48,6 +48,8 @@ Nuxt 4 (SSR) + Supabase (PostgreSQL + Auth) + Vercel 構成。MVP は単一ユ�
 
 ## 実装時の必須ルール
 
+- PRをしたら、`@codex review`をコメントする
+
 ### UI 実装時
 - **デザインは `desine-tone/` ディレクトリの内容をベースにする**。独自にトーンを作らない。
 - 実装後、**テスト前に SCSS のコンパイル（`pnpm sass`）を必ず実行**する。
