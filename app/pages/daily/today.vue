@@ -1,14 +1,17 @@
 <script setup lang="ts">
 // =============================================================================
 // /daily/today
-// SPEC §5 / Issue #34
+// SPEC §5 / Issue #34 / Issue #116
 //
 //   - 当日の /daily/[date] を date 指定なしで素早く開くためのエイリアス。
-//   - ユーザータイムゾーン基準で「今日」を解決し、/daily/YYYY-MM-DD に置換遷移する。
+//   - 「今日」は純粋なカレンダー日付ではなく、最新の起床 (wake_at) を起点に
+//     決まる起床日 (= SPEC の target_date)。日が回ってもまだ寝ていなければ
+//     前回起床日を表示する (Issue #116)。
 //   - タイムゾーンは users.timezone (RLS で本人行のみ読める) から取得する。
 //   - users 行は signup trigger で作成される前提のため、欠落時は黙って fallback
 //     せず明示的に 500 を投げる (summary.get.ts と同じ方針)。
 // =============================================================================
+import { fetchWakeBasedToday } from "~/utils/wakeBasedToday";
 
 definePageMeta({
   middleware: ["auth", "require-connections"],
@@ -43,14 +46,7 @@ async function redirectToToday() {
       statusMessage: "user profile is missing",
     });
   }
-  // en-CA は ISO 形式 (YYYY-MM-DD) で返す。server/utils/wakeRange.ts の
-  // targetDateOf と同じ手法でユーザータイムゾーンにおける今日を求める。
-  const today = new Intl.DateTimeFormat("en-CA", {
-    timeZone: data.timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
+  const today = await fetchWakeBasedToday(supabase, userId, data.timezone);
   await nuxtApp.runWithContext(() =>
     navigateTo(`/daily/${today}`, { replace: true }),
   );

@@ -19,6 +19,10 @@ import type {
   SummaryResponse,
   TogglTimelineEntry,
 } from "~~/shared/schemas";
+import {
+  fetchWakeBasedToday,
+  targetDateInTimezone,
+} from "~/utils/wakeBasedToday";
 import ouraIcon from "~/assets/styles/images/oura.webp";
 import googleCalendarIcon from "~/assets/styles/images/google-calendar.webp";
 import togglIcon from "~/assets/styles/images/toggl-track.webp";
@@ -253,20 +257,35 @@ const openAccordions = reactive<{
 // =============================================================================
 // Today button
 // =============================================================================
-// summary がまだ無い段階でもボタンを出したいので、未ロード時は Asia/Tokyo を仮置きする。
-// 実 timezone と差が出るのは海外移動時など限定的で、押下後に再フェッチされるため許容。
-const todayDate = computed(() => {
+// 「今日」は純粋なカレンダー日付ではなく、最新の起床 (wake_at) を起点に決まる
+// 起床日 (= SPEC の target_date)。日が回ってもまだ寝ていなければ前回起床日を
+// 指す (Issue #116)。
+//
+// 起床日の取得は client mount 後に supabase 経由で行うため、初期描画時は
+// カレンダー日付に fallback する (海外移動などレアケースを除き両者は一致する)。
+// /demo/daily は認証無し & デモデータなので wake-based 解決はスキップする。
+const supabase = useSupabaseClient();
+const supabaseUser = useSupabaseUser();
+const wakeBasedToday = ref<string | null>(null);
+
+async function refreshWakeBasedToday() {
+  if (props.basePath !== "/daily") return;
+  const userId = supabaseUser.value?.sub;
+  if (!userId) return;
   const tz = props.summary?.timezone ?? "Asia/Tokyo";
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: tz,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const yyyy = parts.find((p) => p.type === "year")?.value;
-  const mm = parts.find((p) => p.type === "month")?.value;
-  const dd = parts.find((p) => p.type === "day")?.value;
-  return `${yyyy}-${mm}-${dd}`;
+  try {
+    wakeBasedToday.value = await fetchWakeBasedToday(supabase, userId, tz);
+  } catch {
+    // 取得失敗時はカレンダー fallback を維持する (UI を壊さない)。
+  }
+}
+
+const todayDate = computed(() => {
+  if (wakeBasedToday.value) return wakeBasedToday.value;
+  // summary 未ロード時は Asia/Tokyo を仮置きする。実 timezone と差が出るのは
+  // 海外移動時など限定的で、wake-based 解決が走り次第上書きされる。
+  const tz = props.summary?.timezone ?? "Asia/Tokyo";
+  return targetDateInTimezone(new Date(), tz);
 });
 
 const isOnToday = computed(() => props.dateParam === todayDate.value);
@@ -299,7 +318,17 @@ onMounted(() => {
     now.value = new Date();
   }, 60_000);
   document.addEventListener("click", closeTooltip);
+  void refreshWakeBasedToday();
 });
+
+// summary が後から到着するケース (timezone が確定する) と、日付ナビで
+// 別ページから戻ってきたケースの両方で再取得する。
+watch(
+  () => [props.summary?.timezone, props.dateParam] as const,
+  () => {
+    void refreshWakeBasedToday();
+  },
+);
 
 onBeforeUnmount(() => {
   if (nowTimer != null) clearInterval(nowTimer);
