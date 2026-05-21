@@ -12,11 +12,12 @@
 //   - サービス未連携 (todays_me.oura/google/toggl === null) は専用の
 //     未連携カードを出し、Settings への導線を残す。
 // =============================================================================
-import type {
-  CalendarTimelineEntry,
-  SleepTimelineEntry,
-  SummaryResponse,
-  TogglTimelineEntry,
+import {
+  isoDateSchema,
+  type CalendarTimelineEntry,
+  type SleepTimelineEntry,
+  type SummaryResponse,
+  type TogglTimelineEntry,
 } from "~~/shared/schemas";
 
 definePageMeta({
@@ -26,11 +27,12 @@ definePageMeta({
 const route = useRoute();
 const dateParam = computed(() => route.params.date as string);
 
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-if (!ISO_DATE_RE.test(dateParam.value)) {
+// 形式 (YYYY-MM-DD) だけでなく、2026-02-31 のような実在しない日付も弾く。
+// isoDateSchema (= z.iso.date()) が意味的な日付妥当性まで検証する。
+if (!isoDateSchema.safeParse(dateParam.value).success) {
   throw createError({
     statusCode: 400,
-    statusMessage: "invalid date format (expected YYYY-MM-DD)",
+    statusMessage: "invalid date (expected real YYYY-MM-DD)",
   });
 }
 
