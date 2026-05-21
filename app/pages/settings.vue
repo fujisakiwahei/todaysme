@@ -10,7 +10,7 @@ definePageMeta({
   middleware: ["auth"],
 });
 
-const supabase = useSupabase();
+const supabase = useSupabaseClient();
 const route = useRoute();
 
 const connections = ref<ConnectionSummary[]>([]);

@@ -36,7 +36,7 @@ if (!isoDateSchema.safeParse(dateParam.value).success) {
   });
 }
 
-const supabase = useSupabase();
+const supabase = useSupabaseClient();
 
 async function bearerHeaders(): Promise<HeadersInit> {
   const { data } = await supabase.auth.getSession();
@@ -355,9 +355,9 @@ const openAccordions = reactive<{
 // =============================================================================
 // Lifecycle
 // =============================================================================
-// 初回フェッチは onMounted (client) で行う。useSupabase はブラウザ向け Supabase
-// クライアントで、SSR では session token を保持しないため、SSR 時に /api/summary
-// を呼ぶと Authorization ヘッダ無しで 401 になる。
+// 初回フェッチは onMounted (client) で行う。useSupabaseClient はクライアントで
+// セッションを Cookie から復元するが、$fetch の Authorization ヘッダを安全に
+// 載せるためにマウント後に session token を取得してから呼ぶ。
 // 日付遷移後の再フェッチは watcher で拾う (immediate: false)。
 watch(dateParam, async () => {
   summary.value = null;
