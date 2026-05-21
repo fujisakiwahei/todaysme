@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // 公開デモのエントリページ。ログイン不要・外部 API も叩かない。
-// 詳細ページ /demo/daily/[date] は別 Issue で実装。
+// 詳細ページ /demo/daily/[date] は別 Issue（#31）で実装。実装が入るまで CTA は disabled。
 const demoDate = "2026-05-17";
+const isDemoDailyReady = false;
 </script>
 
 <template>
@@ -30,9 +31,21 @@ const demoDate = "2026-05-17";
         ログイン不要・外部 API は呼びません。
       </p>
       <div class="demo-top__cta">
-        <NuxtLink :to="`/demo/daily/${demoDate}`" class="demo-top__cta-primary">
+        <NuxtLink
+          v-if="isDemoDailyReady"
+          :to="`/demo/daily/${demoDate}`"
+          class="demo-top__cta-primary"
+        >
           {{ demoDate }} のデモを見る →
         </NuxtLink>
+        <span
+          v-else
+          class="demo-top__cta-primary demo-top__cta-primary--disabled"
+          role="link"
+          aria-disabled="true"
+        >
+          {{ demoDate }} のデモを見る（準備中）
+        </span>
         <NuxtLink to="/" class="demo-top__cta-secondary">トップへ戻る</NuxtLink>
       </div>
     </section>
@@ -54,7 +67,7 @@ const demoDate = "2026-05-17";
         <li>
           <b>ナビゲーションは最小構成。</b>デモは
           <code>/demo/daily/{{ demoDate }}</code>
-          の 1 ページのみ。更新ボタン等は無効です。
+          の 1 ページのみ。更新ボタン等は無効です（現在準備中・近日公開）。
         </li>
         <li>
           自分のデータで使いたい場合は
@@ -93,15 +106,15 @@ $font-en:
 .demo-top {
   min-height: 100vh;
   min-height: 100dvh;
-  background: $color-bg;
-  color: $color-text;
   font-family: "Geist", "Noto Sans JP", "Hiragino Sans", sans-serif;
+  color: $color-text;
+  background: $color-bg;
 }
 
 .demo-top__nav {
+  padding: 18px 40px;
   display: flex;
   align-items: center;
-  padding: 18px 40px;
   border-bottom: 1px solid $color-border;
 
   @media (max-width: 640px) {
@@ -118,16 +131,16 @@ $font-en:
 }
 
 .demo-top__brand-mark {
-  display: grid;
-  place-items: center;
   width: 28px;
   height: 28px;
+  display: grid;
   font-family: $font-en;
   font-size: 13px;
   font-weight: 700;
   color: #fff;
   background: $color-demo;
   border-radius: 8px;
+  place-items: center;
 
   @media (max-width: 640px) {
     width: 24px;
@@ -153,11 +166,11 @@ $font-en:
 }
 
 .demo-top__nav-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 36px;
   padding: 0 14px;
+  height: 36px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   font-size: 13px;
   font-weight: 500;
   color: $color-text-muted;
@@ -177,11 +190,11 @@ $font-en:
 }
 
 .demo-top__nav-cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 36px;
   padding: 0 14px;
+  height: 36px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   font-size: 13px;
   font-weight: 600;
   color: $color-text;
@@ -199,9 +212,9 @@ $font-en:
 }
 
 .demo-top__hero {
-  max-width: 720px;
   margin: 0 auto;
   padding: 80px 40px 64px;
+  max-width: 720px;
   text-align: center;
 
   @media (max-width: 1024px) {
@@ -226,8 +239,8 @@ $font-en:
   margin-bottom: 20px;
   font-size: 44px;
   font-weight: 700;
-  letter-spacing: -0.025em;
   line-height: 1.15;
+  letter-spacing: -0.025em;
 
   span {
     color: $color-text-muted;
@@ -238,8 +251,8 @@ $font-en:
   }
 
   @media (max-width: 640px) {
-    font-size: 28px;
     margin-bottom: 14px;
+    font-size: 28px;
   }
 }
 
@@ -251,21 +264,21 @@ $font-en:
   color: $color-text-muted;
 
   b {
-    color: $color-text;
     font-weight: 600;
+    color: $color-text;
   }
 
   @media (max-width: 640px) {
-    font-size: 14px;
     margin-bottom: 24px;
+    font-size: 14px;
   }
 }
 
 .demo-top__cta {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 12px;
-  flex-wrap: wrap;
 
   @media (max-width: 480px) {
     flex-direction: column;
@@ -274,11 +287,11 @@ $font-en:
 }
 
 .demo-top__cta-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 52px;
   padding: 0 28px;
+  height: 52px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   font-size: 15px;
   font-weight: 600;
   color: $color-text;
@@ -309,12 +322,28 @@ $font-en:
   }
 }
 
+.demo-top__cta-primary--disabled {
+  color: $color-text-muted;
+  background: $color-surface-2;
+  box-shadow: none;
+  cursor: not-allowed;
+
+  &:hover {
+    background: $color-surface-2;
+    box-shadow: none;
+  }
+
+  &:active {
+    transform: none;
+  }
+}
+
 .demo-top__cta-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 52px;
   padding: 0 28px;
+  height: 52px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   font-size: 15px;
   font-weight: 600;
   color: $color-text;
@@ -341,9 +370,9 @@ $font-en:
 }
 
 .demo-top__notes {
-  max-width: 720px;
   margin: 0 auto;
   padding: 0 40px 80px;
+  max-width: 720px;
 
   @media (max-width: 640px) {
     padding: 0 20px 56px;
@@ -351,10 +380,10 @@ $font-en:
 }
 
 .demo-top__notes-head {
+  margin-bottom: 20px;
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 20px;
 
   h2 {
     font-size: 18px;
@@ -364,11 +393,11 @@ $font-en:
 }
 
 .demo-top__notes-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 22px;
   padding: 0 8px;
+  height: 22px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   font-family: $font-mono;
   font-size: 10px;
   font-weight: 600;
@@ -379,14 +408,14 @@ $font-en:
 }
 
 .demo-top__notes-list {
+  list-style: none;
   padding: 20px 24px;
-  background: $color-surface;
-  border: 1px solid $color-border;
-  border-radius: 12px;
   font-size: 14px;
   line-height: 1.7;
   color: $color-text-muted;
-  list-style: none;
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: 12px;
 
   li {
     position: relative;
@@ -395,8 +424,8 @@ $font-en:
     &::before {
       content: "·";
       position: absolute;
-      left: 4px;
       top: -2px;
+      left: 4px;
       font-size: 18px;
       color: $color-text;
     }
@@ -407,8 +436,8 @@ $font-en:
   }
 
   b {
-    color: $color-text;
     font-weight: 600;
+    color: $color-text;
   }
 
   code {
@@ -428,9 +457,9 @@ $font-en:
 }
 
 .demo-top__notes-link {
-  color: $color-text;
   font-weight: 600;
   text-decoration: underline;
+  color: $color-text;
   text-underline-offset: 3px;
 
   &:hover {
@@ -439,20 +468,20 @@ $font-en:
 }
 
 .demo-top__footer {
+  padding: 32px 40px 48px;
   display: flex;
   justify-content: space-between;
-  padding: 32px 40px 48px;
   font-family: $font-mono;
   font-size: 12px;
   color: $color-text-muted;
   border-top: 1px solid $color-border;
 
   @media (max-width: 640px) {
-    flex-direction: column;
-    gap: 6px;
     padding: 24px 20px 32px;
-    text-align: center;
+    flex-direction: column;
     align-items: center;
+    gap: 6px;
+    text-align: center;
   }
 }
 </style>
