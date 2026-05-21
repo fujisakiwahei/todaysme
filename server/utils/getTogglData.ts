@@ -11,8 +11,8 @@
 //   - 検証: shared/schemas/toggl.ts の Zod スキーマを `parseExternal` 経由で
 //     適用する。失敗時は 502 を投げる。
 //   - 整形: `toggl_time_entries` 行に対応する形へ正規化する。タイトル単位の
-//     集約は表示層の責務だが、`project_id` も保持して返すことで「別プロジェクト
-//     / 別 ID は別データ」の判定を後段でできるようにする。
+//     集約は表示層の責務。`project_id` は現状 DB スキーマに永続化されないが、
+//     将来 (title, project_id) で集約する余地のためにレコード上は保持して返す。
 // =============================================================================
 import { Buffer } from "node:buffer";
 
@@ -50,8 +50,8 @@ export interface GetTogglDataOptions {
 }
 
 // `toggl_time_entries` 行に対応する正規化済みレコード。
-// `project_id` は DB カラムにはないが、後段の集約 (タイトル別作業時間) で
-// 「別プロジェクトは別データ」を区別するために残している。
+// `project_id` は DB カラムにはないが、将来同一タイトルを別プロジェクトで
+// 区別する集計を入れる場合に備えてレコード上では保持している。
 export interface TogglTimeEntryRecord {
   toggl_entry_id: string;
   title: string | null;

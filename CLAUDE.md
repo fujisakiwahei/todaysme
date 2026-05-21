@@ -85,9 +85,9 @@ Nuxt 4 (SSR) + Supabase (PostgreSQL + Auth) + Vercel 構成。MVP は単一ユ�
 
 | 変数 | 用途 |
 | --- | --- |
-| `SUPABASE_URL` | Supabase プロジェクト URL |
-| `SUPABASE_ANON_KEY` | Supabase 匿名キー（クライアント側で使用） |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role キー（server 側のみ。Cron 等で使用） |
+| `NUXT_PUBLIC_SUPABASE_URL` | Supabase プロジェクト URL（クライアント / サーバ両方で参照） |
+| `NUXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key（旧 `anon` key 相当。クライアント側で使用） |
+| `SUPABASE_SECRET_KEY` | Supabase secret key（旧 `service_role` key 相当。RLS バイパス。server 側のみ・Cron 等で使用） |
 | `TOKEN_ENCRYPTION_KEY` | 外部サービストークン暗号化キー（base64 encoded 32 bytes）。DB には置かない |
 | `OURA_CLIENT_ID` / `OURA_CLIENT_SECRET` | Oura OAuth2 |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Calendar OAuth2 |
