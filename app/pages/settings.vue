@@ -149,6 +149,26 @@ function statusInfo(s: ConnectionSummary): {
   return { label: "未接続", emoji: "⚪", variant: "disconnected" };
 }
 
+// /daily/* から require-connections middleware で飛ばされてきたときの案内バナー。
+// クエリには未接続のサービス名が CSV で入る (例: "oura,google")。
+// 表示時に provider 名を日本語にマッピングする。
+const PROVIDER_LABEL_JA: Record<ServiceProvider, string> = {
+  oura: "Oura",
+  google: "Google Calendar",
+  toggl: "Toggl Track",
+};
+const requireConnectionsMissing = computed<ServiceProvider[]>(() => {
+  const raw = route.query.require_connections;
+  if (typeof raw !== "string" || raw.length === 0) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is ServiceProvider => s in PROVIDER_LABEL_JA);
+});
+const requireConnectionsLabel = computed(() =>
+  requireConnectionsMissing.value.map((p) => PROVIDER_LABEL_JA[p]).join(" と "),
+);
+
 onMounted(() => {
   // OAuth callback からの戻り値を一度だけ拾って表示する
   const connected = route.query.connected;
@@ -178,6 +198,15 @@ onMounted(() => {
           <p class="settings__subtitle">外部サービス連携の管理</p>
         </div>
       </header>
+
+      <p
+        v-if="requireConnectionsMissing.length > 0"
+        class="settings__message settings__message--warn"
+      >
+        Today's ME は Oura の起床時刻を基準に 1 日を組み立てるため、Oura と
+        Google Calendar の両方を接続しないと利用できません。
+        {{ requireConnectionsLabel }} を接続してください。
+      </p>
 
       <p v-if="successMessage" class="settings__message settings__message--ok">
         {{ successMessage }}
@@ -352,18 +381,18 @@ $font-en:
 }
 
 .settings__back {
+  padding: 6px 14px 6px 10px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 14px 6px 10px;
   font-size: 13px;
   font-weight: 500;
+  text-decoration: none;
   color: $color-text-muted;
   background: #fff;
   border: 1px solid $color-border;
   border-radius: 999px;
   box-shadow: 0 1px 2px rgba(26, 24, 20, 0.04);
-  text-decoration: none;
   transition:
     color 0.15s,
     background 0.15s;
@@ -375,9 +404,9 @@ $font-en:
 }
 
 .settings__back-arrow {
+  margin-bottom: 4px;
   font-size: 18px;
   line-height: 0;
-  margin-bottom: 4px;
 }
 
 .settings__title-block {
@@ -420,6 +449,12 @@ $font-en:
   }
 }
 
+.settings__message--warn {
+  color: #6a4d00;
+  background: #fff7e0;
+  border: 1px solid #f0d27a;
+}
+
 .settings__loading {
   padding: 32px;
   text-align: center;
@@ -444,12 +479,12 @@ $font-en:
 // Connection card
 // -----------------------------------------------------------
 .conn-list {
+  list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  list-style: none;
 }
 
 .conn {
@@ -481,8 +516,8 @@ $font-en:
     grid-template-columns: 40px 1fr;
 
     .conn__status {
-      grid-column: 1 / -1;
       justify-self: start;
+      grid-column: 1 / -1;
     }
   }
 }
@@ -491,10 +526,10 @@ $font-en:
   width: 44px;
   height: 44px;
   display: grid;
-  place-items: center;
-  border-radius: 12px;
-  border: 1px solid $color-border-2;
   background: #fff;
+  border: 1px solid $color-border-2;
+  border-radius: 12px;
+  place-items: center;
 
   .conn--sleep & {
     background: $color-sleep-bg;
@@ -543,10 +578,10 @@ $font-en:
 }
 
 .conn__status {
+  padding: 6px 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
   border-radius: 999px;
@@ -584,11 +619,11 @@ $font-en:
 }
 
 .conn__form {
+  min-width: 0;
   display: flex;
   flex: 1 1 280px;
   align-items: end;
   gap: 8px;
-  min-width: 0;
 }
 
 .conn__field {
@@ -609,9 +644,9 @@ $font-en:
     transition: border-color 0.15s;
 
     &:focus {
-      outline: none;
       border-color: $color-accent-hover;
       box-shadow: 0 0 0 3px rgba(246, 220, 122, 0.3);
+      outline: none;
     }
   }
 }
@@ -629,19 +664,19 @@ $font-en:
   padding: 0 16px;
   height: 36px;
   display: inline-flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   gap: 6px;
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
   border-radius: 999px;
-  cursor: pointer;
   transition:
     background 0.15s,
     border-color 0.15s,
     transform 0.08s;
+  cursor: pointer;
 
   &:active:not(:disabled) {
     transform: translateY(1px);
