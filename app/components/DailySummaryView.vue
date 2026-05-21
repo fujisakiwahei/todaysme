@@ -318,10 +318,7 @@ onBeforeUnmount(() => {
           <p class="daily__subtitle">
             <span v-if="summary?.wake_range" class="daily__subtitle-line">
               起床 {{ formatHourMinute(summary.wake_range.start, timezone) }}
-              <template v-if="isToday">
-                · NOW {{ formatHourMinute(now.toISOString(), timezone) }}
-              </template>
-              <template v-else-if="summary?.wake_range">
+              <template v-if="!isToday">
                 〜 {{ formatHourMinute(summary.wake_range.end, timezone) }}
               </template>
             </span>
@@ -329,7 +326,7 @@ onBeforeUnmount(() => {
           </p>
         </div>
 
-        <nav class="daily__date-nav" aria-label="日付ナビゲーション">
+        <div class="daily__nav-group">
           <NuxtLink
             :to="`${basePath}/${todayDate}`"
             class="daily__today-btn"
@@ -339,22 +336,24 @@ onBeforeUnmount(() => {
           >
             Today
           </NuxtLink>
-          <NuxtLink
-            :to="`${basePath}/${prevDate}`"
-            class="daily__date-btn"
-            aria-label="前日"
-          >
-            ‹
-          </NuxtLink>
-          <div class="daily__date-current">{{ dateLabel }}</div>
-          <NuxtLink
-            :to="`${basePath}/${nextDate}`"
-            class="daily__date-btn"
-            aria-label="翌日"
-          >
-            ›
-          </NuxtLink>
-        </nav>
+          <nav class="daily__date-nav" aria-label="日付ナビゲーション">
+            <NuxtLink
+              :to="`${basePath}/${prevDate}`"
+              class="daily__date-btn"
+              aria-label="前日"
+            >
+              ‹
+            </NuxtLink>
+            <div class="daily__date-current">{{ dateLabel }}</div>
+            <NuxtLink
+              :to="`${basePath}/${nextDate}`"
+              class="daily__date-btn"
+              aria-label="翌日"
+            >
+              ›
+            </NuxtLink>
+          </nav>
+        </div>
 
         <div class="daily__refresh">
           <slot name="topbar-action" />
@@ -1020,15 +1019,10 @@ $font-en:
   font-variant-numeric: tabular-nums;
 }
 
-.daily__date-nav {
-  padding: 4px;
+.daily__nav-group {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  background: #fff;
-  border: 1px solid $color-border;
-  border-radius: 999px;
-  box-shadow: 0 1px 2px rgba(26, 24, 20, 0.04);
+  gap: 8px;
 
   @media (max-width: 880px) {
     justify-self: start;
@@ -1036,8 +1030,8 @@ $font-en:
 }
 
 .daily__today-btn {
-  padding: 0 12px;
-  height: 32px;
+  padding: 0 14px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   font-family: $font-en;
@@ -1045,7 +1039,10 @@ $font-en:
   font-weight: 600;
   text-decoration: none;
   color: $color-text;
+  background: #fff;
+  border: 1px solid $color-border;
   border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(26, 24, 20, 0.04);
   transition:
     background 0.15s,
     color 0.15s;
@@ -1056,7 +1053,7 @@ $font-en:
 
   &--active {
     color: $color-text-dim;
-    background: transparent;
+    background: $color-surface;
     cursor: default;
     pointer-events: none;
   }
@@ -1065,6 +1062,17 @@ $font-en:
     padding: 0 10px;
     font-size: 12px;
   }
+}
+
+.daily__date-nav {
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #fff;
+  border: 1px solid $color-border;
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgba(26, 24, 20, 0.04);
 }
 
 .daily__date-btn {

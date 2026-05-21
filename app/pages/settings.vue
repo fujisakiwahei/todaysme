@@ -381,18 +381,18 @@ $font-en:
 }
 
 .settings__back {
+  padding: 6px 14px 6px 10px;
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 6px 14px 6px 10px;
   font-size: 13px;
   font-weight: 500;
+  text-decoration: none;
   color: $color-text-muted;
   background: #fff;
   border: 1px solid $color-border;
   border-radius: 999px;
   box-shadow: 0 1px 2px rgba(26, 24, 20, 0.04);
-  text-decoration: none;
   transition:
     color 0.15s,
     background 0.15s;
@@ -404,9 +404,9 @@ $font-en:
 }
 
 .settings__back-arrow {
+  margin-bottom: 4px;
   font-size: 18px;
   line-height: 0;
-  margin-bottom: 4px;
 }
 
 .settings__title-block {
@@ -479,12 +479,12 @@ $font-en:
 // Connection card
 // -----------------------------------------------------------
 .conn-list {
+  list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 12px;
-  list-style: none;
 }
 
 .conn {
@@ -516,8 +516,8 @@ $font-en:
     grid-template-columns: 40px 1fr;
 
     .conn__status {
-      grid-column: 1 / -1;
       justify-self: start;
+      grid-column: 1 / -1;
     }
   }
 }
@@ -526,10 +526,10 @@ $font-en:
   width: 44px;
   height: 44px;
   display: grid;
-  place-items: center;
-  border-radius: 12px;
-  border: 1px solid $color-border-2;
   background: #fff;
+  border: 1px solid $color-border-2;
+  border-radius: 12px;
+  place-items: center;
 
   .conn--sleep & {
     background: $color-sleep-bg;
@@ -578,10 +578,10 @@ $font-en:
 }
 
 .conn__status {
+  padding: 6px 12px;
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 12px;
   font-size: 12px;
   font-weight: 600;
   border-radius: 999px;
@@ -619,11 +619,11 @@ $font-en:
 }
 
 .conn__form {
+  min-width: 0;
   display: flex;
   flex: 1 1 280px;
   align-items: end;
   gap: 8px;
-  min-width: 0;
 }
 
 .conn__field {
@@ -644,9 +644,9 @@ $font-en:
     transition: border-color 0.15s;
 
     &:focus {
-      outline: none;
       border-color: $color-accent-hover;
       box-shadow: 0 0 0 3px rgba(246, 220, 122, 0.3);
+      outline: none;
     }
   }
 }
@@ -664,19 +664,19 @@ $font-en:
   padding: 0 16px;
   height: 36px;
   display: inline-flex;
-  align-items: center;
   justify-content: center;
+  align-items: center;
   gap: 6px;
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   white-space: nowrap;
   border-radius: 999px;
-  cursor: pointer;
   transition:
     background 0.15s,
     border-color 0.15s,
     transform 0.08s;
+  cursor: pointer;
 
   &:active:not(:disabled) {
     transform: translateY(1px);
