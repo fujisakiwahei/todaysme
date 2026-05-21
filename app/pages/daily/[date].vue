@@ -19,6 +19,9 @@ import {
   type SummaryResponse,
   type TogglTimelineEntry,
 } from "~~/shared/schemas";
+import ouraIcon from "~/assets/styles/images/oura.webp";
+import googleCalendarIcon from "~/assets/styles/images/google-calendar.webp";
+import togglIcon from "~/assets/styles/images/toggl-track.webp";
 
 definePageMeta({
   middleware: ["auth"],
@@ -424,6 +427,13 @@ onBeforeUnmount(() => {
             :disabled="refreshing || loading"
             @click="manualRefresh"
           >
+            <span
+              class="material-symbols-outlined daily__refresh-icon"
+              :class="{ 'daily__refresh-icon--spin': refreshing }"
+              aria-hidden="true"
+            >
+              refresh
+            </span>
             <span v-if="refreshing">更新中…</span>
             <span v-else>更新</span>
           </button>
@@ -449,7 +459,12 @@ onBeforeUnmount(() => {
           >
             <header class="metric__head">
               <span class="metric__head-l">
-                <span class="metric__icon" aria-hidden="true">睡</span>
+                <img
+                  :src="ouraIcon"
+                  alt=""
+                  class="metric__icon metric__icon--img"
+                  aria-hidden="true"
+                />
                 Sleep
               </span>
               <span class="metric__tag">Oura</span>
@@ -493,7 +508,12 @@ onBeforeUnmount(() => {
           >
             <header class="metric__head">
               <span class="metric__head-l">
-                <span class="metric__icon" aria-hidden="true">予</span>
+                <img
+                  :src="googleCalendarIcon"
+                  alt=""
+                  class="metric__icon metric__icon--img"
+                  aria-hidden="true"
+                />
                 Calendar
               </span>
               <span class="metric__tag">Google</span>
@@ -553,7 +573,12 @@ onBeforeUnmount(() => {
           >
             <header class="metric__head">
               <span class="metric__head-l">
-                <span class="metric__icon" aria-hidden="true">作</span>
+                <img
+                  :src="togglIcon"
+                  alt=""
+                  class="metric__icon metric__icon--img"
+                  aria-hidden="true"
+                />
                 Work
               </span>
               <span class="metric__tag">Toggl</span>
@@ -770,7 +795,12 @@ onBeforeUnmount(() => {
               :aria-expanded="openAccordions.sleep"
               @click="openAccordions.sleep = !openAccordions.sleep"
             >
-              <span class="acc__icon" aria-hidden="true">睡</span>
+              <img
+                :src="ouraIcon"
+                alt=""
+                class="acc__icon acc__icon--img"
+                aria-hidden="true"
+              />
               <span class="acc__title">Sleep — Oura</span>
               <span class="acc__meta">
                 {{ summary.timeline.sleep.length }} records
@@ -809,7 +839,12 @@ onBeforeUnmount(() => {
               :aria-expanded="openAccordions.calendar"
               @click="openAccordions.calendar = !openAccordions.calendar"
             >
-              <span class="acc__icon" aria-hidden="true">予</span>
+              <img
+                :src="googleCalendarIcon"
+                alt=""
+                class="acc__icon acc__icon--img"
+                aria-hidden="true"
+              />
               <span class="acc__title">Calendar — Google</span>
               <span class="acc__meta">
                 {{ summary.timeline.calendar.length }} events
@@ -856,7 +891,12 @@ onBeforeUnmount(() => {
               :aria-expanded="openAccordions.work"
               @click="openAccordions.work = !openAccordions.work"
             >
-              <span class="acc__icon" aria-hidden="true">作</span>
+              <img
+                :src="togglIcon"
+                alt=""
+                class="acc__icon acc__icon--img"
+                aria-hidden="true"
+              />
               <span class="acc__title">Work — Toggl</span>
               <span class="acc__meta">
                 {{ summary.timeline.toggl.length }} entries
@@ -927,8 +967,8 @@ $color-border-2: #edebe4;
 $color-text: #1a1814;
 $color-text-muted: #6b6960;
 $color-text-dim: #9aa0a6;
-$color-accent: #d4a82c;
-$color-accent-hover: #c29823;
+$color-accent: #f6dc7a;
+$color-accent-hover: #ecce5c;
 $color-sleep: #3b4f86;
 $color-sleep-bg: #eaeef6;
 $color-calendar: #3e7b5a;
@@ -1020,15 +1060,20 @@ $font-en:
 .daily__date-btn {
   width: 32px;
   height: 32px;
-  display: grid;
-  font-size: 18px;
-  line-height: 1;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  font-size: 20px;
+  // `‹` `›` (U+2039 / U+203A) は line-height 内でベースライン寄りに描画され、
+  // 通常の line-height だと視覚的に下に寄って見える。0 にしてグリフ自体を
+  // ボタンの上下中央に揃える。
+  line-height: 0;
   color: $color-text-muted;
+  text-decoration: none;
   border-radius: 999px;
   transition:
     background 0.15s,
     color 0.15s;
-  place-items: center;
 
   &:hover {
     color: $color-text;
@@ -1062,6 +1107,7 @@ $font-en:
   display: inline-flex;
   justify-content: center;
   align-items: center;
+  gap: 6px;
   font-size: 13px;
   font-weight: 600;
   color: $color-text;
@@ -1084,6 +1130,21 @@ $font-en:
   &:disabled {
     opacity: 0.6;
     cursor: not-allowed;
+  }
+}
+
+.daily__refresh-icon {
+  font-size: 18px;
+  line-height: 1;
+
+  &--spin {
+    animation: daily-refresh-spin 1s linear infinite;
+  }
+}
+
+@keyframes daily-refresh-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 
@@ -1260,6 +1321,13 @@ $font-en:
     color: #111827;
     background: #f1f3f6;
   }
+}
+
+.metric__icon--img {
+  padding: 2px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid $color-border-2;
 }
 
 .metric__tag {
@@ -1607,6 +1675,13 @@ $font-en:
     color: $color-work;
     background: $color-work-bg;
   }
+}
+
+.acc__icon--img {
+  padding: 3px;
+  object-fit: contain;
+  background: #fff;
+  border: 1px solid $color-border-2;
 }
 
 .acc__title {

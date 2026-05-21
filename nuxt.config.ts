@@ -28,6 +28,18 @@ export default defineNuxtConfig({
 
   css: ["~/assets/styles/style.scss"],
 
+  app: {
+    head: {
+      link: [
+        // Material Symbols Outlined (refresh / chevron などのアイコン用)
+        {
+          rel: "stylesheet",
+          href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0,0",
+        },
+      ],
+    },
+  },
+
   typescript: {
     typeCheck: true,
     tsConfig: {
