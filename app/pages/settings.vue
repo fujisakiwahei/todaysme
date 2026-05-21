@@ -6,6 +6,10 @@ import type {
   ServiceProvider,
 } from "~~/shared/schemas";
 
+definePageMeta({
+  middleware: ["auth"],
+});
+
 const supabase = useSupabase();
 const route = useRoute();
 
