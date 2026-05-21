@@ -14,7 +14,7 @@
 import { isoDateSchema, type SummaryResponse } from "~~/shared/schemas";
 
 definePageMeta({
-  middleware: ["auth"],
+  middleware: ["auth", "require-connections"],
 });
 
 const route = useRoute();
