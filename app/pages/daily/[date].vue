@@ -50,27 +50,38 @@ const now = ref(new Date());
 
 let nowTimer: ReturnType<typeof setInterval> | null = null;
 
+// 連続して日付ナビを叩いたときに、古いリクエストのレスポンスで新しい
+// 日付の表示を上書きしないよう、各フェッチに連番を振って「自分が最新
+// でなければ summary / errorMessage / loading を書かない」で守る。
+let activeRequestId = 0;
+
 // /api/summary の取得本体。エラーハンドリング (errorMessage / loading) は呼び出し側に任せ、
 // バックグラウンド再フェッチが UI のエラーバナーを書き換えないよう分離している。
-async function fetchSummaryCore() {
+// reqId が activeRequestId と一致しなければ stale なレスポンスとして破棄する。
+async function fetchSummaryCore(reqId: number) {
   const headers = await bearerHeaders();
   const res = await $fetch<SummaryResponse>("/api/summary", {
     query: { date: dateParam.value },
     headers,
   });
+  if (reqId !== activeRequestId) return;
   summary.value = res;
 }
 
 async function fetchSummary() {
+  const reqId = ++activeRequestId;
   loading.value = true;
   errorMessage.value = null;
   try {
-    await fetchSummaryCore();
+    await fetchSummaryCore(reqId);
   } catch (e) {
+    if (reqId !== activeRequestId) return;
     const msg = e instanceof Error ? e.message : "failed to load summary";
     errorMessage.value = `サマリー取得に失敗しました: ${msg}`;
   } finally {
-    loading.value = false;
+    if (reqId === activeRequestId) {
+      loading.value = false;
+    }
   }
 }
 
@@ -123,6 +134,7 @@ async function backgroundRefreshIfStale() {
   if (!isStale(summary.value)) return;
   // user-initiated refresh と区別するため、エラーは UI に出さず黙って終わる。
   // 再フェッチも errorMessage を書き換えない fetchSummaryCore を使う。
+  const reqId = ++activeRequestId;
   try {
     const headers = await bearerHeaders();
     await $fetch("/api/summary/refresh", {
@@ -130,7 +142,8 @@ async function backgroundRefreshIfStale() {
       headers,
       body: { date: dateParam.value },
     });
-    await fetchSummaryCore();
+    if (reqId !== activeRequestId) return;
+    await fetchSummaryCore(reqId);
   } catch {
     // 裏で失敗してもユーザー操作を妨げない
   }
