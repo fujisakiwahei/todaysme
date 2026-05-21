@@ -168,11 +168,21 @@ export default defineEventHandler(async (event) => {
     if (togglRes.error) throw togglRes.error;
 
     // DB クエリは inclusive bound のため、range.end に exact-touch する
-    // 翌日分の sleep / 境界線上の calendar event が混入しうる。
-    // 一律に overlaps() で再フィルタして取りこぼし・余剰を防ぐ。
-    sleepRows = ((sleepRes.data ?? []) as SleepRow[]).filter((r) =>
-      overlaps(internalRange, r.sleep_start_at, r.wake_at),
-    );
+    // 翌日分の sleep / 境界線上の calendar event が混入しうる。再フィルタで除外する。
+    //
+    // sleep は wake range の「境界そのもの」を定義する記録で、main sleep は
+    // wake_at === range.start が常に成立する。calendar/toggl と同じ overlaps()
+    // (strict 両端) を使うと main sleep が必ず落ちて Oura summary が null になるため、
+    // sleep だけは下限 inclusive (wake_at >= range.start) で判定する。
+    // 上限は strict (sleep_start_at < range.end) なので、過去日の wakeRange.end ==
+    // 翌日 sleep_start_at の境界レコードも除外できる。
+    const rangeStartMs = internalRange.start.getTime();
+    const rangeEndMs = internalRange.end.getTime();
+    sleepRows = ((sleepRes.data ?? []) as SleepRow[]).filter((r) => {
+      const s = new Date(r.sleep_start_at).getTime();
+      const e = new Date(r.wake_at).getTime();
+      return s < rangeEndMs && e >= rangeStartMs;
+    });
     calendarRows = ((calendarRes.data ?? []) as CalendarRow[]).filter((r) =>
       overlaps(internalRange, r.start_at, r.end_at),
     );
