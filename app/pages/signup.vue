@@ -23,7 +23,8 @@ async function signUpWithGoogle() {
   successMessage.value = null;
   submitting.value = true;
   try {
-    const redirectTo = `${window.location.origin}${resolveRedirect()}`;
+    const next = encodeURIComponent(resolveRedirect());
+    const redirectTo = `${window.location.origin}/auth/callback?next=${next}`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
@@ -52,7 +53,8 @@ async function signUpWithEmail() {
 
   submitting.value = true;
   try {
-    const emailRedirectTo = `${window.location.origin}${resolveRedirect()}`;
+    const next = encodeURIComponent(resolveRedirect());
+    const emailRedirectTo = `${window.location.origin}/auth/callback?next=${next}`;
     const { data, error } = await supabase.auth.signUp({
       email: email.value.trim(),
       password: password.value,

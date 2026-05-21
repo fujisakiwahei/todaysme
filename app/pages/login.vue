@@ -20,7 +20,8 @@ async function loginWithGoogle() {
   errorMessage.value = null;
   submitting.value = true;
   try {
-    const redirectTo = `${window.location.origin}${resolveRedirect()}`;
+    const next = encodeURIComponent(resolveRedirect());
+    const redirectTo = `${window.location.origin}/auth/callback?next=${next}`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo },
