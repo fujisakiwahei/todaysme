@@ -49,14 +49,31 @@ function authorizeCron(event: H3Event): void {
   }
 }
 
-// timezone 内の "今日" を YYYY-MM-DD で返す (en-CA = ISO 互換)。
-function todayInTimezone(timezone: string, now: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
+// timezone 内の "今日" を YYYY-MM-DD で返す。
+// `Intl.DateTimeFormat("en-CA").format()` の出力は ICU データ依存で必ずしも
+// ISO 形式 (YYYY-MM-DD) を保証しないため、formatToParts で year/month/day を
+// 取り出して決定論的に組み立てる。無効な IANA timezone を渡された場合は
+// RangeError を投げるので、呼び出し側でフォールバックする責任を持つ。
+function formatYmdInTimezone(timezone: string, now: Date): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(now);
+  }).formatToParts(now);
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+// 上のラッパー。無効な timezone の場合は Asia/Tokyo にフォールバックして
+// 1 user の bad row でバッチ全体が止まらないようにする (SPEC §9.2 部分失敗許容)。
+function todayInTimezone(timezone: string, now: Date): string {
+  try {
+    return formatYmdInTimezone(timezone, now);
+  } catch {
+    return formatYmdInTimezone("Asia/Tokyo", now);
+  }
 }
 
 // "YYYY-MM-DD" を UTC として解釈し、days 日ぶんずらして "YYYY-MM-DD" で返す。
