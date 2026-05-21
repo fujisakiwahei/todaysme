@@ -77,3 +77,29 @@ export async function exchangeGoogleCode(code: string) {
   const json: unknown = await res.json();
   return parseExternal(googleTokenResponseSchema, json, "google");
 }
+
+// Issue #75: 既存の refresh_token で access_token を再発行する。
+// Google の refresh レスポンスには refresh_token は通常含まれない
+// (= スキーマ上 optional)。呼び出し側は undefined のまま渡し、既存の
+// refresh_token を保持する責務を負う (upsertServiceConnection の 3 状態)。
+export async function refreshGoogleToken(refreshToken: string) {
+  const env = loadEnv();
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: env.clientId,
+    client_secret: env.clientSecret,
+  });
+
+  const res = await fetch(GOOGLE_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Google token refresh failed: HTTP ${res.status}`);
+  }
+  const json: unknown = await res.json();
+  return parseExternal(googleTokenResponseSchema, json, "google");
+}

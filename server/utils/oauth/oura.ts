@@ -67,3 +67,27 @@ export async function exchangeOuraCode(code: string) {
   const json: unknown = await res.json();
   return parseExternal(ouraTokenResponseSchema, json, "oura");
 }
+
+// Issue #75: 既存の refresh_token で access_token を再発行する。
+// レスポンスは exchangeOuraCode と同じ token endpoint なので同じスキーマで検証する。
+export async function refreshOuraToken(refreshToken: string) {
+  const env = loadEnv();
+  const body = new URLSearchParams({
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+    client_id: env.clientId,
+    client_secret: env.clientSecret,
+  });
+
+  const res = await fetch(OURA_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Oura token refresh failed: HTTP ${res.status}`);
+  }
+  const json: unknown = await res.json();
+  return parseExternal(ouraTokenResponseSchema, json, "oura");
+}
