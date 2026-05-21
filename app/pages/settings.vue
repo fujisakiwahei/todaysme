@@ -377,6 +377,7 @@ $font-en:
 .settings__back-arrow {
   font-size: 18px;
   line-height: 0;
+  margin-bottom: 4px;
 }
 
 .settings__title-block {
