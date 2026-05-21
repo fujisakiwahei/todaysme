@@ -251,6 +251,46 @@ const openAccordions = reactive<{
 });
 
 // =============================================================================
+// Today button
+// =============================================================================
+// summary がまだ無い段階でもボタンを出したいので、未ロード時は Asia/Tokyo を仮置きする。
+// 実 timezone と差が出るのは海外移動時など限定的で、押下後に再フェッチされるため許容。
+const todayDate = computed(() => {
+  const tz = props.summary?.timezone ?? "Asia/Tokyo";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const yyyy = parts.find((p) => p.type === "year")?.value;
+  const mm = parts.find((p) => p.type === "month")?.value;
+  const dd = parts.find((p) => p.type === "day")?.value;
+  return `${yyyy}-${mm}-${dd}`;
+});
+
+const isOnToday = computed(() => props.dateParam === todayDate.value);
+
+// =============================================================================
+// Timeline tooltip (hover on desktop / tap on mobile)
+// =============================================================================
+// "<lane>-<id>" 形式で 1 件だけアクティブにする。SP のタップ操作:
+//   - バーをタップ → そのバーをアクティブに
+//   - 他のバーをタップ → アクティブを入れ替え
+//   - バー以外をタップ → 閉じる
+const activeTooltipId = ref<string | null>(null);
+
+function toggleTooltip(id: string, e: MouseEvent) {
+  // バー外タップで閉じる document リスナに食わせないため伝播を止める。
+  e.stopPropagation();
+  activeTooltipId.value = activeTooltipId.value === id ? null : id;
+}
+
+function closeTooltip() {
+  activeTooltipId.value = null;
+}
+
+// =============================================================================
 // Lifecycle
 // =============================================================================
 onMounted(() => {
@@ -258,10 +298,14 @@ onMounted(() => {
   nowTimer = setInterval(() => {
     now.value = new Date();
   }, 60_000);
+  document.addEventListener("click", closeTooltip);
 });
 
 onBeforeUnmount(() => {
   if (nowTimer != null) clearInterval(nowTimer);
+  if (typeof document !== "undefined") {
+    document.removeEventListener("click", closeTooltip);
+  }
 });
 </script>
 
@@ -286,6 +330,15 @@ onBeforeUnmount(() => {
         </div>
 
         <nav class="daily__date-nav" aria-label="日付ナビゲーション">
+          <NuxtLink
+            :to="`${basePath}/${todayDate}`"
+            class="daily__today-btn"
+            :class="{ 'daily__today-btn--active': isOnToday }"
+            :aria-disabled="isOnToday || undefined"
+            :tabindex="isOnToday ? -1 : undefined"
+          >
+            Today
+          </NuxtLink>
           <NuxtLink
             :to="`${basePath}/${prevDate}`"
             class="daily__date-btn"
@@ -588,7 +641,7 @@ onBeforeUnmount(() => {
               <div class="tl-row__label">Sleep</div>
               <div class="tl-row__track">
                 <span v-if="preWakeSleep" class="tl-row__meta">
-                  前夜
+                  就寝
                   {{ formatHourMinute(preWakeSleep.sleep_start_at, timezone) }}
                   → 起床
                   {{ formatHourMinute(preWakeSleep.wake_at, timezone) }} ·
@@ -603,10 +656,25 @@ onBeforeUnmount(() => {
                   v-for="s in inRangeSleep"
                   :key="s.id"
                   class="tl-bar tl-bar--sleep"
+                  :class="{
+                    'tl-bar--active': activeTooltipId === `sleep-${s.id}`,
+                  }"
                   :style="barStyle(s.sleep_start_at, s.wake_at)"
-                  :title="`${formatHourMinute(s.sleep_start_at, timezone)} - ${formatHourMinute(s.wake_at, timezone)}`"
+                  :aria-label="`仮眠 ${formatHourMinute(s.sleep_start_at, timezone)} - ${formatHourMinute(s.wake_at, timezone)}`"
+                  @click="toggleTooltip(`sleep-${s.id}`, $event)"
                 >
-                  仮眠
+                  <span class="tl-bar__text">仮眠</span>
+                  <span
+                    class="tl-bar__tooltip"
+                    role="tooltip"
+                    aria-hidden="true"
+                  >
+                    <span class="tl-bar__tooltip-title">仮眠</span>
+                    <span class="tl-bar__tooltip-time">
+                      {{ formatHourMinute(s.sleep_start_at, timezone) }} –
+                      {{ formatHourMinute(s.wake_at, timezone) }}
+                    </span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -622,10 +690,29 @@ onBeforeUnmount(() => {
                   v-for="ev in calendarEvents"
                   :key="ev.id"
                   class="tl-bar tl-bar--calendar"
+                  :class="{
+                    'tl-bar--active': activeTooltipId === `calendar-${ev.id}`,
+                  }"
                   :style="barStyle(ev.start_at, ev.end_at)"
-                  :title="`${ev.title ?? ''} (${formatHourMinute(ev.start_at, timezone)} - ${formatHourMinute(ev.end_at, timezone)})`"
+                  :aria-label="`${ev.title || ev.calendar_name || '(無題)'} ${formatHourMinute(ev.start_at, timezone)} - ${formatHourMinute(ev.end_at, timezone)}`"
+                  @click="toggleTooltip(`calendar-${ev.id}`, $event)"
                 >
-                  {{ ev.title || ev.calendar_name || "(無題)" }}
+                  <span class="tl-bar__text">
+                    {{ ev.title || ev.calendar_name || "(無題)" }}
+                  </span>
+                  <span
+                    class="tl-bar__tooltip"
+                    role="tooltip"
+                    aria-hidden="true"
+                  >
+                    <span class="tl-bar__tooltip-title">
+                      {{ ev.title || ev.calendar_name || "(無題)" }}
+                    </span>
+                    <span class="tl-bar__tooltip-time">
+                      {{ formatHourMinute(ev.start_at, timezone) }} –
+                      {{ formatHourMinute(ev.end_at, timezone) }}
+                    </span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -641,11 +728,34 @@ onBeforeUnmount(() => {
                   v-for="t in togglEntries"
                   :key="t.id"
                   class="tl-bar tl-bar--work"
+                  :class="{
+                    'tl-bar--active': activeTooltipId === `work-${t.id}`,
+                  }"
                   :style="barStyle(t.start_at, t.end_at)"
-                  :title="`${t.title ?? ''} (${formatHourMinute(t.start_at, timezone)} - ${t.end_at ? formatHourMinute(t.end_at, timezone) : '進行中'})`"
+                  :aria-label="`${t.title || '(タイトル無し)'} ${formatHourMinute(t.start_at, timezone)} - ${t.end_at ? formatHourMinute(t.end_at, timezone) : '進行中'}`"
+                  @click="toggleTooltip(`work-${t.id}`, $event)"
                 >
-                  {{ t.title || "(タイトル無し)" }}
+                  <span class="tl-bar__text">
+                    {{ t.title || "(タイトル無し)" }}
+                  </span>
                   <span v-if="t.end_at == null" class="tl-bar__live">●</span>
+                  <span
+                    class="tl-bar__tooltip"
+                    role="tooltip"
+                    aria-hidden="true"
+                  >
+                    <span class="tl-bar__tooltip-title">
+                      {{ t.title || "(タイトル無し)" }}
+                    </span>
+                    <span class="tl-bar__tooltip-time">
+                      {{ formatHourMinute(t.start_at, timezone) }} –
+                      {{
+                        t.end_at
+                          ? formatHourMinute(t.end_at, timezone)
+                          : "進行中"
+                      }}
+                    </span>
+                  </span>
                 </div>
               </div>
             </div>
@@ -925,6 +1035,38 @@ $font-en:
   }
 }
 
+.daily__today-btn {
+  padding: 0 12px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  font-family: $font-en;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  color: $color-text;
+  border-radius: 999px;
+  transition:
+    background 0.15s,
+    color 0.15s;
+
+  &:hover {
+    background: $color-surface;
+  }
+
+  &--active {
+    color: $color-text-dim;
+    background: transparent;
+    cursor: default;
+    pointer-events: none;
+  }
+
+  @media (max-width: 380px) {
+    padding: 0 10px;
+    font-size: 12px;
+  }
+}
+
 .daily__date-btn {
   margin-bottom: 4px;
   width: 32px;
@@ -937,8 +1079,8 @@ $font-en:
   // 通常の line-height だと視覚的に下に寄って見える。0 にしてグリフ自体を
   // ボタンの上下中央に揃える。
   line-height: 0;
-  color: $color-text-muted;
   text-decoration: none;
+  color: $color-text-muted;
   transition: color 0.15s;
 
   &:hover {
@@ -954,6 +1096,12 @@ $font-en:
   font-weight: 600;
   text-align: center;
   font-variant-numeric: tabular-nums;
+
+  @media (max-width: 380px) {
+    padding: 0 6px;
+    min-width: 0;
+    font-size: 13px;
+  }
 }
 
 .daily__refresh {
@@ -1390,13 +1538,20 @@ $font-en:
   height: 28px;
   display: flex;
   align-items: center;
-  overflow: hidden;
   font-size: 11px;
   font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   border-radius: 6px;
   transform: translateY(-50%);
+  transition: filter 0.12s;
+  // ツールチップを上にはみ出させるため overflow は visible にする。
+  // テキストの ellipsis は子要素 .tl-bar__text 側で行う。
+  cursor: pointer;
+
+  &:hover,
+  &.tl-bar--active {
+    z-index: 4;
+    filter: brightness(0.97);
+  }
 
   &--sleep {
     color: $color-sleep;
@@ -1415,10 +1570,98 @@ $font-en:
   }
 }
 
+.tl-bar__text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tl-bar__live {
   margin-left: 6px;
+  flex-shrink: 0;
   color: $color-error;
   animation: blink 1.6s infinite;
+}
+
+// ツールチップ: PC はホバー、SP はタップ (.tl-bar--active) で表示。
+.tl-bar__tooltip {
+  position: absolute;
+  z-index: 5;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  padding: 8px 12px;
+  // width: max-content + max-width で「内容に応じてフィット、上限あり」を実現する。
+  // min-width / shrink-to-fit に任せると、狭い親に対して 1 文字ずつ縦に折り返す
+  // 挙動になることがあるため、明示的に max-content にしてしまう。
+  width: max-content;
+  max-width: min(260px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: $font-en;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  white-space: normal;
+  color: #fff;
+  background: rgba(26, 24, 20, 0.94);
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  transition:
+    opacity 0.12s,
+    transform 0.12s;
+  pointer-events: none;
+
+  // 矢印
+  &::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    border: 5px solid transparent;
+    border-top-color: rgba(26, 24, 20, 0.94);
+    transform: translateX(-50%);
+  }
+
+  .tl-bar:hover &,
+  .tl-bar--active & {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+
+  // SP では bar の幅が狭くなりがちなので、bar 左寄せにして
+  // 画面右端ギリギリまで使えるようにする。
+  @media (max-width: 640px) {
+    left: 0;
+    max-width: calc(100vw - 32px);
+    transform: translate(0, 4px);
+
+    &::after {
+      left: 20px;
+    }
+
+    .tl-bar:hover &,
+    .tl-bar--active & {
+      transform: translate(0, 0);
+    }
+  }
+}
+
+.tl-bar__tooltip-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.tl-bar__tooltip-time {
+  font-family: $font-mono;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.78);
+  font-variant-numeric: tabular-nums;
 }
 
 @keyframes blink {
@@ -1536,16 +1779,21 @@ $font-en:
 }
 
 .entry {
-  padding: 8px 0;
+  padding: 10px 0;
   display: grid;
   align-items: center;
   gap: 12px;
   grid-template-columns: 140px 1fr auto;
-  font-size: 13px;
+  font-size: 14px;
   border-bottom: 1px dashed $color-border-2;
 
   &:last-child {
     border-bottom: none;
+  }
+
+  @media (max-width: 560px) {
+    gap: 8px;
+    grid-template-columns: 1fr auto;
   }
 }
 
@@ -1553,30 +1801,52 @@ $font-en:
   font-family: $font-mono;
   font-size: 12px;
   color: $color-text-muted;
+
+  @media (max-width: 560px) {
+    grid-column: 1 / -1;
+    font-size: 11px;
+  }
 }
 
 .entry__title {
   min-width: 0;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
   overflow: hidden;
+  font-size: 16px;
+  font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: $color-text;
+
+  @media (max-width: 560px) {
+    font-size: 15px;
+  }
 }
 
 .entry__tag {
-  margin-left: 8px;
-  padding: 1px 6px;
-  font-size: 10px;
+  margin-left: 0;
+  padding: 3px 10px;
+  font-size: 14px;
   font-weight: 500;
+  line-height: 1.2;
   color: $color-text-muted;
   background: $color-surface;
   border: 1px solid $color-border;
   border-radius: 999px;
+
+  @media (max-width: 560px) {
+    font-size: 13px;
+  }
 }
 
 .entry__dur {
   font-family: $font-en;
   font-variant-numeric: tabular-nums;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
   color: $color-text-muted;
 }
 
