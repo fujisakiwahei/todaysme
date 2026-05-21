@@ -10,12 +10,12 @@ export default defineNuxtConfig({
     },
   },
 
-  modules: [
-    "@pinia/nuxt",
-    "@sentry/nuxt/module",
-    "@nuxt/eslint",
-    "@nuxtjs/supabase",
-  ],
+  // 注: @pinia/nuxt は将来の状態管理用に SPEC に記載されているが、現状ストアが
+  //   無いため一旦除外する。pinia v3.0.4 が SSR バンドル時に `dist/pinia.prod.cjs`
+  //   を取り込み、Vue の ESM に default export が無いことで起動時 SyntaxError →
+  //   本番が全ルート 500 になる回避 (Issue #99)。再導入時は `defineStore` を
+  //   実際に使い始めるタイミングで合わせて検証する。
+  modules: ["@sentry/nuxt/module", "@nuxt/eslint", "@nuxtjs/supabase"],
 
   supabase: {
     url: process.env.NUXT_PUBLIC_SUPABASE_URL,
