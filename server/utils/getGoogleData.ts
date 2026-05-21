@@ -239,7 +239,7 @@ function toEventRow(
   if (!event.start || !event.end) return null;
 
   const startAt = resolveInstant(event.start, timezone);
-  const endAt = resolveInstant(event.end, timezone, { allDayEnd: true });
+  const endAt = resolveInstant(event.end, timezone);
   if (!startAt || !endAt) return null;
 
   return {
@@ -260,30 +260,18 @@ interface EventDateLike {
 
 // Google Calendar の start/end は時刻あり予定 (dateTime) と終日予定 (date) の
 // 二系統。終日予定は YYYY-MM-DD のみ返るので、ユーザータイムゾーン (またはイベント
-// 自身の timeZone 指定がある場合はそれ) で日の境界を ISO instant に解決する。
-// end.date は exclusive (翌日 00:00 相当) なので allDayEnd 時は 1 日加算する。
+// 自身の timeZone 指定がある場合はそれ) でその日の 00:00 を ISO instant に解決する。
+// 終日イベントの end.date は Google 側で既に exclusive (翌日付) として返るため、
+// ここで加算は行わない。
 function resolveInstant(
   value: EventDateLike,
   userTimezone: string,
-  options: { allDayEnd?: boolean } = {},
 ): string | null {
   if (value.dateTime) return value.dateTime;
   if (!value.date) return null;
 
   const tz = value.timeZone ?? userTimezone;
-  const date = options.allDayEnd ? addDays(value.date, 1) : value.date;
-  return midnightInTimezoneToUtc(date, tz);
-}
-
-function addDays(yyyymmdd: string, days: number): string {
-  const [y, m, d] = yyyymmdd.split("-").map(Number);
-  // 12:00 UTC で組み立ててから加算することで DST 影響を避ける
-  const base = new Date(Date.UTC(y!, m! - 1, d!, 12, 0, 0));
-  base.setUTCDate(base.getUTCDate() + days);
-  const yyyy = base.getUTCFullYear();
-  const mm = String(base.getUTCMonth() + 1).padStart(2, "0");
-  const dd = String(base.getUTCDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
+  return midnightInTimezoneToUtc(value.date, tz);
 }
 
 // YYYY-MM-DD の対象タイムゾーンにおける 00:00:00 を UTC instant (ISO) に変換する。

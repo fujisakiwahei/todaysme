@@ -15,8 +15,13 @@ import { parseExternal } from "../validation";
 const GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
+// SPEC §3: 最小スコープで calendar.events.readonly のみ。
+// 追加で calendar.calendarlist.readonly: SPEC §3 の分類ルールに必要な
+// calendarList.list (カレンダー一覧 / calendar_name) を引くために必要。
+// (events.readonly 単体では calendarList.list が 403 になる)
 export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.readonly",
+  "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ] as const;
 
 interface GoogleOauthEnv {
