@@ -26,6 +26,7 @@ import { getSupabaseAdmin } from "../utils/supabaseAdmin";
 import { parseOrThrow } from "../utils/validation";
 import {
   overlaps,
+  targetDateOf,
   wakeRangeOf,
   type WakeRange as InternalWakeRange,
 } from "../utils/wakeRange";
@@ -241,14 +242,10 @@ export default defineEventHandler(async (event) => {
   //   tie-break と sleep_minutes が null の場合は wake_at が最も遅いものを採用。
   let oura: TodaysMe["oura"] = null;
   if (connected.has("oura")) {
-    const wakeDateFmt = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
+    // wake_at → YYYY-MM-DD への変換は targetDateOf に一元化 (ICU 依存の
+    // `Intl.DateTimeFormat.format()` を直接使わないことで実装差異を回避する)。
     const todayWake = sleepRows
-      .filter((r) => wakeDateFmt.format(new Date(r.wake_at)) === date)
+      .filter((r) => targetDateOf(r.wake_at, timezone) === date)
       .sort((a, b) => {
         const am = a.sleep_minutes ?? -1;
         const bm = b.sleep_minutes ?? -1;

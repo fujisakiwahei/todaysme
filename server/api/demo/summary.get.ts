@@ -29,6 +29,7 @@ import { parseOrThrow } from "../../utils/validation";
 import {
   computeWakeRange,
   overlaps,
+  targetDateOf,
   type SleepRecordLike,
   type WakeRange as InternalWakeRange,
 } from "../../utils/wakeRange";
@@ -195,16 +196,12 @@ export default defineEventHandler(async (event) => {
   // サービス未連携の概念はデモには無い。
 
   // Oura: target_date と一致する wake_at を持つ main sleep を選ぶ。
+  // wake_at → YYYY-MM-DD への変換は targetDateOf に一元化 (ICU 依存の
+  // `Intl.DateTimeFormat.format()` を直接使わないことで実装差異を回避する)。
   let oura: TodaysMe["oura"];
   {
-    const wakeDateFmt = new Intl.DateTimeFormat("en-CA", {
-      timeZone: timezone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
     const todayWake = sleepRows
-      .filter((r) => wakeDateFmt.format(new Date(r.wake_at)) === date)
+      .filter((r) => targetDateOf(r.wake_at, timezone) === date)
       .sort((a, b) => {
         const am = a.sleep_minutes ?? -1;
         const bm = b.sleep_minutes ?? -1;
