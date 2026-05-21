@@ -1,12 +1,17 @@
 // =============================================================================
-// GET /api/summary?date=YYYY-MM-DD
-// SPEC §9.1 / §9.3 / §10 / Issue #38
+// GET /api/demo/summary?date=YYYY-MM-DD
+// SPEC §5 / §11.4 / Issue #31
 //
-//   - DB のみを読む。外部 API は叩かない (refresh の責務)。
-//   - users.timezone をもとに wake range を計算し、各サービスのレコードは
-//     `target_date` 完全一致ではなく start_at/end_at の重なりで読む (SPEC §11.2)。
-//   - サービス未連携時は todays_me の該当キーを null にする。
-//   - レスポンスは Zod スキーマで検証してから返す (SPEC §12.3)。
+//   - デモ専用テーブル (demo_oura_sleep_records / demo_google_calendar_events /
+//     demo_toggl_time_entries) のみを読む。本番テーブルや外部 API は触らない。
+//   - 認証不要 (anon でアクセス可能)。
+//   - タイムゾーンは Asia/Tokyo 固定。デモには user 概念が無いため
+//     users.timezone に頼れない (seed データも JST 想定で作られている)。
+//   - 集計ロジック (wake range / overlap / Today's ME) は /api/summary と
+//     等価。実装が完全に重複しないよう wake range のヘルパは
+//     server/utils/wakeRange.ts の computeWakeRange を再利用する。
+//   - sync_statuses は常に空配列。デモは外部 API 同期を行わないため。
+//   - レスポンスは summaryResponseSchema で検証してから返す。
 // =============================================================================
 import {
   summaryRequestSchema,
@@ -14,25 +19,24 @@ import {
   type CalendarTimelineEntry,
   type SleepTimelineEntry,
   type SummaryResponse,
-  type SyncStatusEntry,
   type Timeline,
   type TodaysMe,
   type TogglTimelineEntry,
   type WakeRange,
-} from "../../shared/schemas";
-import { requireUserId } from "../utils/auth";
-import { listServiceConnections } from "../utils/serviceConnection";
-import { getSupabaseAdmin } from "../utils/supabaseAdmin";
-import { parseOrThrow } from "../utils/validation";
+} from "../../../shared/schemas";
+import { getSupabaseAdmin } from "../../utils/supabaseAdmin";
+import { parseOrThrow } from "../../utils/validation";
 import {
+  computeWakeRange,
   overlaps,
   targetDateOf,
-  wakeRangeOf,
+  type SleepRecordLike,
   type WakeRange as InternalWakeRange,
-} from "../utils/wakeRange";
+} from "../../utils/wakeRange";
 
-// SPEC §3 分類ルール: 現状は calendar_name === "MTG" を MTG とみなす想定。
-// 本番カレンダー名が確定したらここを書き換える。
+const DEMO_TIMEZONE = "Asia/Tokyo";
+
+// SPEC §3 分類ルール: /api/summary と揃える。
 const MEETING_CALENDAR_NAMES = new Set(["MTG"]);
 
 interface SleepRow {
@@ -59,16 +63,8 @@ interface TogglRow {
   end_at: string | null;
 }
 
-interface SyncStatusRow {
-  source: SyncStatusEntry["source"];
-  status: SyncStatusEntry["status"];
-  last_synced_at: string | null;
-  error_message: string | null;
-}
-
 // wake range と [start, end] の重なり部分の長さ (ミリ秒)。
 // end が null (進行中の Toggl エントリ) のときは range.end までで打ち切る。
-// 分への丸めは累積 drift を避けるため呼び出し側で sum 後に 1 度だけ行う。
 function overlappingMs(
   range: InternalWakeRange,
   start: string,
@@ -86,43 +82,31 @@ function msToMinutes(ms: number): number {
 }
 
 export default defineEventHandler(async (event) => {
-  const userId = await requireUserId(event);
   const { date } = parseOrThrow(summaryRequestSchema, getQuery(event));
 
   const admin = getSupabaseAdmin();
-
-  // -- timezone -------------------------------------------------------------
-  const { data: userRow, error: userErr } = await admin
-    .from("users")
-    .select("timezone")
-    .eq("id", userId)
-    .maybeSingle();
-  if (userErr) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "failed to load user",
-    });
-  }
-  // users 行は signup 時の trigger で作成される前提。欠落時に Asia/Tokyo に
-  // fallback するとデータ整合性問題を黙って隠してしまうので、明示的に 500 を返す。
-  if (!userRow) {
-    throw createError({
-      statusCode: 500,
-      statusMessage: "user profile is missing",
-    });
-  }
-  const timezone = userRow.timezone;
+  const timezone = DEMO_TIMEZONE;
 
   // -- wake range -----------------------------------------------------------
-  const internalRange = await wakeRangeOf(date, userId, {
-    client: admin,
-    timezone,
-  });
+  // targetDate を中心に ±2 日の睡眠記録を読んで pure な computeWakeRange に渡す。
+  // (本番の wakeRangeOf は user_id で絞るため流用できない)
+  const center = new Date(`${date}T12:00:00Z`).getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const fromIsoForWake = new Date(center - 2 * dayMs).toISOString();
+  const toIsoForWake = new Date(center + 2 * dayMs).toISOString();
 
-  // -- service connection 状況 (todays_me の null 判定に使う) ---------------
-  const connections = await listServiceConnections(userId);
-  const connected = new Set(
-    connections.filter((c) => c.status === "connected").map((c) => c.provider),
+  const { data: wakeSleepRows, error: wakeSleepErr } = await admin
+    .from("demo_oura_sleep_records")
+    .select("sleep_start_at, wake_at")
+    .eq("is_deleted", false)
+    .gte("wake_at", fromIsoForWake)
+    .lte("wake_at", toIsoForWake);
+  if (wakeSleepErr) throw wakeSleepErr;
+
+  const internalRange = computeWakeRange(
+    date,
+    (wakeSleepRows ?? []) as SleepRecordLike[],
+    { timezone },
   );
 
   // -- records (wake range と重なるもの) -----------------------------------
@@ -135,19 +119,16 @@ export default defineEventHandler(async (event) => {
     const toIso = internalRange.end.toISOString();
 
     const [sleepRes, calendarRes, togglRes] = await Promise.all([
-      // 睡眠は sleep_start_at..wake_at が wake range と重なるもの。
       admin
-        .from("oura_sleep_records")
+        .from("demo_oura_sleep_records")
         .select("id, sleep_start_at, wake_at, sleep_minutes")
-        .eq("user_id", userId)
         .eq("is_deleted", false)
         .lte("sleep_start_at", toIso)
         .gte("wake_at", fromIso)
         .order("wake_at", { ascending: true }),
       admin
-        .from("google_calendar_events")
+        .from("demo_google_calendar_events")
         .select("id, google_event_id, calendar_name, title, start_at, end_at")
-        .eq("user_id", userId)
         .eq("is_deleted", false)
         .lte("start_at", toIso)
         .gte("end_at", fromIso)
@@ -155,9 +136,8 @@ export default defineEventHandler(async (event) => {
       // Toggl は end_at が null (進行中) を許容する。end_at IS NULL もしくは
       // end_at >= fromIso のものだけを DB 側で絞り込み、JS の overlaps() で最終判定する。
       admin
-        .from("toggl_time_entries")
+        .from("demo_toggl_time_entries")
         .select("id, toggl_entry_id, title, start_at, end_at")
-        .eq("user_id", userId)
         .eq("is_deleted", false)
         .lte("start_at", toIso)
         .or(`end_at.gte.${fromIso},end_at.is.null`)
@@ -170,13 +150,7 @@ export default defineEventHandler(async (event) => {
 
     // DB クエリは inclusive bound のため、range.end に exact-touch する
     // 翌日分の sleep / 境界線上の calendar event が混入しうる。再フィルタで除外する。
-    //
-    // sleep は wake range の「境界そのもの」を定義する記録で、main sleep は
-    // wake_at === range.start が常に成立する。calendar/toggl と同じ overlaps()
-    // (strict 両端) を使うと main sleep が必ず落ちて Oura summary が null になるため、
-    // sleep だけは下限 inclusive (wake_at >= range.start) で判定する。
-    // 上限は strict (sleep_start_at < range.end) なので、過去日の wakeRange.end ==
-    // 翌日 sleep_start_at の境界レコードも除外できる。
+    // (本番 /api/summary と同じ判定ロジック)
     const rangeStartMs = internalRange.start.getTime();
     const rangeEndMs = internalRange.end.getTime();
     sleepRows = ((sleepRes.data ?? []) as SleepRow[]).filter((r) => {
@@ -191,23 +165,6 @@ export default defineEventHandler(async (event) => {
       overlaps(internalRange, r.start_at, r.end_at),
     );
   }
-
-  // -- sync statuses --------------------------------------------------------
-  const { data: syncRows, error: syncErr } = await admin
-    .from("daily_sync_statuses")
-    .select("source, status, last_synced_at, error_message")
-    .eq("user_id", userId)
-    .eq("target_date", date);
-  if (syncErr) throw syncErr;
-
-  const sync_statuses: SyncStatusEntry[] = (
-    (syncRows ?? []) as SyncStatusRow[]
-  ).map((r) => ({
-    source: r.source,
-    status: r.status,
-    last_synced_at: r.last_synced_at,
-    error_message: r.error_message,
-  }));
 
   // -- Timeline (SPEC §4.2) ------------------------------------------------
   const timeline: Timeline = {
@@ -235,15 +192,14 @@ export default defineEventHandler(async (event) => {
   };
 
   // -- Today's ME (SPEC §4.1) ----------------------------------------------
-  // Oura: 起床日 = target_date となる sleep を選ぶ。
-  //   wake range には前日夜〜当日朝の睡眠が入るので、wake_at が target_date と
-  //   一致するレコードに絞る。同一日に複数 (仮眠等) が存在する場合は
-  //   sleep_minutes が最も長いものを main sleep とみなして採用する。
-  //   tie-break と sleep_minutes が null の場合は wake_at が最も遅いものを採用。
-  let oura: TodaysMe["oura"] = null;
-  if (connected.has("oura")) {
-    // wake_at → YYYY-MM-DD への変換は targetDateOf に一元化 (ICU 依存の
-    // `Intl.DateTimeFormat.format()` を直接使わないことで実装差異を回避する)。
+  // デモでは 3 サービス全て「連携済み」相当として todays_me に値を返す。
+  // サービス未連携の概念はデモには無い。
+
+  // Oura: target_date と一致する wake_at を持つ main sleep を選ぶ。
+  // wake_at → YYYY-MM-DD への変換は targetDateOf に一元化 (ICU 依存の
+  // `Intl.DateTimeFormat.format()` を直接使わないことで実装差異を回避する)。
+  let oura: TodaysMe["oura"];
+  {
     const todayWake = sleepRows
       .filter((r) => targetDateOf(r.wake_at, timezone) === date)
       .sort((a, b) => {
@@ -260,8 +216,8 @@ export default defineEventHandler(async (event) => {
 
   // Google: wake range と重なる時間で集計。
   // 累積 drift を避けるため ms で足し上げ、最後にまとめて分へ丸める。
-  let google: TodaysMe["google"] = null;
-  if (connected.has("google")) {
+  let google: TodaysMe["google"];
+  {
     const byCalendarMs = new Map<string, number>();
     let totalMs = 0;
     let meetingMs = 0;
@@ -290,12 +246,8 @@ export default defineEventHandler(async (event) => {
   }
 
   // Toggl: wake range と重なる時間でタイトル別集計。
-  // by_title は SPEC §4.1 の定義どおり title 単位で集約する。
-  // Toggl の project_id は DB スキーマに保持していないため、別プロジェクトで
-  // 同名タイトルを使うと同一バケットに入る。将来 project_id を永続化する
-  // 場合はキーを (title, project_id) に拡張する。
-  let toggl: TodaysMe["toggl"] = null;
-  if (connected.has("toggl")) {
+  let toggl: TodaysMe["toggl"];
+  {
     const byTitleMs = new Map<string, number>();
     let totalMs = 0;
     if (internalRange) {
@@ -330,7 +282,8 @@ export default defineEventHandler(async (event) => {
     wake_range,
     todays_me: { oura, google, toggl },
     timeline,
-    sync_statuses,
+    // デモは sync しないため常に空。
+    sync_statuses: [],
   };
 
   return parseOrThrow(summaryResponseSchema, response);
