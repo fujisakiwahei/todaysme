@@ -31,3 +31,6 @@ docs/personal/
 
 # design
 design-tone
+
+# test
+.playwright-mcp
