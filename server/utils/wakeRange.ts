@@ -56,7 +56,8 @@ export function targetDateOf(wakeAt: Date | string, timezone: string): string {
 // computeWakeRange
 // 純粋関数版。テスト容易性のため I/O を分離している。
 //   - 当日:   その日の wake_at → 現在 (options.now)
-//   - 過去日: その日の wake_at → 次の睡眠開始時刻 (なければ 24h 後)
+//   - 過去日: その日の wake_at → 次の睡眠開始時刻
+//             (まだ次の睡眠が無ければ「現在も起きている」とみなして現在時刻)
 //   - target_date に対応する wake_at がない場合は null
 // =============================================================================
 
@@ -87,8 +88,14 @@ export function computeWakeRange(
     end = now;
   } else {
     const nextSleep = sorted[idx + 1]?.sleep_start_at;
-    // 次の睡眠記録が無い場合のフォールバックは 24h 後
-    end = nextSleep ?? new Date(start.getTime() + 24 * 60 * 60 * 1000);
+    // 次の睡眠記録が無い場合、ユーザはその起床以降まだ寝ていない =
+    // wake range は現在も続いていると扱う (Issue #113)。
+    // 「24h 後で頭打ち」だと日跨ぎ直後に起床経過時間が 24h で固定されてしまう。
+    // ただし古い日付でデータが欠落しているケースで経過時間が際限なく増えないよう
+    // start から 24h を上限としてキャップする。
+    end =
+      nextSleep ??
+      new Date(Math.min(now.getTime(), start.getTime() + 24 * 60 * 60 * 1000));
   }
 
   return { start, end };
