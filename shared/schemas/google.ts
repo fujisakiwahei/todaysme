@@ -63,3 +63,19 @@ export type GoogleCalendarEvent = z.infer<typeof googleCalendarEventSchema>;
 export type GoogleEventsListResponse = z.infer<
   typeof googleEventsListResponseSchema
 >;
+
+// -----------------------------------------------------------------------------
+// `POST https://oauth2.googleapis.com/token` のレスポンス (Issue #52)
+// refresh_token は初回 (consent prompt 経由) のみ返ってくる。
+// -----------------------------------------------------------------------------
+export const googleTokenResponseSchema = z.object({
+  access_token: z.string(),
+  refresh_token: z.string().optional(),
+  token_type: z.string().optional(),
+  // 秒。Google は通常 3600。
+  expires_in: z.number().int().optional(),
+  scope: z.string().optional(),
+  id_token: z.string().optional(),
+});
+
+export type GoogleTokenResponse = z.infer<typeof googleTokenResponseSchema>;
