@@ -41,12 +41,13 @@ export interface UpsertServiceConnectionInput {
   userId: string;
   provider: ServiceProvider;
   accessToken: string;
-  // refresh_token は 3 状態を区別する:
-  //   - undefined → 既存の refresh_token を保持する (Google は再認可時に
-  //                 refresh_token を返さないことがあり、null 上書きすると
-  //                 オフラインアクセスが失われる)
+  // refresh_token / scopes / providerUserId は共通で 3 状態を区別する:
+  //   - undefined → 既存の DB 値を保持する
+  //                 (Google は再認可時に refresh_token を返さない / refresh
+  //                 レスポンスに scope が含まれないことがあり、null で
+  //                 上書きしてしまうとオフラインアクセスや権限情報が失われる)
   //   - null       → 明示的に null へ上書き (refresh 概念のない Toggl 等)
-  //   - string     → 新しい値で上書き
+  //   - string/配列 → 新しい値で上書き
   refreshToken?: string | null;
   expiresInSeconds?: number | null;
   scopes?: readonly string[] | string | null;
@@ -63,21 +64,26 @@ export async function upsertServiceConnection(
   const admin = getSupabaseAdmin();
   const now = new Date();
 
+  // 既存行は 1 回だけ読む。refresh_token / scopes / provider_user_id を
+  // undefined 保持仕様で扱うのに加え、connected_at は「初回接続時刻」を
+  // 保持するため (refresh のたびに上書きされると /api/connections の
+  // 表示が常に「今接続した」になってしまう)。
+  const { data: existing, error: existingErr } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select("refresh_token_encrypted, provider_user_id, scopes, connected_at")
+    .eq("user_id", input.userId)
+    .eq("provider", input.provider)
+    .maybeSingle();
+  if (existingErr) {
+    throw new Error(
+      `failed to read existing service_connection: ${existingErr.message}`,
+    );
+  }
+
   const accessEnc = packEncrypted(encrypt(input.accessToken));
 
   let refreshEnc: string | null;
   if (input.refreshToken === undefined) {
-    const { data: existing, error: existingErr } = await admin
-      .from(SERVICE_CONNECTIONS_TABLE)
-      .select("refresh_token_encrypted")
-      .eq("user_id", input.userId)
-      .eq("provider", input.provider)
-      .maybeSingle();
-    if (existingErr) {
-      throw new Error(
-        `failed to read existing refresh_token: ${existingErr.message}`,
-      );
-    }
     refreshEnc = existing?.refresh_token_encrypted ?? null;
   } else if (input.refreshToken === null || input.refreshToken === "") {
     refreshEnc = null;
@@ -90,21 +96,35 @@ export async function upsertServiceConnection(
       ? new Date(now.getTime() + input.expiresInSeconds * 1000).toISOString()
       : null;
 
-  const scopes = Array.isArray(input.scopes)
-    ? input.scopes.join(" ")
-    : (input.scopes ?? null);
+  let scopes: string | null;
+  if (input.scopes === undefined) {
+    scopes = existing?.scopes ?? null;
+  } else if (input.scopes === null) {
+    scopes = null;
+  } else if (typeof input.scopes === "string") {
+    scopes = input.scopes;
+  } else {
+    scopes = input.scopes.join(" ");
+  }
+
+  const providerUserId =
+    input.providerUserId === undefined
+      ? (existing?.provider_user_id ?? null)
+      : input.providerUserId;
+
+  const connectedAt = existing?.connected_at ?? now.toISOString();
 
   const { error } = await admin.from(SERVICE_CONNECTIONS_TABLE).upsert(
     {
       user_id: input.userId,
       provider: input.provider,
       status: "connected",
-      provider_user_id: input.providerUserId ?? null,
+      provider_user_id: providerUserId,
       access_token_encrypted: accessEnc,
       refresh_token_encrypted: refreshEnc,
       token_expires_at: tokenExpiresAt,
       scopes,
-      connected_at: now.toISOString(),
+      connected_at: connectedAt,
       updated_at: now.toISOString(),
     },
     { onConflict: "user_id,provider" },
@@ -201,6 +221,9 @@ interface ServiceConnectionTokenRow {
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   token_expires_at: string | null;
+  // 楽観ロック用。markConnectionError が「読み取り時点から行が動いていない」
+  // ことを確認してから status=error に落とすために使う。
+  updated_at: string;
 }
 
 async function loadConnectionForToken(
@@ -211,7 +234,7 @@ async function loadConnectionForToken(
   const { data, error } = await admin
     .from(SERVICE_CONNECTIONS_TABLE)
     .select(
-      "status, access_token_encrypted, refresh_token_encrypted, token_expires_at",
+      "status, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at",
     )
     .eq("user_id", userId)
     .eq("provider", provider)
@@ -239,15 +262,22 @@ function decryptStoredToken(packed: string, label: string): string {
 async function markConnectionError(
   userId: string,
   provider: ServiceProvider,
+  expectedUpdatedAt: string,
 ): Promise<void> {
   // status="error" にすると次回 loadConnectionForToken が ServiceNotConnectedError を
   // 投げるため、settings 画面で再接続を促す導線につながる。
+  //
+  // 並走する refresh が片方成功・片方失敗するケースで status を error に巻き戻して
+  // しまわないよう、楽観ロックとして「読み取り時点の updated_at と一致する場合のみ」
+  // 更新する。並走側が既に新しいトークンを書き込んでいれば updated_at が動くので
+  // フィルタが一致せず no-op になる。
   const admin = getSupabaseAdmin();
   await admin
     .from(SERVICE_CONNECTIONS_TABLE)
     .update({ status: "error", updated_at: new Date().toISOString() })
     .eq("user_id", userId)
-    .eq("provider", provider);
+    .eq("provider", provider)
+    .eq("updated_at", expectedUpdatedAt);
 }
 
 async function callProviderRefresh(
@@ -257,7 +287,10 @@ async function callProviderRefresh(
   accessToken: string;
   refreshToken: string | undefined;
   expiresInSeconds: number | null;
-  scopes: string | null;
+  // scope が返らない場合は undefined のまま流し、upsertServiceConnection の
+  // 3 状態仕様で既存スコープを保持する (null で上書きすると権限調査用の
+  // 履歴が消える)。
+  scopes: string | undefined;
 }> {
   if (provider === "oura") {
     const token = await refreshOuraToken(refreshToken);
@@ -265,7 +298,7 @@ async function callProviderRefresh(
       accessToken: token.access_token,
       refreshToken: token.refresh_token,
       expiresInSeconds: token.expires_in ?? null,
-      scopes: token.scope ?? null,
+      scopes: token.scope,
     };
   }
   if (provider === "google") {
@@ -276,7 +309,7 @@ async function callProviderRefresh(
       // upsertServiceConnection の 3 状態仕様で既存値を保持する。
       refreshToken: token.refresh_token,
       expiresInSeconds: token.expires_in ?? null,
-      scopes: token.scope ?? null,
+      scopes: token.scope,
     };
   }
   // Toggl はそもそも refresh の概念がない (API token 方式)。
@@ -286,13 +319,18 @@ async function callProviderRefresh(
 // 期限切れまたは強制リフレッシュ要求時に refresh_token を使って access_token を
 // 再発行し、service_connections を更新して新しい access_token を返す。
 // 失敗時は service_connections.status を "error" に落としてから OauthRefreshError を throw する。
+//
+// expectedUpdatedAt は markConnectionError の楽観ロック条件 (読み取り時点から
+// 行が変わっていないときのみ status=error にする)。並走 refresh が片方成功・
+// 片方失敗するケースで healthy な接続を error 状態に巻き戻さないため。
 async function performRefresh(
   userId: string,
   provider: ServiceProvider,
   refreshTokenEncrypted: string | null,
+  expectedUpdatedAt: string,
 ): Promise<string> {
   if (!refreshTokenEncrypted) {
-    await markConnectionError(userId, provider);
+    await markConnectionError(userId, provider, expectedUpdatedAt);
     throw new OauthRefreshError(provider, "no refresh_token stored");
   }
 
@@ -303,7 +341,7 @@ async function performRefresh(
       `${provider} refresh_token_encrypted`,
     );
   } catch (e) {
-    await markConnectionError(userId, provider);
+    await markConnectionError(userId, provider, expectedUpdatedAt);
     throw new OauthRefreshError(
       provider,
       e instanceof Error ? e.message : "decrypt failed",
@@ -314,7 +352,7 @@ async function performRefresh(
   try {
     refreshed = await callProviderRefresh(provider, refreshTokenPlain);
   } catch (e) {
-    await markConnectionError(userId, provider);
+    await markConnectionError(userId, provider, expectedUpdatedAt);
     throw new OauthRefreshError(
       provider,
       e instanceof Error ? e.message : "token endpoint error",
@@ -360,7 +398,12 @@ export async function getValidAccessToken(
     expiresAt !== null && expiresAt - Date.now() < TOKEN_REFRESH_LEEWAY_MS;
 
   if (needsRefresh) {
-    return performRefresh(userId, provider, row.refresh_token_encrypted);
+    return performRefresh(
+      userId,
+      provider,
+      row.refresh_token_encrypted,
+      row.updated_at,
+    );
   }
 
   return decryptStoredToken(
@@ -379,7 +422,12 @@ async function forceRefreshAccessToken(
     throw new OauthRefreshError(provider, "refresh is not supported");
   }
   const row = await loadConnectionForToken(userId, provider);
-  return performRefresh(userId, provider, row.refresh_token_encrypted);
+  return performRefresh(
+    userId,
+    provider,
+    row.refresh_token_encrypted,
+    row.updated_at,
+  );
 }
 
 // 401 リトライラッパ (Issue #75)。
