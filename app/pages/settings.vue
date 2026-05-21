@@ -110,6 +110,26 @@ function statusLabel(s: ConnectionSummary): string {
   return "未接続";
 }
 
+// /daily/* から require-connections middleware で飛ばされてきたときの案内バナー。
+// クエリには未接続のサービス名が CSV で入る (例: "oura,google")。
+// 表示時に provider 名を日本語にマッピングする。
+const PROVIDER_LABEL_JA: Record<ServiceProvider, string> = {
+  oura: "Oura",
+  google: "Google Calendar",
+  toggl: "Toggl Track",
+};
+const requireConnectionsMissing = computed<ServiceProvider[]>(() => {
+  const raw = route.query.require_connections;
+  if (typeof raw !== "string" || raw.length === 0) return [];
+  return raw
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s): s is ServiceProvider => s in PROVIDER_LABEL_JA);
+});
+const requireConnectionsLabel = computed(() =>
+  requireConnectionsMissing.value.map((p) => PROVIDER_LABEL_JA[p]).join(" と "),
+);
+
 onMounted(() => {
   // OAuth callback からの戻り値を一度だけ拾って表示する
   const connected = route.query.connected;
@@ -129,6 +149,15 @@ onMounted(() => {
 <template>
   <main class="settings">
     <h1>外部サービス連携</h1>
+
+    <p
+      v-if="requireConnectionsMissing.length > 0"
+      class="settings__message settings__message--warn"
+    >
+      Today's ME は Oura の起床時刻を基準に 1 日を組み立てるため、Oura と Google
+      Calendar の両方を接続しないと利用できません。
+      {{ requireConnectionsLabel }} を接続してください。
+    </p>
 
     <p v-if="successMessage" class="settings__message settings__message--ok">
       {{ successMessage }}
@@ -247,6 +276,12 @@ onMounted(() => {
 .settings__message--error {
   background: #fdecea;
   color: #8a1b1b;
+}
+
+.settings__message--warn {
+  background: #fff7e0;
+  color: #6a4d00;
+  border: 1px solid #f0d27a;
 }
 
 .settings__loading {

@@ -1,14 +1,10 @@
 // =============================================================================
 // GET /api/summary?date=YYYY-MM-DD
-// SPEC §9.1 / §9.3 / §10 / Issue #38 / #101
+// SPEC §9.1 / §9.3 / §10 / Issue #38
 //
 //   - DB のみを読む。外部 API は叩かない (refresh の責務)。
 //   - users.timezone をもとに wake range を計算し、各サービスのレコードは
 //     `target_date` 完全一致ではなく start_at/end_at の重なりで読む (SPEC §11.2)。
-//   - Oura 未連携 / 睡眠未取得で wake range が null になる場合は、Toggl / Google が
-//     0h0min に張り付かないよう `computeDayRange` の day fallback を効果レンジとして
-//     使う (Issue #101)。レスポンスの wake_range フィールドは Oura 由来時のみ非 null
-//     にしてフォールバックと区別する。
 //   - サービス未連携時は todays_me の該当キーを null にする。
 //   - レスポンスは Zod スキーマで検証してから返す (SPEC §12.3)。
 // =============================================================================
@@ -29,7 +25,6 @@ import { listServiceConnections } from "../utils/serviceConnection";
 import { getSupabaseAdmin } from "../utils/supabaseAdmin";
 import { parseOrThrow } from "../utils/validation";
 import {
-  computeDayRange,
   overlaps,
   targetDateOf,
   wakeRangeOf,
@@ -119,15 +114,10 @@ export default defineEventHandler(async (event) => {
   const timezone = userRow.timezone;
 
   // -- wake range -----------------------------------------------------------
-  // internalRange: Oura の sleep 由来 (wake-based)。null = 当該日に wake_at 記録なし。
-  // effectiveRange: 集計用の効果レンジ。Oura が無くても Toggl / Google が 0h0min に
-  // ならないよう、internalRange が null のときは `computeDayRange` の day fallback を使う。
   const internalRange = await wakeRangeOf(date, userId, {
     client: admin,
     timezone,
   });
-  const effectiveRange: InternalWakeRange =
-    internalRange ?? computeDayRange(date, timezone);
 
   // -- service connection 状況 (todays_me の null 判定に使う) ---------------
   const connections = await listServiceConnections(userId);
@@ -135,30 +125,25 @@ export default defineEventHandler(async (event) => {
     connections.filter((c) => c.status === "connected").map((c) => c.provider),
   );
 
-  // -- records (effectiveRange と重なるもの) --------------------------------
+  // -- records (wake range と重なるもの) -----------------------------------
   let sleepRows: SleepRow[] = [];
   let calendarRows: CalendarRow[] = [];
   let togglRows: TogglRow[] = [];
 
-  {
-    const fromIso = effectiveRange.start.toISOString();
-    const toIso = effectiveRange.end.toISOString();
-
-    // 睡眠は wake-based timeline の「枠」を定義するレコードなので、
-    // Oura 由来の internalRange があるときだけ取得する (day fallback では拾わない)。
-    const sleepPromise = internalRange
-      ? admin
-          .from("oura_sleep_records")
-          .select("id, sleep_start_at, wake_at, sleep_minutes")
-          .eq("user_id", userId)
-          .eq("is_deleted", false)
-          .lte("sleep_start_at", toIso)
-          .gte("wake_at", fromIso)
-          .order("wake_at", { ascending: true })
-      : Promise.resolve({ data: [] as SleepRow[], error: null });
+  if (internalRange) {
+    const fromIso = internalRange.start.toISOString();
+    const toIso = internalRange.end.toISOString();
 
     const [sleepRes, calendarRes, togglRes] = await Promise.all([
-      sleepPromise,
+      // 睡眠は sleep_start_at..wake_at が wake range と重なるもの。
+      admin
+        .from("oura_sleep_records")
+        .select("id, sleep_start_at, wake_at, sleep_minutes")
+        .eq("user_id", userId)
+        .eq("is_deleted", false)
+        .lte("sleep_start_at", toIso)
+        .gte("wake_at", fromIso)
+        .order("wake_at", { ascending: true }),
       admin
         .from("google_calendar_events")
         .select("id, google_event_id, calendar_name, title, start_at, end_at")
@@ -192,20 +177,18 @@ export default defineEventHandler(async (event) => {
     // sleep だけは下限 inclusive (wake_at >= range.start) で判定する。
     // 上限は strict (sleep_start_at < range.end) なので、過去日の wakeRange.end ==
     // 翌日 sleep_start_at の境界レコードも除外できる。
-    if (internalRange) {
-      const rangeStartMs = internalRange.start.getTime();
-      const rangeEndMs = internalRange.end.getTime();
-      sleepRows = ((sleepRes.data ?? []) as SleepRow[]).filter((r) => {
-        const s = new Date(r.sleep_start_at).getTime();
-        const e = new Date(r.wake_at).getTime();
-        return s < rangeEndMs && e >= rangeStartMs;
-      });
-    }
+    const rangeStartMs = internalRange.start.getTime();
+    const rangeEndMs = internalRange.end.getTime();
+    sleepRows = ((sleepRes.data ?? []) as SleepRow[]).filter((r) => {
+      const s = new Date(r.sleep_start_at).getTime();
+      const e = new Date(r.wake_at).getTime();
+      return s < rangeEndMs && e >= rangeStartMs;
+    });
     calendarRows = ((calendarRes.data ?? []) as CalendarRow[]).filter((r) =>
-      overlaps(effectiveRange, r.start_at, r.end_at),
+      overlaps(internalRange, r.start_at, r.end_at),
     );
     togglRows = ((togglRes.data ?? []) as TogglRow[]).filter((r) =>
-      overlaps(effectiveRange, r.start_at, r.end_at),
+      overlaps(internalRange, r.start_at, r.end_at),
     );
   }
 
@@ -275,21 +258,23 @@ export default defineEventHandler(async (event) => {
     };
   }
 
-  // Google: effectiveRange と重なる時間で集計。
+  // Google: wake range と重なる時間で集計。
   // 累積 drift を避けるため ms で足し上げ、最後にまとめて分へ丸める。
   let google: TodaysMe["google"] = null;
   if (connected.has("google")) {
     const byCalendarMs = new Map<string, number>();
     let totalMs = 0;
     let meetingMs = 0;
-    for (const ev of calendarRows) {
-      const ms = overlappingMs(effectiveRange, ev.start_at, ev.end_at);
-      if (ms <= 0) continue;
-      totalMs += ms;
-      const name = ev.calendar_name ?? "";
-      byCalendarMs.set(name, (byCalendarMs.get(name) ?? 0) + ms);
-      if (ev.calendar_name && MEETING_CALENDAR_NAMES.has(ev.calendar_name)) {
-        meetingMs += ms;
+    if (internalRange) {
+      for (const ev of calendarRows) {
+        const ms = overlappingMs(internalRange, ev.start_at, ev.end_at);
+        if (ms <= 0) continue;
+        totalMs += ms;
+        const name = ev.calendar_name ?? "";
+        byCalendarMs.set(name, (byCalendarMs.get(name) ?? 0) + ms);
+        if (ev.calendar_name && MEETING_CALENDAR_NAMES.has(ev.calendar_name)) {
+          meetingMs += ms;
+        }
       }
     }
     google = {
@@ -304,7 +289,7 @@ export default defineEventHandler(async (event) => {
     };
   }
 
-  // Toggl: effectiveRange と重なる時間でタイトル別集計。
+  // Toggl: wake range と重なる時間でタイトル別集計。
   // by_title は SPEC §4.1 の定義どおり title 単位で集約する。
   // Toggl の project_id は DB スキーマに保持していないため、別プロジェクトで
   // 同名タイトルを使うと同一バケットに入る。将来 project_id を永続化する
@@ -313,12 +298,14 @@ export default defineEventHandler(async (event) => {
   if (connected.has("toggl")) {
     const byTitleMs = new Map<string, number>();
     let totalMs = 0;
-    for (const t of togglRows) {
-      const ms = overlappingMs(effectiveRange, t.start_at, t.end_at);
-      if (ms <= 0) continue;
-      totalMs += ms;
-      const title = t.title ?? "";
-      byTitleMs.set(title, (byTitleMs.get(title) ?? 0) + ms);
+    if (internalRange) {
+      for (const t of togglRows) {
+        const ms = overlappingMs(internalRange, t.start_at, t.end_at);
+        if (ms <= 0) continue;
+        totalMs += ms;
+        const title = t.title ?? "";
+        byTitleMs.set(title, (byTitleMs.get(title) ?? 0) + ms);
+      }
     }
     toggl = {
       total_minutes: msToMinutes(totalMs),

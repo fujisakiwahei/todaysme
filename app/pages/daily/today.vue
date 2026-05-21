@@ -11,7 +11,7 @@
 // =============================================================================
 
 definePageMeta({
-  middleware: ["auth"],
+  middleware: ["auth", "require-connections"],
 });
 
 const supabase = useSupabaseClient();
