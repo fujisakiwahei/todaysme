@@ -1,0 +1,14 @@
+// Global reset (minimum)
+// page 側で box-sizing/margin を都度直さなくて良いように、最低限だけ揃える。
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
