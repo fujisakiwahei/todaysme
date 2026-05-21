@@ -128,22 +128,26 @@ export default defineEventHandler(async (event) => {
         .eq("user_id", userId)
         .eq("is_deleted", false)
         .lte("sleep_start_at", toIso)
-        .gte("wake_at", fromIso),
+        .gte("wake_at", fromIso)
+        .order("wake_at", { ascending: true }),
       admin
         .from("google_calendar_events")
         .select("id, google_event_id, calendar_name, title, start_at, end_at")
         .eq("user_id", userId)
         .eq("is_deleted", false)
         .lte("start_at", toIso)
-        .gte("end_at", fromIso),
-      // Toggl は end_at が null (進行中) を許容するため、サーバ側では start_at の上限のみで絞り
-      // end 側は JS の overlaps() で判定する。
+        .gte("end_at", fromIso)
+        .order("start_at", { ascending: true }),
+      // Toggl は end_at が null (進行中) を許容する。end_at IS NULL もしくは
+      // end_at >= fromIso のものだけを DB 側で絞り込み、JS の overlaps() で最終判定する。
       admin
         .from("toggl_time_entries")
         .select("id, toggl_entry_id, title, start_at, end_at")
         .eq("user_id", userId)
         .eq("is_deleted", false)
-        .lte("start_at", toIso),
+        .lte("start_at", toIso)
+        .or(`end_at.gte.${fromIso},end_at.is.null`)
+        .order("start_at", { ascending: true }),
     ]);
 
     if (sleepRes.error) throw sleepRes.error;
@@ -202,7 +206,8 @@ export default defineEventHandler(async (event) => {
   // -- Today's ME (SPEC §4.1) ----------------------------------------------
   // Oura: 起床日 = target_date となる sleep を選ぶ。
   //   wake range には前日夜〜当日朝の睡眠が入るので、wake_at が target_date と
-  //   一致するレコードに絞る。
+  //   一致するレコードに絞る。同一日に複数の sleep が存在する場合
+  //   (仮眠等) は wake_at が最も遅いものを採用 (決定的に選ぶため)。
   let oura: TodaysMe["oura"] = null;
   if (connected.has("oura")) {
     const wakeDateFmt = new Intl.DateTimeFormat("en-CA", {
@@ -211,9 +216,11 @@ export default defineEventHandler(async (event) => {
       month: "2-digit",
       day: "2-digit",
     });
-    const todayWake = sleepRows.find(
-      (r) => wakeDateFmt.format(new Date(r.wake_at)) === date,
-    );
+    const todayWake = sleepRows
+      .filter((r) => wakeDateFmt.format(new Date(r.wake_at)) === date)
+      .sort(
+        (a, b) => new Date(b.wake_at).getTime() - new Date(a.wake_at).getTime(),
+      )[0];
     oura = {
       sleep_minutes: todayWake?.sleep_minutes ?? null,
       wake_at: todayWake?.wake_at ?? null,
