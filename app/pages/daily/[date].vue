@@ -1058,6 +1058,7 @@ $font-en:
 }
 
 .daily__date-btn {
+  margin-bottom: 4px;
   width: 32px;
   height: 32px;
   display: inline-flex;
@@ -1070,14 +1071,10 @@ $font-en:
   line-height: 0;
   color: $color-text-muted;
   text-decoration: none;
-  border-radius: 999px;
-  transition:
-    background 0.15s,
-    color 0.15s;
+  transition: color 0.15s;
 
   &:hover {
     color: $color-text;
-    background: $color-surface;
   }
 }
 
