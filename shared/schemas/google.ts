@@ -65,6 +65,34 @@ export type GoogleEventsListResponse = z.infer<
 >;
 
 // -----------------------------------------------------------------------------
+// `GET /calendar/v3/users/me/calendarList` のレスポンス (SPEC §3)
+//
+// SPEC §3 の分類は「カレンダー単位」で行うため、events.list で取得した
+// イベントに `calendar_name` を付け直す目的で先に calendarList を引く。
+// `summary` がカレンダーの表示名、`summaryOverride` はユーザーがリネームした
+// 場合の上書き名 (ある場合は優先)。
+// -----------------------------------------------------------------------------
+export const googleCalendarListEntrySchema = z.object({
+  id: z.string(),
+  summary: z.string().optional(),
+  summaryOverride: z.string().optional(),
+  primary: z.boolean().optional(),
+  deleted: z.boolean().optional(),
+});
+
+export const googleCalendarListResponseSchema = z.object({
+  items: z.array(googleCalendarListEntrySchema),
+  nextPageToken: z.string().optional(),
+});
+
+export type GoogleCalendarListEntry = z.infer<
+  typeof googleCalendarListEntrySchema
+>;
+export type GoogleCalendarListResponse = z.infer<
+  typeof googleCalendarListResponseSchema
+>;
+
+// -----------------------------------------------------------------------------
 // `POST https://oauth2.googleapis.com/token` のレスポンス (Issue #52)
 // refresh_token は初回 (consent prompt 経由) のみ返ってくる。
 // -----------------------------------------------------------------------------
