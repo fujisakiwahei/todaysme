@@ -9,6 +9,7 @@
 import { oauthStartResponseSchema } from "../../../../shared/schemas";
 import { requireUserId } from "../../../utils/auth";
 import { buildOuraAuthorizeUrl } from "../../../utils/oauth/oura";
+import { resolveOauthRedirectUri } from "../../../utils/oauth/redirectUri";
 import { createOauthState } from "../../../utils/oauthState";
 import { parseOrThrow } from "../../../utils/validation";
 
@@ -27,6 +28,7 @@ export default defineEventHandler(async (event) => {
     expires: new Date(exp * 1000),
   });
 
-  const authorize_url = buildOuraAuthorizeUrl(state);
+  const redirectUri = resolveOauthRedirectUri(event, "oura");
+  const authorize_url = buildOuraAuthorizeUrl(state, redirectUri);
   return parseOrThrow(oauthStartResponseSchema, { authorize_url });
 });

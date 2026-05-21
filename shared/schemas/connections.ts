@@ -74,6 +74,16 @@ export const connectionListResponseSchema = z.object({
 });
 
 // -----------------------------------------------------------------------------
+// require-connections middleware 用 (`GET /api/internal/connections-required`)
+// /daily/* に必要な接続 (Oura + Google) のうち未接続のものだけを返す。
+// cookie 認証で SSR / client 双方から呼ぶ前提の read-only エンドポイント。
+// -----------------------------------------------------------------------------
+
+export const connectionsRequiredResponseSchema = z.object({
+  missing: z.array(serviceProviderSchema),
+});
+
+// -----------------------------------------------------------------------------
 // 型
 // -----------------------------------------------------------------------------
 
@@ -84,4 +94,7 @@ export type DisconnectParams = z.infer<typeof disconnectParamsSchema>;
 export type ConnectionSummary = z.infer<typeof connectionSummarySchema>;
 export type ConnectionListResponse = z.infer<
   typeof connectionListResponseSchema
+>;
+export type ConnectionsRequiredResponse = z.infer<
+  typeof connectionsRequiredResponseSchema
 >;
