@@ -21,7 +21,7 @@ onMounted(async () => {
       <nav class="top__nav-actions">
         <NuxtLink to="/demo" class="top__nav-link">デモを見る</NuxtLink>
         <template v-if="!checkingSession">
-          <NuxtLink v-if="hasSession" to="/app" class="top__nav-cta">
+          <NuxtLink v-if="hasSession" to="/daily/today" class="top__nav-cta">
             ダッシュボードへ →
           </NuxtLink>
           <NuxtLink v-else to="/login" class="top__nav-cta">ログイン</NuxtLink>
@@ -46,7 +46,11 @@ onMounted(async () => {
         <div class="top__cta">
           <NuxtLink to="/demo" class="top__cta-primary">デモを見る</NuxtLink>
           <template v-if="!checkingSession">
-            <NuxtLink v-if="hasSession" to="/app" class="top__cta-secondary">
+            <NuxtLink
+              v-if="hasSession"
+              to="/daily/today"
+              class="top__cta-secondary"
+            >
               ダッシュボードへ →
             </NuxtLink>
             <NuxtLink v-else to="/login" class="top__cta-secondary">

@@ -129,7 +129,6 @@ Oura / Google Calendar / Toggl Track を統合した 1 本のタイムライン�
 
 | ルート | 内容 |
 | --- | --- |
-| `/app` | `/daily/today` にリダイレクト |
 | `/daily/[date]` | 日次詳細（Today's ME + Wake-based Timeline + 各サービス詳細）。`date` は `YYYY-MM-DD` または `today` |
 | `/settings` | 外部サービス連携設定（Oura / Google / Toggl の接続・切断、タイムゾーン設定） |
 
@@ -141,8 +140,7 @@ flowchart TD
   demo --> demoDaily["/demo/daily/[date]"]
 
   top --> login["Login"]
-  login --> app["/app"]
-  app --> today["/daily/today"]
+  login --> today["/daily/today"]
   today --> daily["/daily/[date]"]
   daily --> settings["/settings"]
   settings --> daily
