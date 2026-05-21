@@ -273,7 +273,7 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
 
   &:hover {
     background: $color-surface;
-    border-color: darken($color-border, 8%);
+    border-color: color.adjust($color-border, $lightness: -8%);
   }
 
   &:active {

@@ -82,6 +82,7 @@ export default defineNuxtConfig({
       preprocessorOptions: {
         scss: {
           additionalData: `
+          @use "sass:color";
           @use "~/assets/styles/variables" as *;
           @use "~/assets/styles/mixins" as *;
           `,

@@ -457,7 +457,7 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
     }
 
     &:hover:not(:focus) {
-      border-color: darken($color-border, 8%);
+      border-color: color.adjust($color-border, $lightness: -8%);
     }
 
     &:focus {
@@ -514,7 +514,7 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   text-underline-offset: 3px;
 
   &:hover {
-    color: darken($color-info, 8%);
+    color: color.adjust($color-info, $lightness: -8%);
   }
 }
 </style>
