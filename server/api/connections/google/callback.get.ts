@@ -4,6 +4,7 @@
 // =============================================================================
 import { oauthCallbackQuerySchema } from "../../../../shared/schemas";
 import { exchangeGoogleCode } from "../../../utils/oauth/google";
+import { resolveOauthRedirectUri } from "../../../utils/oauth/redirectUri";
 import { OauthStateError, verifyOauthState } from "../../../utils/oauthState";
 import { upsertServiceConnection } from "../../../utils/serviceConnection";
 import { parseOrThrow } from "../../../utils/validation";
@@ -52,7 +53,10 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const token = await exchangeGoogleCode(query.code);
+    // start 側と同じロジックで redirect_uri を決める。
+    // (token 交換時の redirect_uri は authorize 時と必ず一致させる必要がある)
+    const redirectUri = resolveOauthRedirectUri(event, "google");
+    const token = await exchangeGoogleCode(query.code, redirectUri);
     await upsertServiceConnection({
       userId,
       provider: "google",
