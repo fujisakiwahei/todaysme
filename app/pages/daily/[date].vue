@@ -122,13 +122,19 @@ function isStale(s: SummaryResponse): boolean {
 }
 
 function isTodayInTimezone(date: string, timezone: string): boolean {
-  const today = new Intl.DateTimeFormat("en-CA", {
+  // ロケール依存の format(...) (例: "en-CA" でも実装によっては M/D/YYYY) を避け、
+  // formatToParts から year/month/day を取り出して自前で YYYY-MM-DD を組み立てる。
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
-  return today === date;
+  }).formatToParts(new Date());
+  const yyyy = parts.find((p) => p.type === "year")?.value;
+  const mm = parts.find((p) => p.type === "month")?.value;
+  const dd = parts.find((p) => p.type === "day")?.value;
+  if (!yyyy || !mm || !dd) return false;
+  return `${yyyy}-${mm}-${dd}` === date;
 }
 
 async function backgroundRefreshIfStale() {
@@ -204,7 +210,12 @@ function formatHourMinute(iso: string | null, tz: string): string {
 
 function formatDuration(start: string, end: string | null): string {
   const s = new Date(start).getTime();
-  const e = end == null ? Date.now() : new Date(end).getTime();
+  // 進行中 (end_at = null) は表示中の日付の wake range 終端で clamp する。
+  // 当日: wake_range.end = 現在時刻、過去日: その日の次回睡眠時刻となるため、
+  // タイムラインバー側 (barStyle) の clamp と一致し、過去日の duration が
+  // 現在時刻まで伸び続ける問題を避けられる。
+  const fallbackEnd = timelineSpan.value?.end ?? Date.now();
+  const e = end == null ? fallbackEnd : new Date(end).getTime();
   const min = Math.max(0, Math.round((e - s) / 60000));
   const h = Math.floor(min / 60);
   const m = min % 60;
