@@ -13,7 +13,7 @@ function resolveRedirect(): string {
   if (typeof raw === "string" && raw.startsWith("/") && !raw.startsWith("//")) {
     return raw;
   }
-  return "/app";
+  return "/daily/today";
 }
 
 async function loginWithGoogle() {
