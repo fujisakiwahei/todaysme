@@ -5,8 +5,9 @@
 //   - 認証: Basic Auth。Toggl の規約で username に API token、password に
 //     リテラル文字列 "api_token" を渡す (SPEC §3)。
 //   - 取得: `GET /me/time_entries`。差分同期のため `since` (UNIX 秒) を渡す。
-//     Toggl の仕様で 1 リクエスト 1000 件まで返るので、since を運用して
-//     呼び出し側で繰り返し取得する想定。
+//     Toggl の仕様で 1 リクエスト 1000 件まで返るため、レスポンスが上限に
+//     達した場合は `at` (各エントリの最終更新時刻) を次回 `since` として
+//     繰り返し取得し、上限を越える件数も内部でまとめて返す。
 //   - 検証: shared/schemas/toggl.ts の Zod スキーマを `parseExternal` 経由で
 //     適用する。失敗時は 502 を投げる。
 //   - 整形: `toggl_time_entries` 行に対応する形へ正規化する。タイトル単位の
@@ -26,6 +27,11 @@ import { targetDateOf } from "./wakeRange";
 const TOGGL_API_BASE = "https://api.track.toggl.com/api/v9";
 // Toggl 規約: password 側は固定文字列 "api_token"、username 側に実際のトークン
 const TOGGL_BASIC_AUTH_PASSWORD = "api_token" as const;
+// Toggl /me/time_entries は 1 リクエスト 1000 件まで返す
+const TOGGL_PAGE_LIMIT = 1000;
+// 暴走防止用の上限 (50,000 件 / 1 呼び出し)。MVP の単一ユーザー運用では
+// 通常到達しないが、Toggl の `at` が想定外の挙動をした際の保険として置く。
+const MAX_PAGE_ITERATIONS = 50;
 
 export interface GetTogglDataOptions {
   apiToken: string;
@@ -69,6 +75,30 @@ function toRecord(
   };
 }
 
+async function fetchPage(
+  apiToken: string,
+  sinceSeconds: number | undefined,
+): Promise<TogglTimeEntry[]> {
+  const url = new URL(`${TOGGL_API_BASE}/me/time_entries`);
+  if (sinceSeconds !== undefined) {
+    url.searchParams.set("since", String(sinceSeconds));
+  }
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: buildAuthorizationHeader(apiToken),
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Toggl API request failed: HTTP ${res.status}`);
+  }
+
+  const raw: unknown = await res.json();
+  return parseExternal(togglTimeEntriesResponseSchema, raw, "toggl");
+}
+
 export async function getTogglData(
   options: GetTogglDataOptions,
 ): Promise<TogglTimeEntryRecord[]> {
@@ -79,26 +109,36 @@ export async function getTogglData(
     throw new Error("timezone is required");
   }
 
-  const url = new URL(`${TOGGL_API_BASE}/me/time_entries`);
-  if (options.since) {
-    // Toggl は since を UNIX 秒で受け取る
-    const sinceSeconds = Math.floor(options.since.getTime() / 1000);
-    url.searchParams.set("since", String(sinceSeconds));
+  // 同一エントリの再受信 (since == max(at) を再送する境界ケース) を捨てる
+  const seen = new Set<number>();
+  const result: TogglTimeEntryRecord[] = [];
+  let sinceSeconds = options.since
+    ? Math.floor(options.since.getTime() / 1000)
+    : undefined;
+
+  for (let i = 0; i < MAX_PAGE_ITERATIONS; i++) {
+    const entries = await fetchPage(options.apiToken, sinceSeconds);
+
+    let maxAtSeconds = sinceSeconds ?? 0;
+    let appendedInThisPage = 0;
+    for (const entry of entries) {
+      if (seen.has(entry.id)) continue;
+      seen.add(entry.id);
+      result.push(toRecord(entry, options.timezone));
+      appendedInThisPage++;
+
+      const atSeconds = Math.floor(new Date(entry.at).getTime() / 1000);
+      if (atSeconds > maxAtSeconds) maxAtSeconds = atSeconds;
+    }
+
+    // 上限未満なら次ページは存在しないので終了
+    if (entries.length < TOGGL_PAGE_LIMIT) break;
+    // カーソルが進まない / 重複ばかりの場合は安全のため打ち切る
+    if (appendedInThisPage === 0) break;
+    if (sinceSeconds !== undefined && maxAtSeconds <= sinceSeconds) break;
+
+    sinceSeconds = maxAtSeconds;
   }
 
-  const res = await fetch(url, {
-    headers: {
-      Authorization: buildAuthorizationHeader(options.apiToken),
-      Accept: "application/json",
-    },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Toggl API request failed: HTTP ${res.status}`);
-  }
-
-  const raw: unknown = await res.json();
-  const entries = parseExternal(togglTimeEntriesResponseSchema, raw, "toggl");
-
-  return entries.map((entry) => toRecord(entry, options.timezone));
+  return result;
 }

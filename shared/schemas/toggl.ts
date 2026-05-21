@@ -17,6 +17,9 @@ export const togglTimeEntrySchema = z.object({
   duration: z.number().int().optional(),
   workspace_id: z.number().int().optional(),
   project_id: z.number().int().nullable().optional(),
+  // 最終更新時刻。Toggl の `since` ベースのページング (1 リクエスト 1000 件
+  // 上限) を進めるためのカーソルとして使う。
+  at: isoDateTimeSchema,
 });
 
 // /me/time_entries は配列レスポンス
