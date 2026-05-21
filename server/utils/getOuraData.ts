@@ -27,6 +27,8 @@ const OURA_SLEEP_URL = `${OURA_API_BASE}/usercollection/sleep`;
 // 429 を受けたときの初期 backoff (ms)。1 回だけ retry する。
 const RATE_LIMIT_BACKOFF_MS = 1000;
 // 念のためのページング上限 (start/end が ±15 日想定なので 5 ページもあれば十分)。
+// この上限に達した時点で next_token が残っている場合は OuraPaginationOverflowError を
+// throw し、サイレントに件数欠落させない (Codex review)。
 const MAX_PAGES = 10;
 
 export interface OuraSleepRow {
@@ -68,6 +70,17 @@ export class OuraApiError extends Error {
     super(message);
     this.name = "OuraApiError";
     this.status = status;
+  }
+}
+
+// MAX_PAGES に達してもまだ next_token が残っているときに throw。
+// 部分結果を返して downstream で「同期成功」扱いされるのを防ぐ。
+export class OuraPaginationOverflowError extends Error {
+  constructor(maxPages: number) {
+    super(
+      `Oura sleep pagination exceeded ${maxPages} pages; refusing to return partial data`,
+    );
+    this.name = "OuraPaginationOverflowError";
   }
 }
 
@@ -164,6 +177,7 @@ export async function getOuraData(
 
   const sleeps: OuraSleepRow[] = [];
   let nextToken: string | undefined;
+  let exhausted = false;
 
   for (let page = 0; page < MAX_PAGES; page++) {
     const raw = await callOuraSleep(
@@ -179,8 +193,17 @@ export async function getOuraData(
     for (const item of parsed.data) {
       sleeps.push(toRow(item, input.timezone));
     }
-    if (!parsed.next_token) break;
+    if (!parsed.next_token) {
+      exhausted = true;
+      break;
+    }
     nextToken = parsed.next_token;
+  }
+
+  // MAX_PAGES に達したのに next_token が残っている場合は件数欠落の可能性が
+  // あるので、部分結果を返さず明示エラーにする (Codex review)。
+  if (!exhausted) {
+    throw new OuraPaginationOverflowError(MAX_PAGES);
   }
 
   return { sleeps };
