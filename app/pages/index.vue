@@ -187,15 +187,15 @@ $font-en:
 .top {
   min-height: 100vh;
   min-height: 100dvh;
-  background: $color-bg;
-  color: $color-text;
   font-family: "Geist", "Noto Sans JP", "Hiragino Sans", sans-serif;
+  color: $color-text;
+  background: $color-bg;
 }
 
 .top__nav {
+  padding: 18px 40px;
   display: flex;
   align-items: center;
-  padding: 18px 40px;
   border-bottom: 1px solid $color-border;
 
   @media (max-width: 640px) {
@@ -211,16 +211,16 @@ $font-en:
 }
 
 .top__brand-mark {
-  display: grid;
-  place-items: center;
   width: 28px;
   height: 28px;
+  display: grid;
   font-family: $font-en;
   font-size: 13px;
   font-weight: 700;
   color: #fff;
   background: #111827;
   border-radius: 8px;
+  place-items: center;
 
   @media (max-width: 640px) {
     width: 24px;
@@ -246,11 +246,11 @@ $font-en:
 }
 
 .top__nav-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 36px;
   padding: 0 14px;
+  height: 36px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   font-size: 13px;
   font-weight: 500;
   color: $color-text-muted;
@@ -270,11 +270,11 @@ $font-en:
 }
 
 .top__nav-cta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 36px;
   padding: 0 14px;
+  height: 36px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   font-size: 13px;
   font-weight: 600;
   color: $color-text;
@@ -292,18 +292,18 @@ $font-en:
 }
 
 .top__hero {
-  display: grid;
-  grid-template-columns: 1.1fr 1fr;
-  gap: 64px;
-  align-items: center;
+  margin: 0 auto;
   padding: 80px 40px 64px;
   max-width: 1200px;
-  margin: 0 auto;
+  display: grid;
+  align-items: center;
+  gap: 64px;
+  grid-template-columns: 1.1fr 1fr;
 
   @media (max-width: 1024px) {
-    grid-template-columns: 1fr;
-    gap: 48px;
     padding: 56px 32px 48px;
+    gap: 48px;
+    grid-template-columns: 1fr;
   }
 
   @media (max-width: 640px) {
@@ -325,8 +325,8 @@ $font-en:
   margin-bottom: 20px;
   font-size: 48px;
   font-weight: 700;
-  letter-spacing: -0.025em;
   line-height: 1.1;
+  letter-spacing: -0.025em;
 
   span {
     color: $color-text-muted;
@@ -337,9 +337,9 @@ $font-en:
   }
 
   @media (max-width: 640px) {
+    margin-bottom: 14px;
     font-size: 30px;
     line-height: 1.15;
-    margin-bottom: 14px;
   }
 }
 
@@ -351,20 +351,20 @@ $font-en:
   color: $color-text-muted;
 
   b {
-    color: $color-text;
     font-weight: 600;
+    color: $color-text;
   }
 
   @media (max-width: 640px) {
-    font-size: 14px;
     margin-bottom: 24px;
+    font-size: 14px;
   }
 }
 
 .top__cta {
   display: flex;
-  gap: 12px;
   flex-wrap: wrap;
+  gap: 12px;
 
   @media (max-width: 480px) {
     flex-direction: column;
@@ -373,11 +373,11 @@ $font-en:
 }
 
 .top__cta-primary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 52px;
   padding: 0 28px;
+  height: 52px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   font-size: 15px;
   font-weight: 600;
   color: $color-text;
@@ -409,11 +409,11 @@ $font-en:
 }
 
 .top__cta-secondary {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 52px;
   padding: 0 28px;
+  height: 52px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
   font-size: 15px;
   font-weight: 600;
   color: $color-text;
@@ -452,10 +452,10 @@ $font-en:
 }
 
 .top__concept-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   margin-bottom: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   font-family: $font-mono;
   font-size: 11px;
   letter-spacing: 0.04em;
@@ -463,10 +463,10 @@ $font-en:
 }
 
 .top__concept-title {
+  font-family: "Geist", "Noto Sans JP", "Hiragino Sans", sans-serif;
   font-size: 13px;
   font-weight: 600;
   color: $color-text;
-  font-family: "Geist", "Noto Sans JP", "Hiragino Sans", sans-serif;
 }
 
 .top__concept-date {
@@ -474,10 +474,10 @@ $font-en:
 }
 
 .top__concept-axis {
-  display: flex;
-  margin-left: 70px;
   margin-bottom: 12px;
+  margin-left: 70px;
   padding-bottom: 4px;
+  display: flex;
   font-family: $font-mono;
   font-size: 10px;
   color: $color-text-muted;
@@ -493,9 +493,9 @@ $font-en:
 }
 
 .top__concept-lane {
+  margin-bottom: 8px;
   display: flex;
   align-items: center;
-  margin-bottom: 8px;
 }
 
 .top__concept-label {
@@ -525,8 +525,8 @@ $font-en:
 
 .top__concept-track {
   position: relative;
-  flex: 1;
   height: 24px;
+  flex: 1;
   background: $color-surface-2;
   border-radius: 4px;
 
@@ -553,21 +553,21 @@ $font-en:
 }
 
 .top__concept-overlay {
-  display: flex;
-  gap: 16px;
   margin-top: 16px;
   padding: 12px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
   font-family: $font-mono;
   font-size: 11px;
   color: $color-text-muted;
   background: $color-surface;
   border-radius: 8px;
-  flex-wrap: wrap;
 
   b {
-    color: $color-text;
     font-family: $font-en;
     font-weight: 600;
+    color: $color-text;
   }
 }
 
@@ -612,11 +612,11 @@ $font-en:
 }
 
 .top__services-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 16px;
-  max-width: 980px;
   margin: 0 auto;
+  max-width: 980px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(3, 1fr);
 
   @media (max-width: 840px) {
     grid-template-columns: 1fr;
@@ -637,8 +637,8 @@ $font-en:
 
   p {
     font-size: 13px;
-    color: $color-text-muted;
     line-height: 1.6;
+    color: $color-text-muted;
   }
 
   &--sleep .top__service-icon {
@@ -656,30 +656,30 @@ $font-en:
 }
 
 .top__service-icon {
-  display: grid;
-  place-items: center;
+  margin-bottom: 16px;
   width: 36px;
   height: 36px;
-  margin-bottom: 16px;
+  display: grid;
   font-size: 14px;
   font-weight: 700;
   border-radius: 10px;
+  place-items: center;
 }
 
 .top__footer {
+  padding: 48px 40px;
   display: flex;
   justify-content: space-between;
-  padding: 48px 40px;
   font-family: $font-mono;
   font-size: 12px;
   color: $color-text-muted;
 
   @media (max-width: 640px) {
-    flex-direction: column;
-    gap: 6px;
     padding: 32px 20px;
-    text-align: center;
+    flex-direction: column;
     align-items: center;
+    gap: 6px;
+    text-align: center;
   }
 }
 </style>
