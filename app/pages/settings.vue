@@ -300,7 +300,7 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  align-items: center;
+  align-items: end;
 
   button {
     padding: 6px 14px;
