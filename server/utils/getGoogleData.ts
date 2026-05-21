@@ -1,6 +1,6 @@
 // =============================================================================
 // Google Calendar API v3 から対象期間のイベントを取得する内部モジュール
-// SPEC §3 / §11.2 / Issue #42
+// SPEC §3 / §11.2 / Issue #42 / #75
 //
 //   - スコープは calendar.events.readonly のみ (server/utils/oauth/google.ts)。
 //   - events.list + nextSyncToken による差分同期に対応する。
@@ -9,6 +9,9 @@
 //   - SPEC §3 の分類ルールに合わせて calendarList を引き、各イベントに
 //     calendar_name (summaryOverride > summary) を載せて返す。
 //   - レスポンスは shared/schemas/google.ts の Zod スキーマで検証する。
+//   - access_token は呼び出し側が serviceConnection.ts の withFreshAccessToken
+//     経由で渡す。401 を受けたら OauthUnauthorizedError を throw し、ラッパが
+//     refresh → 再試行する (Issue #75)。
 //
 // 公開 API は getGoogleData(input) のみ。HTTP エンドポイントは公開しない
 // (SPEC §9.1 注釈)。
@@ -19,6 +22,7 @@ import {
   type GoogleCalendarEvent,
 } from "../../shared/schemas";
 
+import { OauthUnauthorizedError } from "./serviceConnection";
 import { targetDateOf } from "./wakeRange";
 
 import { parseExternal } from "./validation";
@@ -124,6 +128,9 @@ async function fetchCalendarList(
     if (pageToken) url.searchParams.set("pageToken", pageToken);
 
     const res = await googleFetch(url, accessToken);
+    if (res.status === 401) {
+      throw new OauthUnauthorizedError("google");
+    }
     if (!res.ok) {
       throw new Error(`Google calendarList.list failed: HTTP ${res.status}`);
     }
@@ -191,6 +198,10 @@ async function fetchCalendarEvents(
       deletedEventIds.length = 0;
       nextSyncToken = null;
       continue;
+    }
+
+    if (res.status === 401) {
+      throw new OauthUnauthorizedError("google");
     }
 
     if (!res.ok) {

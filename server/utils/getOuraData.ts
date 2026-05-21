@@ -1,9 +1,10 @@
 // =============================================================================
-// Oura API v2 データ取得 (Issue #41)
+// Oura API v2 データ取得 (Issue #41 / #75)
 // SPEC §3 / §11.2
 //
-//   - service_connections から復号した access_token で Oura API v2 を
-//     Bearer 認証で叩き、`oura_sleep_records` テーブルに合う形に整形して返す。
+//   - access_token は serviceConnection.ts の withFreshAccessToken 経由で
+//     取得する。token_expires_at が 5 分以内なら遅延 refresh、401 が返ったら
+//     1 回だけ refresh してリトライする (Issue #75)。
 //   - 初期 MVP は usercollection/sleep のみ。readiness / 活動量 / daily_* 系は
 //     将来 readiness 用フェッチャを足すときにこの util を拡張する想定。
 //   - レスポンスは Zod (parseExternal) で検証する。
@@ -16,8 +17,10 @@ import {
   type OuraSleepItem,
 } from "../../shared/schemas";
 
-import { decrypt, type EncryptedPayload } from "./crypto";
-import { getSupabaseAdmin } from "./supabaseAdmin";
+import {
+  OauthUnauthorizedError,
+  withFreshAccessToken,
+} from "./serviceConnection";
 import { parseExternal } from "./validation";
 import { targetDateOf } from "./wakeRange";
 
@@ -57,13 +60,6 @@ export interface GetOuraDataResult {
   sleeps: OuraSleepRow[];
 }
 
-export class OuraNotConnectedError extends Error {
-  constructor() {
-    super("Oura is not connected for this user");
-    this.name = "OuraNotConnectedError";
-  }
-}
-
 export class OuraApiError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -85,35 +81,9 @@ export class OuraPaginationOverflowError extends Error {
 }
 
 // =============================================================================
-// access token の取得 (service_connections → 復号)
-// =============================================================================
-async function loadAccessToken(userId: string): Promise<string> {
-  const admin = getSupabaseAdmin();
-  const { data, error } = await admin
-    .from("service_connections")
-    .select("access_token_encrypted, status")
-    .eq("user_id", userId)
-    .eq("provider", "oura")
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(`failed to read service_connections: ${error.message}`);
-  }
-  if (!data || data.status !== "connected" || !data.access_token_encrypted) {
-    throw new OuraNotConnectedError();
-  }
-
-  let payload: EncryptedPayload;
-  try {
-    payload = JSON.parse(data.access_token_encrypted) as EncryptedPayload;
-  } catch {
-    throw new Error("malformed Oura access_token_encrypted in DB");
-  }
-  return decrypt(payload);
-}
-
-// =============================================================================
 // Oura への HTTP 呼び出し
+//   - 401 は OauthUnauthorizedError として throw。withFreshAccessToken が
+//     これをキャッチして refresh → 再試行する (Issue #75)。
 //   - 429 (rate limit) は 1 回だけ短い backoff で retry する。
 //   - それ以外の 4xx / 5xx は OuraApiError として throw。
 // =============================================================================
@@ -138,6 +108,9 @@ async function callOuraSleep(
     res = await attempt();
   }
 
+  if (res.status === 401) {
+    throw new OauthUnauthorizedError("oura");
+  }
   if (!res.ok) {
     throw new OuraApiError(
       res.status,
@@ -167,44 +140,46 @@ function toRow(item: OuraSleepItem, timezone: string): OuraSleepRow {
 // =============================================================================
 // getOuraData
 //   - 指定範囲の Oura sleep を全件取得し、`oura_sleep_records` 形に整形して返す。
+//   - access_token の取得 / refresh は withFreshAccessToken に委譲 (Issue #75)。
 //   - upsert は呼び出し側 (refresh / cron) の責務。
 // =============================================================================
 export async function getOuraData(
   input: GetOuraDataInput,
 ): Promise<GetOuraDataResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
-  const accessToken = await loadAccessToken(input.userId);
 
-  const sleeps: OuraSleepRow[] = [];
-  let nextToken: string | undefined;
-  let exhausted = false;
+  return withFreshAccessToken(input.userId, "oura", async (accessToken) => {
+    const sleeps: OuraSleepRow[] = [];
+    let nextToken: string | undefined;
+    let exhausted = false;
 
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const raw = await callOuraSleep(
-      accessToken,
-      {
-        start_date: input.startDate,
-        end_date: input.endDate,
-        next_token: nextToken,
-      },
-      fetchImpl,
-    );
-    const parsed = parseExternal(ouraSleepResponseSchema, raw, "oura");
-    for (const item of parsed.data) {
-      sleeps.push(toRow(item, input.timezone));
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const raw = await callOuraSleep(
+        accessToken,
+        {
+          start_date: input.startDate,
+          end_date: input.endDate,
+          next_token: nextToken,
+        },
+        fetchImpl,
+      );
+      const parsed = parseExternal(ouraSleepResponseSchema, raw, "oura");
+      for (const item of parsed.data) {
+        sleeps.push(toRow(item, input.timezone));
+      }
+      if (!parsed.next_token) {
+        exhausted = true;
+        break;
+      }
+      nextToken = parsed.next_token;
     }
-    if (!parsed.next_token) {
-      exhausted = true;
-      break;
+
+    // MAX_PAGES に達したのに next_token が残っている場合は件数欠落の可能性が
+    // あるので、部分結果を返さず明示エラーにする (Codex review)。
+    if (!exhausted) {
+      throw new OuraPaginationOverflowError(MAX_PAGES);
     }
-    nextToken = parsed.next_token;
-  }
 
-  // MAX_PAGES に達したのに next_token が残っている場合は件数欠落の可能性が
-  // あるので、部分結果を返さず明示エラーにする (Codex review)。
-  if (!exhausted) {
-    throw new OuraPaginationOverflowError(MAX_PAGES);
-  }
-
-  return { sleeps };
+    return { sleeps };
+  });
 }
