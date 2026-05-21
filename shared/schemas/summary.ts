@@ -48,10 +48,15 @@ export const sleepTimelineEntrySchema = z.object({
 export const calendarTimelineEntrySchema = z.object({
   id: uuidSchema,
   google_event_id: z.string(),
+  // 除外設定 (users.excluded_google_calendar_ids / Issue #108) で照合するための
+  // Google calendarId。デモは calendar_id を保持しないため null を許容する。
+  calendar_id: z.string().nullable(),
   calendar_name: z.string().nullable(),
   title: z.string().nullable(),
   start_at: isoDateTimeSchema,
   end_at: isoDateTimeSchema,
+  // 稼働時間集計から除外されたイベントは UI 側で薄く表示する (Issue #108)。
+  is_excluded: z.boolean(),
 });
 
 export const togglTimelineEntrySchema = z.object({

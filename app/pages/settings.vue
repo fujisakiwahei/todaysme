@@ -2,6 +2,9 @@
 import type {
   ConnectionListResponse,
   ConnectionSummary,
+  GoogleCalendarItem,
+  GoogleCalendarsResponse,
+  GoogleExcludedCalendarsUpdateResponse,
   OauthStartResponse,
   ServiceProvider,
 } from "~~/shared/schemas";
@@ -23,6 +26,28 @@ const togglToken = ref("");
 const errorMessage = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 
+// -- Google カレンダー除外設定 (Issue #108) ------------------------------------
+// Google 接続済みのときだけロード。チェック状態はクライアントで反転させ、
+// 保存ボタン押下時に PUT する。チェックされたカレンダーは稼働時間集計から外れる。
+const googleCalendars = ref<GoogleCalendarItem[]>([]);
+const googleCalendarsLoading = ref(false);
+const googleCalendarsLoaded = ref(false);
+const googleCalendarsError = ref<string | null>(null);
+const excludedDraft = ref<Set<string>>(new Set());
+const savingExcluded = ref(false);
+
+// チェック状態が初期値と差分があるか (= 保存ボタンを enable するか)
+const excludedDirty = computed(() => {
+  const initial = new Set(
+    googleCalendars.value.filter((c) => c.excluded).map((c) => c.id),
+  );
+  if (initial.size !== excludedDraft.value.size) return true;
+  for (const id of excludedDraft.value) {
+    if (!initial.has(id)) return true;
+  }
+  return false;
+});
+
 async function bearerHeaders(): Promise<HeadersInit> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -38,11 +63,83 @@ async function loadConnections() {
       headers,
     });
     connections.value = res.connections;
+    // Google が接続済みならカレンダー一覧も追ってロード (UI が即時に
+    // 除外設定を表示できるように)。失敗時は除外 UI 側でだけエラーを出す。
+    const googleConn = res.connections.find((c) => c.provider === "google");
+    if (googleConn && googleConn.has_token) {
+      loadGoogleCalendars();
+    } else {
+      googleCalendars.value = [];
+      googleCalendarsLoaded.value = false;
+      excludedDraft.value = new Set();
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed to load";
     errorMessage.value = `連携状況の取得に失敗しました: ${msg}`;
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadGoogleCalendars() {
+  googleCalendarsLoading.value = true;
+  googleCalendarsError.value = null;
+  try {
+    const headers = await bearerHeaders();
+    const res = await $fetch<GoogleCalendarsResponse>(
+      "/api/connections/google/calendars",
+      { headers },
+    );
+    googleCalendars.value = res.calendars;
+    excludedDraft.value = new Set(
+      res.calendars.filter((c) => c.excluded).map((c) => c.id),
+    );
+    googleCalendarsLoaded.value = true;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "failed to load calendars";
+    googleCalendarsError.value = `カレンダー一覧の取得に失敗しました: ${msg}`;
+  } finally {
+    googleCalendarsLoading.value = false;
+  }
+}
+
+function toggleExcluded(calendarId: string) {
+  const next = new Set(excludedDraft.value);
+  if (next.has(calendarId)) {
+    next.delete(calendarId);
+  } else {
+    next.add(calendarId);
+  }
+  excludedDraft.value = next;
+}
+
+async function saveExcludedCalendars() {
+  savingExcluded.value = true;
+  googleCalendarsError.value = null;
+  successMessage.value = null;
+  try {
+    const headers = await bearerHeaders();
+    const res = await $fetch<GoogleExcludedCalendarsUpdateResponse>(
+      "/api/connections/google/excluded-calendars",
+      {
+        method: "PUT",
+        headers,
+        body: { excluded_calendar_ids: Array.from(excludedDraft.value) },
+      },
+    );
+    // サーバが正規化した結果で UI も更新する。
+    const newSet = new Set(res.excluded_calendar_ids);
+    googleCalendars.value = googleCalendars.value.map((c) => ({
+      ...c,
+      excluded: newSet.has(c.id),
+    }));
+    excludedDraft.value = newSet;
+    successMessage.value = "除外カレンダーの設定を保存しました。";
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "failed to save";
+    googleCalendarsError.value = `除外設定の保存に失敗しました: ${msg}`;
+  } finally {
+    savingExcluded.value = false;
   }
 }
 
@@ -289,6 +386,88 @@ onMounted(() => {
               >
                 連携解除
               </button>
+            </div>
+
+            <!-- Issue #108: 稼働時間集計から除外するカレンダーの選択 -->
+            <div
+              v-if="conn.provider === 'google' && conn.has_token"
+              class="conn__exclude"
+            >
+              <div class="conn__exclude-head">
+                <span class="conn__exclude-title">
+                  稼働時間集計から除外するカレンダー
+                </span>
+                <span class="conn__exclude-hint">
+                  チェックしたカレンダーのイベントは Timeline
+                  には残りますが、稼働時間には数えられず薄く表示されます。
+                </span>
+              </div>
+
+              <p
+                v-if="googleCalendarsError"
+                class="conn__exclude-error"
+                role="alert"
+              >
+                {{ googleCalendarsError }}
+              </p>
+
+              <p
+                v-if="googleCalendarsLoading && !googleCalendarsLoaded"
+                class="conn__exclude-loading"
+              >
+                カレンダー一覧を取得中...
+              </p>
+
+              <ul
+                v-else-if="googleCalendars.length > 0"
+                class="conn__exclude-list"
+              >
+                <li
+                  v-for="cal in googleCalendars"
+                  :key="cal.id"
+                  class="conn__exclude-item"
+                >
+                  <label class="conn__exclude-label">
+                    <input
+                      type="checkbox"
+                      :checked="excludedDraft.has(cal.id)"
+                      :disabled="savingExcluded"
+                      @change="toggleExcluded(cal.id)"
+                    />
+                    <span class="conn__exclude-name">
+                      {{ cal.name || "（無題のカレンダー）" }}
+                    </span>
+                    <span v-if="cal.primary" class="conn__exclude-badge">
+                      Primary
+                    </span>
+                  </label>
+                </li>
+              </ul>
+              <p
+                v-else-if="googleCalendarsLoaded"
+                class="conn__exclude-loading"
+              >
+                カレンダーが見つかりませんでした。
+              </p>
+
+              <div v-if="googleCalendars.length > 0" class="conn__exclude-foot">
+                <button
+                  type="button"
+                  class="btn btn--primary"
+                  :disabled="!excludedDirty || savingExcluded"
+                  @click="saveExcludedCalendars"
+                >
+                  {{ savingExcluded ? "保存中..." : "除外設定を保存" }}
+                </button>
+                <button
+                  type="button"
+                  class="btn btn--ghost"
+                  :disabled="googleCalendarsLoading"
+                  @click="loadGoogleCalendars"
+                >
+                  再読み込み
+                </button>
+              </div>
             </div>
 
             <div v-else-if="conn.provider === 'toggl'" class="conn__actions">
@@ -655,6 +834,123 @@ $font-en:
   font-size: 12px;
   font-weight: 500;
   color: $color-text-muted;
+}
+
+// -----------------------------------------------------------
+// Google カレンダー除外設定 (Issue #108)
+// -----------------------------------------------------------
+.conn__exclude {
+  margin-top: 4px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: $color-surface;
+  border: 1px solid $color-border-2;
+  border-radius: 12px;
+
+  @media (min-width: 561px) {
+    margin-left: 58px;
+  }
+}
+
+.conn__exclude-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conn__exclude-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: $color-calendar;
+}
+
+.conn__exclude-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: $color-text-muted;
+}
+
+.conn__exclude-error {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: $color-error;
+  background: $color-error-bg;
+  border: 1px solid rgba(197, 48, 48, 0.25);
+  border-radius: 6px;
+}
+
+.conn__exclude-loading {
+  padding: 12px;
+  font-size: 12px;
+  text-align: center;
+  color: $color-text-muted;
+}
+
+.conn__exclude-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.conn__exclude-item {
+  margin: 0;
+  padding: 0;
+}
+
+.conn__exclude-label {
+  padding: 6px 8px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: background 0.12s;
+
+  &:hover {
+    background: #fff;
+  }
+
+  input[type="checkbox"] {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    accent-color: $color-calendar;
+    cursor: pointer;
+  }
+}
+
+.conn__exclude-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: $color-text;
+}
+
+.conn__exclude-badge {
+  padding: 2px 8px;
+  flex-shrink: 0;
+  font-family: $font-mono;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: $color-calendar;
+  background: $color-calendar-bg;
+  border-radius: 999px;
+}
+
+.conn__exclude-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 // -----------------------------------------------------------

@@ -84,6 +84,37 @@ export const connectionsRequiredResponseSchema = z.object({
 });
 
 // -----------------------------------------------------------------------------
+// Google calendar 除外設定 (Issue #108)
+//
+//   - `GET /api/connections/google/calendars`
+//       現在 Google から見えているカレンダー一覧 + ユーザーの除外設定を返す。
+//   - `PUT /api/connections/google/excluded-calendars`
+//       除外する calendarId の配列を保存する。
+//
+// 除外されたカレンダーのイベントは Timeline には表示するが、稼働時間集計から
+// 外す。実装側は users.excluded_google_calendar_ids に永続化する。
+// -----------------------------------------------------------------------------
+
+export const googleCalendarItemSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().nullable(),
+  primary: z.boolean(),
+  excluded: z.boolean(),
+});
+
+export const googleCalendarsResponseSchema = z.object({
+  calendars: z.array(googleCalendarItemSchema),
+});
+
+export const googleExcludedCalendarsUpdateRequestSchema = z.object({
+  excluded_calendar_ids: z.array(z.string().min(1)).max(200),
+});
+
+export const googleExcludedCalendarsUpdateResponseSchema = z.object({
+  excluded_calendar_ids: z.array(z.string().min(1)),
+});
+
+// -----------------------------------------------------------------------------
 // 型
 // -----------------------------------------------------------------------------
 
@@ -97,4 +128,14 @@ export type ConnectionListResponse = z.infer<
 >;
 export type ConnectionsRequiredResponse = z.infer<
   typeof connectionsRequiredResponseSchema
+>;
+export type GoogleCalendarItem = z.infer<typeof googleCalendarItemSchema>;
+export type GoogleCalendarsResponse = z.infer<
+  typeof googleCalendarsResponseSchema
+>;
+export type GoogleExcludedCalendarsUpdateRequest = z.infer<
+  typeof googleExcludedCalendarsUpdateRequestSchema
+>;
+export type GoogleExcludedCalendarsUpdateResponse = z.infer<
+  typeof googleExcludedCalendarsUpdateResponseSchema
 >;

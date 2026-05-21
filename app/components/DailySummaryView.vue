@@ -153,6 +153,8 @@ const meAggregate = computed(() => {
 
   let activeMs = 0;
   for (const ev of props.summary.timeline.calendar) {
+    // 除外設定 (Issue #108) されたカレンダーは稼働時間に含めない。
+    if (ev.is_excluded) continue;
     activeMs += overlapMs(ev.start_at, ev.end_at);
   }
   for (const t of props.summary.timeline.toggl) {
@@ -691,9 +693,10 @@ onBeforeUnmount(() => {
                   class="tl-bar tl-bar--calendar"
                   :class="{
                     'tl-bar--active': activeTooltipId === `calendar-${ev.id}`,
+                    'tl-bar--excluded': ev.is_excluded,
                   }"
                   :style="barStyle(ev.start_at, ev.end_at)"
-                  :aria-label="`${ev.title || ev.calendar_name || '(無題)'} ${formatHourMinute(ev.start_at, timezone)} - ${formatHourMinute(ev.end_at, timezone)}`"
+                  :aria-label="`${ev.title || ev.calendar_name || '(無題)'}${ev.is_excluded ? '（稼働時間から除外）' : ''} ${formatHourMinute(ev.start_at, timezone)} - ${formatHourMinute(ev.end_at, timezone)}`"
                   @click="toggleTooltip(`calendar-${ev.id}`, $event)"
                 >
                   <span class="tl-bar__text">
@@ -842,6 +845,7 @@ onBeforeUnmount(() => {
                   v-for="ev in summary.timeline.calendar"
                   :key="ev.id"
                   class="entry"
+                  :class="{ 'entry--excluded': ev.is_excluded }"
                 >
                   <span class="entry__time">
                     {{ formatHourMinute(ev.start_at, timezone) }} —
@@ -851,6 +855,9 @@ onBeforeUnmount(() => {
                     {{ ev.title || "(無題)" }}
                     <span v-if="ev.calendar_name" class="entry__tag">
                       {{ ev.calendar_name }}
+                    </span>
+                    <span v-if="ev.is_excluded" class="entry__excluded-tag">
+                      除外
                     </span>
                   </span>
                   <span class="entry__dur">
@@ -1576,6 +1583,13 @@ $font-en:
     background: $color-work-bg;
     border-left: 3px solid $color-work;
   }
+
+  // Issue #108: 稼働時間集計から除外されたカレンダーは「参考情報」として
+  // 視覚的に薄く表示する。タップ/ホバーでツールチップは通常どおり出る。
+  &--excluded {
+    opacity: 0.4;
+    border-left-style: dashed;
+  }
 }
 
 .tl-bar__text {
@@ -1847,6 +1861,29 @@ $font-en:
 
   @media (max-width: 560px) {
     font-size: 13px;
+  }
+}
+
+// Issue #108: 除外されたカレンダーは詳細一覧でも薄く表示し、
+// 「除外」バッジで稼働時間に含まれないことを明示する。
+.entry--excluded {
+  opacity: 0.55;
+}
+
+.entry__excluded-tag {
+  padding: 3px 10px;
+  font-family: $font-mono;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  color: $color-text-muted;
+  background: $color-bg;
+  border: 1px dashed $color-border;
+  border-radius: 999px;
+
+  @media (max-width: 560px) {
+    font-size: 10px;
   }
 }
 
