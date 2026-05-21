@@ -4,9 +4,11 @@ const route = useRoute();
 
 const email = ref("");
 const password = ref("");
+const passwordConfirm = ref("");
 const submitting = ref(false);
 const checkingSession = ref(true);
 const errorMessage = ref<string | null>(null);
+const successMessage = ref<string | null>(null);
 
 function resolveRedirect(): string {
   const raw = route.query.redirect;
@@ -16,8 +18,9 @@ function resolveRedirect(): string {
   return "/daily/today";
 }
 
-async function loginWithGoogle() {
+async function signUpWithGoogle() {
   errorMessage.value = null;
+  successMessage.value = null;
   submitting.value = true;
   try {
     const redirectTo = `${window.location.origin}${resolveRedirect()}`;
@@ -27,27 +30,48 @@ async function loginWithGoogle() {
     });
     if (error) throw error;
   } catch (e) {
-    const msg =
-      e instanceof Error ? e.message : "Google ログインに失敗しました";
+    const msg = e instanceof Error ? e.message : "Google 連携に失敗しました";
     errorMessage.value = msg;
     submitting.value = false;
   }
 }
 
-async function loginWithEmail() {
+async function signUpWithEmail() {
   if (!email.value.trim() || !password.value) return;
   errorMessage.value = null;
+  successMessage.value = null;
+
+  if (password.value.length < 8) {
+    errorMessage.value = "パスワードは 8 文字以上で入力してください";
+    return;
+  }
+  if (password.value !== passwordConfirm.value) {
+    errorMessage.value = "パスワードが一致しません";
+    return;
+  }
+
   submitting.value = true;
   try {
-    const { error } = await supabase.auth.signInWithPassword({
+    const emailRedirectTo = `${window.location.origin}${resolveRedirect()}`;
+    const { data, error } = await supabase.auth.signUp({
       email: email.value.trim(),
       password: password.value,
+      options: { emailRedirectTo },
     });
     if (error) throw error;
-    await navigateTo(resolveRedirect());
+
+    if (data.session) {
+      await navigateTo(resolveRedirect());
+      return;
+    }
+
+    successMessage.value =
+      "確認メールを送信しました。メール内のリンクから登録を完了してください。";
+    email.value = "";
+    password.value = "";
+    passwordConfirm.value = "";
   } catch (e) {
-    const msg =
-      e instanceof Error ? e.message : "メールアドレスログインに失敗しました";
+    const msg = e instanceof Error ? e.message : "アカウント作成に失敗しました";
     errorMessage.value = msg;
   } finally {
     submitting.value = false;
@@ -65,31 +89,34 @@ onMounted(async () => {
 </script>
 
 <template>
-  <main class="login">
-    <a class="login__back" href="/">← トップへ</a>
+  <main class="signup">
+    <a class="signup__back" href="/">← トップへ</a>
 
-    <div v-if="checkingSession" class="login__loading">読み込み中...</div>
+    <div v-if="checkingSession" class="signup__loading">読み込み中...</div>
 
-    <div v-else class="login__card">
-      <div class="login__brand">
-        <div class="login__brand-mark">TM</div>
-        <div class="login__brand-name">Today's ME</div>
+    <div v-else class="signup__card">
+      <div class="signup__brand">
+        <div class="signup__brand-mark">TM</div>
+        <div class="signup__brand-name">Today's ME</div>
       </div>
 
-      <h1 class="login__title">ログイン</h1>
-      <p class="login__sub">きょうの自分を、1 つの時間軸で。</p>
+      <h1 class="signup__title">アカウント作成</h1>
+      <p class="signup__sub">きょうの自分を、1 つの時間軸で。</p>
 
-      <p v-if="errorMessage" class="login__error" role="alert">
+      <p v-if="errorMessage" class="signup__error" role="alert">
         {{ errorMessage }}
+      </p>
+      <p v-if="successMessage" class="signup__success" role="status">
+        {{ successMessage }}
       </p>
 
       <button
         type="button"
-        class="login__google"
+        class="signup__google"
         :disabled="submitting"
-        @click="loginWithGoogle"
+        @click="signUpWithGoogle"
       >
-        <span class="login__google-mark" aria-hidden="true">
+        <span class="signup__google-mark" aria-hidden="true">
           <svg
             width="20"
             height="20"
@@ -105,7 +132,7 @@ onMounted(async () => {
               rx="19.5"
               fill="white"
             />
-            <g clip-path="url(#login-google-clip)">
+            <g clip-path="url(#signup-google-clip)">
               <path
                 d="M29.6 20.2273C29.6 19.5182 29.5364 18.8364 29.4182 18.1818H20V22.05H25.3818C25.15 23.3 24.4455 24.3591 23.3864 25.0682V27.5773H26.6182C28.5091 25.8364 29.6 23.2727 29.6 20.2273Z"
                 fill="#4285F4"
@@ -132,7 +159,7 @@ onMounted(async () => {
               stroke="#747775"
             />
             <defs>
-              <clipPath id="login-google-clip">
+              <clipPath id="signup-google-clip">
                 <rect
                   width="20"
                   height="20"
@@ -143,16 +170,16 @@ onMounted(async () => {
             </defs>
           </svg>
         </span>
-        <span class="login__google-label">Google でログイン</span>
+        <span class="signup__google-label">Google で登録</span>
       </button>
 
-      <div class="login__divider">または</div>
+      <div class="signup__divider">または</div>
 
-      <form class="login__form" @submit.prevent="loginWithEmail">
-        <div class="login__field">
-          <label for="login-email">メールアドレス</label>
+      <form class="signup__form" @submit.prevent="signUpWithEmail">
+        <div class="signup__field">
+          <label for="signup-email">メールアドレス</label>
           <input
-            id="login-email"
+            id="signup-email"
             v-model="email"
             type="email"
             autocomplete="email"
@@ -161,32 +188,46 @@ onMounted(async () => {
           />
         </div>
 
-        <div class="login__field">
-          <label for="login-password">パスワード</label>
+        <div class="signup__field">
+          <label for="signup-password">パスワード</label>
           <input
-            id="login-password"
+            id="signup-password"
             v-model="password"
             type="password"
-            autocomplete="current-password"
+            autocomplete="new-password"
+            placeholder="8 文字以上"
+            minlength="8"
+            required
+          />
+        </div>
+
+        <div class="signup__field">
+          <label for="signup-password-confirm">パスワード（確認）</label>
+          <input
+            id="signup-password-confirm"
+            v-model="passwordConfirm"
+            type="password"
+            autocomplete="new-password"
             placeholder="••••••••"
+            minlength="8"
             required
           />
         </div>
 
         <button
           type="submit"
-          class="login__submit"
-          :disabled="submitting || !email.trim() || !password"
+          class="signup__submit"
+          :disabled="
+            submitting || !email.trim() || !password || !passwordConfirm
+          "
         >
-          ログイン →
+          アカウントを作成 →
         </button>
       </form>
 
-      <p class="login__footer">
-        初回の方は
-        <NuxtLink to="/signup" class="login__footer-link">
-          アカウントを作成
-        </NuxtLink>
+      <p class="signup__footer">
+        既にアカウントをお持ちの方は
+        <NuxtLink to="/login" class="signup__footer-link">ログイン</NuxtLink>
       </p>
     </div>
   </main>
@@ -200,12 +241,14 @@ $color-text: #1a1814;
 $color-text-muted: #6b6960;
 $color-error: #b83232;
 $color-error-bg: #f5e1e1;
+$color-success: #2f7a4d;
+$color-success-bg: #e2f1e7;
 $color-info: #2b6cb0;
 $color-sleep: #3b4f86;
 $color-sleep-hover: #314171;
 $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
 
-.login {
+.signup {
   position: relative;
   padding: 64px 20px 32px;
   width: 100%;
@@ -242,7 +285,7 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   }
 }
 
-.login__back {
+.signup__back {
   position: absolute;
   z-index: 1;
   top: 20px;
@@ -262,12 +305,12 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   }
 }
 
-.login__loading {
+.signup__loading {
   font-size: 14px;
   color: $color-text-muted;
 }
 
-.login__card {
+.signup__card {
   position: relative;
   padding: 36px 28px 32px;
   width: 100%;
@@ -284,7 +327,7 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   }
 }
 
-.login__brand {
+.signup__brand {
   margin-bottom: 24px;
   display: flex;
   justify-content: center;
@@ -292,7 +335,7 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   gap: 10px;
 }
 
-.login__brand-mark {
+.signup__brand-mark {
   width: 30px;
   height: 30px;
   display: grid;
@@ -306,13 +349,13 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   place-items: center;
 }
 
-.login__brand-name {
+.signup__brand-name {
   font-size: 15px;
   font-weight: 600;
   color: $color-text;
 }
 
-.login__title {
+.signup__title {
   margin-bottom: 4px;
   font-size: 21px;
   font-weight: 700;
@@ -321,14 +364,14 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   color: $color-text;
 }
 
-.login__sub {
+.signup__sub {
   margin-bottom: 22px;
   font-size: 12.5px;
   text-align: center;
   color: $color-text-muted;
 }
 
-.login__error {
+.signup__error {
   margin-bottom: 14px;
   padding: 9px 12px;
   font-size: 12.5px;
@@ -338,7 +381,17 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   border-radius: 8px;
 }
 
-.login__google {
+.signup__success {
+  margin-bottom: 14px;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  text-align: center;
+  color: $color-success;
+  background: $color-success-bg;
+  border-radius: 8px;
+}
+
+.signup__google {
   padding: 0 16px;
   width: 100%;
   height: 46px;
@@ -378,7 +431,7 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   }
 }
 
-.login__google-mark {
+.signup__google-mark {
   width: 24px;
   height: 24px;
   display: grid;
@@ -390,11 +443,11 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   }
 }
 
-.login__google-label {
+.signup__google-label {
   letter-spacing: 0.01em;
 }
 
-.login__divider {
+.signup__divider {
   margin: 18px 0;
   display: flex;
   align-items: center;
@@ -414,13 +467,13 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   }
 }
 
-.login__form {
+.signup__form {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.login__field {
+.signup__field {
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -465,7 +518,7 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   }
 }
 
-.login__submit {
+.signup__submit {
   margin-top: 6px;
   width: 100%;
   height: 44px;
@@ -498,14 +551,14 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   }
 }
 
-.login__footer {
+.signup__footer {
   margin-top: 22px;
   font-size: 12px;
   text-align: center;
   color: $color-text-muted;
 }
 
-.login__footer-link {
+.signup__footer-link {
   text-decoration: underline;
   color: $color-info;
   text-underline-offset: 3px;
