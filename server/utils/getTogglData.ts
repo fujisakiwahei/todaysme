@@ -37,8 +37,16 @@ export interface GetTogglDataOptions {
   apiToken: string;
   // target_date 算出用の IANA timezone (例: "Asia/Tokyo")
   timezone: string;
-  // 差分取得 watermark。前回の同期完了時刻を渡す想定。未指定なら全件取得。
+  // 差分取得 watermark。前回の同期完了時刻を渡す想定。
+  // 未指定かつ startDate/endDate も未指定なら全件取得。
   since?: Date;
+  // 開始時刻 (entry.start) ベースのウィンドウ取得 (Issue #39)。YYYY-MM-DD。
+  // 指定すると Toggl API の `start_date` / `end_date` (start_date inclusive,
+  // end_date exclusive) を使い、since (= 修正時刻ベース) ではなく
+  // 「期間内に開始したエントリ」を取得する。
+  // 両方指定された場合は startDate/endDate が優先される。
+  startDate?: string;
+  endDate?: string;
 }
 
 // `toggl_time_entries` 行に対応する正規化済みレコード。
@@ -51,6 +59,10 @@ export interface TogglTimeEntryRecord {
   end_at: string | null;
   target_date: string;
   project_id: number | null;
+  // Toggl 側で削除されたエントリを呼び出し側でソフトデリート扱いするための情報。
+  // `since` ベース取得時に削除通知として返るレコードは server_deleted_at が
+  // 非 null になる。`null` なら現存するエントリ。
+  server_deleted_at: string | null;
 }
 
 function buildAuthorizationHeader(apiToken: string): string {
@@ -72,17 +84,31 @@ function toRecord(
     end_at: entry.stop ?? null,
     target_date: targetDateOf(entry.start, timezone),
     project_id: entry.project_id ?? null,
+    server_deleted_at: entry.server_deleted_at ?? null,
   };
+}
+
+interface FetchPageParams {
+  since?: number;
+  startDate?: string;
+  endDate?: string;
 }
 
 async function fetchPage(
   apiToken: string,
-  sinceSeconds: number | undefined,
+  params: FetchPageParams,
 ): Promise<TogglTimeEntry[]> {
   const url = new URL(`${TOGGL_API_BASE}/me/time_entries`);
-  if (sinceSeconds !== undefined) {
-    url.searchParams.set("since", String(sinceSeconds));
+  if (params.startDate !== undefined && params.endDate !== undefined) {
+    url.searchParams.set("start_date", params.startDate);
+    url.searchParams.set("end_date", params.endDate);
+  } else if (params.since !== undefined) {
+    url.searchParams.set("since", String(params.since));
   }
+  // server_deleted_at 等のメタを取得するために meta=true を付与する
+  // (Toggl API v9 は meta=true で削除イベントを返すため Issue #39 のソフト
+  // デリート判定に必要)。
+  url.searchParams.set("meta", "true");
 
   const res = await fetch(url, {
     headers: {
@@ -109,6 +135,29 @@ export async function getTogglData(
     throw new Error("timezone is required");
   }
 
+  // 開始時刻ベースのウィンドウ取得 (Issue #39 の refresh 用)。期間が短い (refresh は
+  // ±1 日 = 3 日ウィンドウ) ので通常は 1 ページに収まる。ページングは since ベース
+  // とは設計が異なるため意図的に分岐する。
+  //
+  // ただし Toggl /me/time_entries は 1 リクエスト 1000 件上限を持ち、上限ぴったり
+  // が返った場合は「window 内にまだ続きがある可能性」が区別できない。続きを取り
+  // こぼしたまま soft-delete を走らせると、未取得のエントリを `is_deleted=true` に
+  // してしまうため、ここではハードエラーで打ち切る (Codex review 対応)。
+  if (options.startDate !== undefined && options.endDate !== undefined) {
+    const entries = await fetchPage(options.apiToken, {
+      startDate: options.startDate,
+      endDate: options.endDate,
+    });
+    if (entries.length >= TOGGL_PAGE_LIMIT) {
+      throw new Error(
+        `Toggl window [${options.startDate}, ${options.endDate}) returned ` +
+          `${entries.length} entries (>= ${TOGGL_PAGE_LIMIT} page limit). ` +
+          `Refusing to soft-delete because remaining entries cannot be fetched safely.`,
+      );
+    }
+    return entries.map((e) => toRecord(e, options.timezone));
+  }
+
   // 同一エントリの再受信 (since == max(at) を再送する境界ケース) を捨てる
   const seen = new Set<number>();
   const result: TogglTimeEntryRecord[] = [];
@@ -117,7 +166,7 @@ export async function getTogglData(
     : undefined;
 
   for (let i = 0; i < MAX_PAGE_ITERATIONS; i++) {
-    const entries = await fetchPage(options.apiToken, sinceSeconds);
+    const entries = await fetchPage(options.apiToken, { since: sinceSeconds });
 
     let maxAtSeconds = sinceSeconds ?? 0;
     let appendedInThisPage = 0;

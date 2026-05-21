@@ -20,6 +20,10 @@ export const togglTimeEntrySchema = z.object({
   // 最終更新時刻。Toggl の `since` ベースのページング (1 リクエスト 1000 件
   // 上限) を進めるためのカーソルとして使う。
   at: isoDateTimeSchema,
+  // 削除済みエントリは `server_deleted_at` が非 null で返る (Issue #39)。
+  // `since` ベース取得時に削除通知として返されるため、必ず取り込んで
+  // 呼び出し側でソフトデリート判定に使えるようにしておく。
+  server_deleted_at: isoDateTimeSchema.nullable().optional(),
 });
 
 // /me/time_entries は配列レスポンス
