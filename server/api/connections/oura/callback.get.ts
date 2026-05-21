@@ -9,6 +9,7 @@
 // =============================================================================
 import { oauthCallbackQuerySchema } from "../../../../shared/schemas";
 import { exchangeOuraCode } from "../../../utils/oauth/oura";
+import { resolveOauthRedirectUri } from "../../../utils/oauth/redirectUri";
 import { OauthStateError, verifyOauthState } from "../../../utils/oauthState";
 import { upsertServiceConnection } from "../../../utils/serviceConnection";
 import { parseOrThrow } from "../../../utils/validation";
@@ -60,7 +61,10 @@ export default defineEventHandler(async (event) => {
   }
 
   try {
-    const token = await exchangeOuraCode(query.code);
+    // start 側と同じロジックで redirect_uri を決める。
+    // (token 交換時の redirect_uri は authorize 時と必ず一致させる必要がある)
+    const redirectUri = resolveOauthRedirectUri(event, "oura");
+    const token = await exchangeOuraCode(query.code, redirectUri);
     await upsertServiceConnection({
       userId,
       provider: "oura",
