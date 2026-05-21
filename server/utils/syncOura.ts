@@ -10,18 +10,13 @@
 //     Oura 側 `day` がズレるケース・wake_at の補正で target_date が移動する
 //     ケースを取りこぼさないため (`oura_sleep_id` を保持していれば upsert
 //     で吸収できる)。
+//   - access_token は getOuraData が内部で withFreshAccessToken を介して取得し、
+//     未連携の場合は ServiceNotConnectedError ("oura") を投げる (Issue #75)。
 // =============================================================================
-import { getOuraData, OuraNotConnectedError } from "./getOuraData";
+import { getOuraData } from "./getOuraData";
 import { getSupabaseAdmin } from "./supabaseAdmin";
 
 const OURA_SLEEP_RECORDS = "oura_sleep_records";
-
-export class ServiceNotConnectedError extends Error {
-  constructor(provider: string) {
-    super(`${provider} is not connected for this user`);
-    this.name = "ServiceNotConnectedError";
-  }
-}
 
 function shiftDate(date: string, days: number): string {
   const d = new Date(`${date}T00:00:00Z`);
@@ -37,20 +32,12 @@ export async function syncOuraForDate(
   const startDate = shiftDate(targetDate, -1);
   const endDate = shiftDate(targetDate, 1);
 
-  let fetched;
-  try {
-    fetched = await getOuraData({
-      userId,
-      startDate,
-      endDate,
-      timezone,
-    });
-  } catch (e) {
-    if (e instanceof OuraNotConnectedError) {
-      throw new ServiceNotConnectedError("oura");
-    }
-    throw e;
-  }
+  const fetched = await getOuraData({
+    userId,
+    startDate,
+    endDate,
+    timezone,
+  });
 
   const admin = getSupabaseAdmin();
   const nowIso = new Date().toISOString();

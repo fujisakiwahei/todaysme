@@ -37,6 +37,10 @@ const EVENTS_PAGE_SIZE = 250;
 // google_calendar_events テーブル (SPEC §11.2) の挿入/更新で使う行形状。
 // `id` / `user_id` / `created_at` / `updated_at` は呼び出し側で付与する。
 export interface GoogleEventRow {
+  // event.id は calendar 内ユニークでしかないため、カレンダー跨ぎで衝突する
+  // ケースに備えて calendar_id も併せて返す。upsert の onConflict は
+  // (user_id, calendar_id, google_event_id) を使う想定 (Issue #39 review)。
+  calendar_id: string;
   google_event_id: string;
   calendar_name: string | null;
   title: string | null;
@@ -222,7 +226,12 @@ async function fetchCalendarEvents(
         deletedEventIds.push(event.id);
         continue;
       }
-      const row = toEventRow(event, input.calendarName, input.timezone);
+      const row = toEventRow(
+        event,
+        input.calendarId,
+        input.calendarName,
+        input.timezone,
+      );
       if (row) events.push(row);
     }
 
@@ -243,6 +252,7 @@ async function fetchCalendarEvents(
 
 function toEventRow(
   event: GoogleCalendarEvent,
+  calendarId: string,
   calendarName: string | null,
   timezone: string,
 ): GoogleEventRow | null {
@@ -254,6 +264,7 @@ function toEventRow(
   if (!startAt || !endAt) return null;
 
   return {
+    calendar_id: calendarId,
     google_event_id: event.id,
     calendar_name: calendarName,
     title: event.summary ?? null,

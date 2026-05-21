@@ -11,6 +11,8 @@
 //   - 連携していない (= service_connections が無い / disconnected) サービスは
 //     ロックを取らずスキップし、レスポンスにも含めない。
 //   - 平文の access_token はクライアントに返さない / ログに出さない (SPEC §12.1)。
+//   - mark* に lockId (奪取時 sync_started_at) を渡して ownership 検査するため、
+//     stale 奪取された場合は古い worker が新 worker の status を上書きしない。
 // =============================================================================
 import {
   summaryRefreshRequestSchema,
@@ -20,12 +22,10 @@ import {
   type SyncStatusEntry,
 } from "../../../shared/schemas";
 import { requireUserId } from "../../utils/auth";
+import { ServiceNotConnectedError } from "../../utils/serviceConnection";
 import { getSupabaseAdmin } from "../../utils/supabaseAdmin";
 import { syncGoogleForDate } from "../../utils/syncGoogle";
-import {
-  ServiceNotConnectedError,
-  syncOuraForDate,
-} from "../../utils/syncOura";
+import { syncOuraForDate } from "../../utils/syncOura";
 import {
   markSyncFailed,
   markSyncSuccess,
@@ -144,14 +144,24 @@ export default defineEventHandler(async (event) => {
       continue;
     }
 
+    // lock.acquired=true なら lockId は必ず非 null (型上は string|null)。
+    const lockId = lock.lockId!;
+
     try {
       await RUNNERS[provider]({
         userId,
         targetDate: body.date,
         timezone,
       });
-      const updated = await markSyncSuccess(userId, body.date, provider);
-      sync_statuses.push(toStatusEntry(provider, updated));
+      const updated = await markSyncSuccess(
+        userId,
+        body.date,
+        provider,
+        lockId,
+      );
+      // updated === null = 自分の lock が stale 奪取された。新 worker が
+      // 最終 status を書くので、ここでは何も push しない。
+      if (updated) sync_statuses.push(toStatusEntry(provider, updated));
     } catch (e) {
       // ServiceNotConnectedError はロック取得後に判明する稀ケース (connections と
       // 復号結果がズレている等)。それも含めて failed として記録する。
@@ -164,9 +174,11 @@ export default defineEventHandler(async (event) => {
           userId,
           body.date,
           provider,
+          lockId,
           message,
         );
-        sync_statuses.push(toStatusEntry(provider, updated));
+        if (updated) sync_statuses.push(toStatusEntry(provider, updated));
+        // updated === null も「lock を奪われた」だけなので errors 側にだけ載せる。
       } catch (markErr) {
         // 万一 failed への更新も失敗したら errors にだけ残す。
         errors.push({

@@ -7,6 +7,10 @@
 //   - 既に in_progress でも `sync_started_at` が `STALE_LOCK_MINUTES` より
 //     古ければ timeout 扱いで奪取できる (process が落ちて回復不能になるのを防ぐ)。
 //   - サービス単位で sync status を更新する (部分成功を許容)。
+//   - markSyncSuccess / markSyncFailed は「自分が握っている lock」だけを更新
+//     対象にするため、`sync_started_at` (= 奪取時に書き込んだ値) を ownership
+//     キーとして渡す (Codex review)。stale 奪取で別 worker に lock を取られた
+//     後に古い worker が status を上書きしてしまう事故を防ぐ。
 // =============================================================================
 import type { ServiceProvider, SyncStatus } from "../../shared/schemas";
 
@@ -28,6 +32,10 @@ export interface SyncStatusRow {
 
 export interface AcquireLockResult {
   acquired: boolean;
+  // 自分が取得した lock を特定する値 (= 書き込んだ sync_started_at)。
+  // markSyncSuccess / markSyncFailed にそのまま渡すこと。
+  // acquired=false のときは null。
+  lockId: string | null;
   // acquired=false の場合に「いま誰が握っているか」を返す。null は行が読めなかったケース。
   current: SyncStatusRow | null;
 }
@@ -86,7 +94,14 @@ export async function tryAcquireSyncLock(
   }
 
   if (data && data.length > 0) {
-    return { acquired: true, current: data[0] as SyncStatusRow };
+    // 自分が書き込んだ sync_started_at (= nowIso) を lockId として保持する。
+    // この値は markSyncSuccess / markSyncFailed の WHERE 条件として渡され、
+    // 別 worker に lock を奪われた後の上書きを防ぐ。
+    return {
+      acquired: true,
+      lockId: nowIso,
+      current: data[0] as SyncStatusRow,
+    };
   }
 
   // 奪取に失敗した = 別 process が走っている。現在の status を返して呼び出し側に
@@ -104,15 +119,25 @@ export async function tryAcquireSyncLock(
 
   return {
     acquired: false,
+    lockId: null,
     current: (current as SyncStatusRow | null) ?? null,
   };
 }
 
+// =============================================================================
+// markSyncSuccess / markSyncFailed
+//   - lockId (= 奪取時に書き込んだ sync_started_at) を WHERE 条件に含めて
+//     ownership を担保する。値が一致しなければ「自分の lock は別 worker に
+//     stale 奪取された」とみなして no-op を返す。
+//   - 返り値が null なら呼び出し側は status を上書きしない (新しい owner が
+//     最終 status を書く責務を持つ)。
+// =============================================================================
 export async function markSyncSuccess(
   userId: string,
   targetDate: string,
   source: ServiceProvider,
-): Promise<SyncStatusRow> {
+  lockId: string,
+): Promise<SyncStatusRow | null> {
   const admin = getSupabaseAdmin();
   const nowIso = new Date().toISOString();
   const { data, error } = await admin
@@ -126,26 +151,29 @@ export async function markSyncSuccess(
     .eq("user_id", userId)
     .eq("target_date", targetDate)
     .eq("source", source)
-    .select(SELECT_COLS)
-    .single();
+    .eq("sync_started_at", lockId)
+    .select(SELECT_COLS);
 
   if (error) {
     throw new Error(`failed to mark sync success: ${error.message}`);
   }
-  return data as SyncStatusRow;
+  if (!data || data.length === 0) return null;
+  return data[0] as SyncStatusRow;
 }
 
 // =============================================================================
 // markSyncFailed
 //   - message は error_message カラムに記録する。
 //   - 平文トークンや URL クエリ等の機密情報を含めないこと (呼び出し側で整形済み前提)。
+//   - lockId が現在の sync_started_at と一致しないときは no-op (null を返す)。
 // =============================================================================
 export async function markSyncFailed(
   userId: string,
   targetDate: string,
   source: ServiceProvider,
+  lockId: string,
   message: string,
-): Promise<SyncStatusRow> {
+): Promise<SyncStatusRow | null> {
   const admin = getSupabaseAdmin();
   const nowIso = new Date().toISOString();
   // error_message カラムは text。極端に長い stack 等を入れないよう 500 文字でカット。
@@ -161,11 +189,12 @@ export async function markSyncFailed(
     .eq("user_id", userId)
     .eq("target_date", targetDate)
     .eq("source", source)
-    .select(SELECT_COLS)
-    .single();
+    .eq("sync_started_at", lockId)
+    .select(SELECT_COLS);
 
   if (error) {
     throw new Error(`failed to mark sync failed: ${error.message}`);
   }
-  return data as SyncStatusRow;
+  if (!data || data.length === 0) return null;
+  return data[0] as SyncStatusRow;
 }
