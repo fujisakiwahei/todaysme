@@ -65,9 +65,10 @@ interface SyncStatusRow {
   error_message: string | null;
 }
 
-// wake range と [start, end] の重なり部分の長さ (分)。
+// wake range と [start, end] の重なり部分の長さ (ミリ秒)。
 // end が null (進行中の Toggl エントリ) のときは range.end までで打ち切る。
-function overlappingMinutes(
+// 分への丸めは累積 drift を避けるため呼び出し側で sum 後に 1 度だけ行う。
+function overlappingMs(
   range: InternalWakeRange,
   start: string,
   end: string | null,
@@ -76,7 +77,11 @@ function overlappingMinutes(
   const eMs = end == null ? range.end.getTime() : new Date(end).getTime();
   const e = Math.min(eMs, range.end.getTime());
   if (e <= s) return 0;
-  return Math.round((e - s) / 60000);
+  return e - s;
+}
+
+function msToMinutes(ms: number): number {
+  return Math.round(ms / 60000);
 }
 
 export default defineEventHandler(async (event) => {
@@ -97,7 +102,15 @@ export default defineEventHandler(async (event) => {
       statusMessage: "failed to load user",
     });
   }
-  const timezone = userRow?.timezone ?? "Asia/Tokyo";
+  // users 行は signup 時の trigger で作成される前提。欠落時に Asia/Tokyo に
+  // fallback するとデータ整合性問題を黙って隠してしまうので、明示的に 500 を返す。
+  if (!userRow) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: "user profile is missing",
+    });
+  }
+  const timezone = userRow.timezone;
 
   // -- wake range -----------------------------------------------------------
   const internalRange = await wakeRangeOf(date, userId, {
@@ -154,8 +167,15 @@ export default defineEventHandler(async (event) => {
     if (calendarRes.error) throw calendarRes.error;
     if (togglRes.error) throw togglRes.error;
 
-    sleepRows = (sleepRes.data ?? []) as SleepRow[];
-    calendarRows = (calendarRes.data ?? []) as CalendarRow[];
+    // DB クエリは inclusive bound のため、range.end に exact-touch する
+    // 翌日分の sleep / 境界線上の calendar event が混入しうる。
+    // 一律に overlaps() で再フィルタして取りこぼし・余剰を防ぐ。
+    sleepRows = ((sleepRes.data ?? []) as SleepRow[]).filter((r) =>
+      overlaps(internalRange, r.sleep_start_at, r.wake_at),
+    );
+    calendarRows = ((calendarRes.data ?? []) as CalendarRow[]).filter((r) =>
+      overlaps(internalRange, r.start_at, r.end_at),
+    );
     togglRows = ((togglRes.data ?? []) as TogglRow[]).filter((r) =>
       overlaps(internalRange, r.start_at, r.end_at),
     );
@@ -206,8 +226,9 @@ export default defineEventHandler(async (event) => {
   // -- Today's ME (SPEC §4.1) ----------------------------------------------
   // Oura: 起床日 = target_date となる sleep を選ぶ。
   //   wake range には前日夜〜当日朝の睡眠が入るので、wake_at が target_date と
-  //   一致するレコードに絞る。同一日に複数の sleep が存在する場合
-  //   (仮眠等) は wake_at が最も遅いものを採用 (決定的に選ぶため)。
+  //   一致するレコードに絞る。同一日に複数 (仮眠等) が存在する場合は
+  //   sleep_minutes が最も長いものを main sleep とみなして採用する。
+  //   tie-break と sleep_minutes が null の場合は wake_at が最も遅いものを採用。
   let oura: TodaysMe["oura"] = null;
   if (connected.has("oura")) {
     const wakeDateFmt = new Intl.DateTimeFormat("en-CA", {
@@ -218,9 +239,12 @@ export default defineEventHandler(async (event) => {
     });
     const todayWake = sleepRows
       .filter((r) => wakeDateFmt.format(new Date(r.wake_at)) === date)
-      .sort(
-        (a, b) => new Date(b.wake_at).getTime() - new Date(a.wake_at).getTime(),
-      )[0];
+      .sort((a, b) => {
+        const am = a.sleep_minutes ?? -1;
+        const bm = b.sleep_minutes ?? -1;
+        if (bm !== am) return bm - am;
+        return new Date(b.wake_at).getTime() - new Date(a.wake_at).getTime();
+      })[0];
     oura = {
       sleep_minutes: todayWake?.sleep_minutes ?? null,
       wake_at: todayWake?.wake_at ?? null,
@@ -228,51 +252,59 @@ export default defineEventHandler(async (event) => {
   }
 
   // Google: wake range と重なる時間で集計。
+  // 累積 drift を避けるため ms で足し上げ、最後にまとめて分へ丸める。
   let google: TodaysMe["google"] = null;
   if (connected.has("google")) {
-    const byCalendar = new Map<string, number>();
-    let total = 0;
-    let meeting = 0;
+    const byCalendarMs = new Map<string, number>();
+    let totalMs = 0;
+    let meetingMs = 0;
     if (internalRange) {
       for (const ev of calendarRows) {
-        const m = overlappingMinutes(internalRange, ev.start_at, ev.end_at);
-        if (m <= 0) continue;
-        total += m;
+        const ms = overlappingMs(internalRange, ev.start_at, ev.end_at);
+        if (ms <= 0) continue;
+        totalMs += ms;
         const name = ev.calendar_name ?? "";
-        byCalendar.set(name, (byCalendar.get(name) ?? 0) + m);
+        byCalendarMs.set(name, (byCalendarMs.get(name) ?? 0) + ms);
         if (ev.calendar_name && MEETING_CALENDAR_NAMES.has(ev.calendar_name)) {
-          meeting += m;
+          meetingMs += ms;
         }
       }
     }
     google = {
-      total_minutes: total,
-      meeting_minutes: meeting,
-      by_calendar: Array.from(byCalendar.entries()).map(
-        ([calendar_name, minutes]) => ({ calendar_name, minutes }),
+      total_minutes: msToMinutes(totalMs),
+      meeting_minutes: msToMinutes(meetingMs),
+      by_calendar: Array.from(byCalendarMs.entries()).map(
+        ([calendar_name, ms]) => ({
+          calendar_name,
+          minutes: msToMinutes(ms),
+        }),
       ),
     };
   }
 
   // Toggl: wake range と重なる時間でタイトル別集計。
+  // by_title は SPEC §4.1 の定義どおり title 単位で集約する。
+  // Toggl の project_id は DB スキーマに保持していないため、別プロジェクトで
+  // 同名タイトルを使うと同一バケットに入る。将来 project_id を永続化する
+  // 場合はキーを (title, project_id) に拡張する。
   let toggl: TodaysMe["toggl"] = null;
   if (connected.has("toggl")) {
-    const byTitle = new Map<string, number>();
-    let total = 0;
+    const byTitleMs = new Map<string, number>();
+    let totalMs = 0;
     if (internalRange) {
       for (const t of togglRows) {
-        const m = overlappingMinutes(internalRange, t.start_at, t.end_at);
-        if (m <= 0) continue;
-        total += m;
+        const ms = overlappingMs(internalRange, t.start_at, t.end_at);
+        if (ms <= 0) continue;
+        totalMs += ms;
         const title = t.title ?? "";
-        byTitle.set(title, (byTitle.get(title) ?? 0) + m);
+        byTitleMs.set(title, (byTitleMs.get(title) ?? 0) + ms);
       }
     }
     toggl = {
-      total_minutes: total,
-      by_title: Array.from(byTitle.entries()).map(([title, minutes]) => ({
+      total_minutes: msToMinutes(totalMs),
+      by_title: Array.from(byTitleMs.entries()).map(([title, ms]) => ({
         title,
-        minutes,
+        minutes: msToMinutes(ms),
       })),
     };
   }
