@@ -34,14 +34,22 @@ function toDate(value: Date | string): Date {
 
 export function targetDateOf(wakeAt: Date | string, timezone: string): string {
   const date = toDate(wakeAt);
-  // en-CA は ISO の YYYY-MM-DD 形式で返してくれる
-  const fmt = new Intl.DateTimeFormat("en-CA", {
+  // `Intl.DateTimeFormat("en-CA").format()` の出力は ICU データ依存で必ずしも
+  // ISO (YYYY-MM-DD) を保証しない (M/D/YYYY を返す実装もある)。
+  // formatToParts から year/month/day を取り出して自前で組み立てる。
+  const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  });
-  return fmt.format(date);
+  }).formatToParts(date);
+  const yyyy = parts.find((p) => p.type === "year")?.value;
+  const mm = parts.find((p) => p.type === "month")?.value;
+  const dd = parts.find((p) => p.type === "day")?.value;
+  if (!yyyy || !mm || !dd) {
+    throw new Error(`Failed to format date in timezone ${timezone}`);
+  }
+  return `${yyyy}-${mm}-${dd}`;
 }
 
 // =============================================================================
