@@ -1,5 +1,5 @@
 <script setup lang="ts">
-const supabase = useSupabase();
+const supabase = useSupabaseClient();
 const route = useRoute();
 
 const email = ref("");
@@ -79,12 +79,14 @@ async function signUpWithEmail() {
 }
 
 onMounted(async () => {
-  const { data } = await supabase.auth.getSession();
-  if (data.session) {
-    await navigateTo(resolveRedirect());
-    return;
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data.session) {
+      await navigateTo(resolveRedirect());
+    }
+  } finally {
+    checkingSession.value = false;
   }
-  checkingSession.value = false;
 });
 </script>
 
