@@ -80,17 +80,17 @@ onMounted(async () => {
 
 .auth-callback__error {
   padding: 12px 16px;
+  max-width: 480px;
+  text-align: center;
   color: #b83232;
   background: #f5e1e1;
   border-radius: 8px;
-  max-width: 480px;
-  text-align: center;
 }
 
 .auth-callback__link {
   font-size: 13px;
-  color: #2b6cb0;
   text-decoration: underline;
+  color: #2b6cb0;
   text-underline-offset: 3px;
 }
 </style>
