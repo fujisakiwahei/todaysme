@@ -127,6 +127,17 @@ export async function syncGoogleForDate(
       keepIds,
     });
   }
+
+  // 今回の calendars に登場しない calendar_id (= ユーザーが Google 側で削除
+  // / 購読解除したカレンダー) に紐づく既存行も、対象日ぶんはソフトデリートする。
+  // 上のループは現在の calendar_id しか触らないため、ここで明示的に掃除しないと
+  // 削除済みカレンダーのイベントが summary に出続けてしまう (Codex review 対応)。
+  const activeCalendarIds = calendars.map((c) => c.calendarId);
+  await softDeleteEventsForRemovedCalendars({
+    userId,
+    targetDate,
+    activeCalendarIds,
+  });
 }
 
 interface SoftDeleteGoogleInput {
@@ -176,6 +187,45 @@ async function softDeleteMissingGoogleEvents(
   if (updateError) {
     throw new Error(
       `failed to soft-delete ${GOOGLE_CALENDAR_EVENTS}: ${updateError.message}`,
+    );
+  }
+}
+
+interface SoftDeleteRemovedCalendarsInput {
+  userId: string;
+  targetDate: string;
+  activeCalendarIds: readonly string[];
+}
+
+// ユーザーの calendarList から消えたカレンダー (購読解除 / Google 側で削除)
+// に紐づく既存行を、対象日ぶん is_deleted=true にする。
+// activeCalendarIds が空 (全カレンダー解除) のケースでも安全に動くように
+// PostgREST の `not in` 構文 (= `not.in.(...)`) を組み立てる。
+async function softDeleteEventsForRemovedCalendars(
+  input: SoftDeleteRemovedCalendarsInput,
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+
+  let query = admin
+    .from(GOOGLE_CALENDAR_EVENTS)
+    .update({ is_deleted: true, updated_at: new Date().toISOString() })
+    .eq("user_id", input.userId)
+    .eq("target_date", input.targetDate)
+    .eq("is_deleted", false);
+
+  if (input.activeCalendarIds.length > 0) {
+    // PostgREST の filter 形式: `not.in.("a","b")`。 calendar_id に
+    // ダブルクォートが含まれる正規ケースは無いはずだが、念のため escape する。
+    const escaped = input.activeCalendarIds
+      .map((id) => `"${id.replace(/"/g, '""')}"`)
+      .join(",");
+    query = query.filter("calendar_id", "not.in", `(${escaped})`);
+  }
+
+  const { error } = await query;
+  if (error) {
+    throw new Error(
+      `failed to soft-delete events for removed calendars: ${error.message}`,
     );
   }
 }

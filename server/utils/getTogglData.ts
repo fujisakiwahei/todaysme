@@ -135,13 +135,26 @@ export async function getTogglData(
     throw new Error("timezone is required");
   }
 
-  // 開始時刻ベースのウィンドウ取得 (Issue #39 の refresh 用)。期間が短いので
-  // 1 ページで十分。ページングは since ベースとは設計が異なるため意図的に分岐する。
+  // 開始時刻ベースのウィンドウ取得 (Issue #39 の refresh 用)。期間が短い (refresh は
+  // ±1 日 = 3 日ウィンドウ) ので通常は 1 ページに収まる。ページングは since ベース
+  // とは設計が異なるため意図的に分岐する。
+  //
+  // ただし Toggl /me/time_entries は 1 リクエスト 1000 件上限を持ち、上限ぴったり
+  // が返った場合は「window 内にまだ続きがある可能性」が区別できない。続きを取り
+  // こぼしたまま soft-delete を走らせると、未取得のエントリを `is_deleted=true` に
+  // してしまうため、ここではハードエラーで打ち切る (Codex review 対応)。
   if (options.startDate !== undefined && options.endDate !== undefined) {
     const entries = await fetchPage(options.apiToken, {
       startDate: options.startDate,
       endDate: options.endDate,
     });
+    if (entries.length >= TOGGL_PAGE_LIMIT) {
+      throw new Error(
+        `Toggl window [${options.startDate}, ${options.endDate}) returned ` +
+          `${entries.length} entries (>= ${TOGGL_PAGE_LIMIT} page limit). ` +
+          `Refusing to soft-delete because remaining entries cannot be fetched safely.`,
+      );
+    }
     return entries.map((e) => toRecord(e, options.timezone));
   }
 

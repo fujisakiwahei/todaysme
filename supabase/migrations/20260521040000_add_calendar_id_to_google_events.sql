@@ -10,18 +10,18 @@
 --   狂う。
 --
 -- 対応:
---   - calendar_id text not null 列を追加。新規挿入は必須。
+--   - 既存行は calendar_id が不明なので削除する。MVP は単一ユーザー運用で、
+--     `/api/summary/refresh` を 1 回叩けば直近 14 日ぶんは Google から再取得される。
+--     ここで残すと legacy 行 (calendar_id 空) は新 conflict key にヒットせず
+--     永久に `is_deleted=false` のまま重複として残ってしまうので、最初に消す。
+--   - calendar_id text not null 列を追加。default は付けない (空テーブルなので不要)。
 --   - unique 制約を (user_id, calendar_id, google_event_id) へ張り替え。
---   - MVP は単一ユーザー運用かつ refresh で全 row が上書きされるため、既存行は
---     一時的に空文字で埋めてから default を外す。Issue #39 マージ後に
---     `/api/summary/refresh` を一度叩けば実際の calendar_id で埋まる。
 -- =============================================================================
 
-alter table public.google_calendar_events
-  add column calendar_id text not null default '';
+delete from public.google_calendar_events;
 
 alter table public.google_calendar_events
-  alter column calendar_id drop default;
+  add column calendar_id text not null;
 
 alter table public.google_calendar_events
   drop constraint google_calendar_events_user_event_unique;
