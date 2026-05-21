@@ -50,16 +50,22 @@ const now = ref(new Date());
 
 let nowTimer: ReturnType<typeof setInterval> | null = null;
 
+// /api/summary の取得本体。エラーハンドリング (errorMessage / loading) は呼び出し側に任せ、
+// バックグラウンド再フェッチが UI のエラーバナーを書き換えないよう分離している。
+async function fetchSummaryCore() {
+  const headers = await bearerHeaders();
+  const res = await $fetch<SummaryResponse>("/api/summary", {
+    query: { date: dateParam.value },
+    headers,
+  });
+  summary.value = res;
+}
+
 async function fetchSummary() {
   loading.value = true;
   errorMessage.value = null;
   try {
-    const headers = await bearerHeaders();
-    const res = await $fetch<SummaryResponse>("/api/summary", {
-      query: { date: dateParam.value },
-      headers,
-    });
-    summary.value = res;
+    await fetchSummaryCore();
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed to load summary";
     errorMessage.value = `サマリー取得に失敗しました: ${msg}`;
@@ -116,6 +122,7 @@ async function backgroundRefreshIfStale() {
   if (!summary.value) return;
   if (!isStale(summary.value)) return;
   // user-initiated refresh と区別するため、エラーは UI に出さず黙って終わる。
+  // 再フェッチも errorMessage を書き換えない fetchSummaryCore を使う。
   try {
     const headers = await bearerHeaders();
     await $fetch("/api/summary/refresh", {
@@ -123,7 +130,7 @@ async function backgroundRefreshIfStale() {
       headers,
       body: { date: dateParam.value },
     });
-    await fetchSummary();
+    await fetchSummaryCore();
   } catch {
     // 裏で失敗してもユーザー操作を妨げない
   }
@@ -322,17 +329,19 @@ const openAccordions = reactive<{
 // =============================================================================
 // Lifecycle
 // =============================================================================
-watch(
-  dateParam,
-  async () => {
-    summary.value = null;
-    await fetchSummary();
-    void backgroundRefreshIfStale();
-  },
-  { immediate: true },
-);
+// 初回フェッチは onMounted (client) で行う。useSupabase はブラウザ向け Supabase
+// クライアントで、SSR では session token を保持しないため、SSR 時に /api/summary
+// を呼ぶと Authorization ヘッダ無しで 401 になる。
+// 日付遷移後の再フェッチは watcher で拾う (immediate: false)。
+watch(dateParam, async () => {
+  summary.value = null;
+  await fetchSummary();
+  void backgroundRefreshIfStale();
+});
 
-onMounted(() => {
+onMounted(async () => {
+  await fetchSummary();
+  void backgroundRefreshIfStale();
   // NOW ラインを 1 分単位で動かす (当日のみ意味がある)
   nowTimer = setInterval(() => {
     now.value = new Date();
