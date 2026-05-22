@@ -4,7 +4,7 @@
     "subtitle": "Nuxt 4 + Supabase + Oura / Google Calendar / Toggl",
     "repoPath": "todaysme/",
     "version": "2026-05-22",
-    "hint": "1〜0=フロー / F=全体 / +-=ズーム / Esc=フォーカス解除 / バッジクリック=ステップ"
+    "hint": "下のカードをクリック=矢印を表示 / 1〜0=フロー / F=矢印を全部消す / +-=ズーム / Esc=フォーカス解除"
   },
   "viewBox": { "w": 1620, "h": 820 },
   "columns": [
@@ -60,6 +60,8 @@
       "icon": "🔐",
       "name": "1. ログイン & セッション",
       "sub": "Supabase Auth でログインし、その JWT を全 API リクエストで検証する",
+      "what": "Supabase の OAuth (Google identity provider) でログイン。返ってきた access_token がクライアントに保存され、以降のあらゆる /api/* 呼び出しで Bearer ヘッダとして送信される。サーバ側は requireUserId() がその JWT を Supabase Admin に問い合わせて検証し、不正なら 401 を投げる。",
+      "why": "「誰のデータか」を毎リクエストで突き止めるため。サーバ側は一切セッション状態を持たないので、Bearer JWT がない / 古い / 改ざんされている呼び出しは入口で全部はじけ、他人のサマリや service_connections を間違って読む事故が構造的に起こらない。",
       "description": "Supabase の OAuth (Google identity provider) でログイン。返ってきた access_token がクライアントに保存され、以降のあらゆる /api/* 呼び出しで Bearer ヘッダとして送信される。サーバ側は requireUserId() でその JWT を Supabase Admin に問い合わせて検証する。",
       "steps": [
         { "from": "page-settings", "to": "supa-auth",     "passes": "supabase.auth.signInWithOAuth({ provider: 'google' })", "note": "Supabase の OAuth は Calendar 接続とは別物。アカウント識別だけに使う" },
@@ -75,6 +77,8 @@
       "icon": "🔗",
       "name": "2. Google / Oura OAuth 接続",
       "sub": "外部サービスのアクセストークンを取得して暗号化保存するまでの全行程",
+      "what": "ユーザーが /settings の「Google Calendar と接続」ボタンを押すところから、ブラウザが外部サービスへ飛んでコードを持ち帰り、それを引き換えに access_token と refresh_token を取得し、AES-256-GCM で暗号化して service_connections に書き込み、/settings へ戻すまで。CSRF は HMAC-SHA256 で署名された state と httpOnly cookie の nonce の二段でガードする。",
+      "why": "外部サービスのデータを長期的に同期し続けるためには refresh_token を握る必要があるが、これは漏れると本人になりすませる強い権限。だから DB には平文で置かず AES-256-GCM で暗号化し、復号鍵 (TOKEN_ENCRYPTION_KEY) は DB の外に置く。CSRF を二段ガードしているのは、第三者サイトが攻撃者のアカウントとユーザーを結びつける混乱攻撃を防ぐため。",
       "description": "ユーザーが /settings の「Google Calendar と接続」ボタンを押すところから、ブラウザが外部サービスへ飛んでコードを持ち帰り、それを引き換えに access_token と refresh_token を取得し、AES-256-GCM で暗号化して service_connections に書き込み、/settings へ戻すまで。CSRF は HMAC-SHA256 で署名された state と httpOnly cookie の nonce の二段でガードする。",
       "steps": [
         { "from": "page-settings",  "to": "api-oauth-start", "passes": "GET /api/connections/google/start",                       "note": "Bearer JWT 必須" },
@@ -96,6 +100,8 @@
       "icon": "🎟️",
       "name": "3. Toggl API トークン接続",
       "sub": "OAuth ではなく Toggl ダッシュボードから取った API トークンを貼り付ける方式",
+      "what": "Toggl Track には OAuth フローがないので、ユーザーが Toggl 設定画面から自分の API トークンをコピペし、サーバ側で AES-256-GCM 暗号化してそのまま保存する。refresh の概念はない。",
+      "why": "Toggl は OAuth プロバイダではないため、Flow 2 のような認可コード交換はそもそも組めない。それでもトークンを DB に平文で置けば漏洩リスクがあるので、Google / Oura と同じ暗号化レーンに乗せて扱いを統一する。これにより、UI 側は接続済みかどうか以外に Toggl だけ特別扱いをする必要がない。",
       "description": "Toggl Track には OAuth フローがないので、ユーザーが Toggl 設定画面から自分の API トークンをコピペし、サーバ側で AES-256-GCM 暗号化してそのまま保存する。refresh の概念はない。",
       "steps": [
         { "from": "page-settings",   "to": "api-connections", "passes": "POST /api/connections/toggl · { api_token }",                "note": "togglConnectRequestSchema で parseOrThrow" },
@@ -110,6 +116,8 @@
       "icon": "⚙️",
       "name": "4. /settings 初期化（接続一覧）",
       "sub": "service_connections の状態を取り出すが、暗号化トークンの中身は絶対にクライアントへ返さない",
+      "what": "/settings ページのマウント時に呼ばれる。各 provider について status と has_token と connected_at だけを返し、トークン本体はサーバを出ない。Google が連携済みなら、続けて Google 側にカレンダー一覧を取りにいき、除外設定の UI を作る。",
+      "why": "「接続済みかどうか」を表示するためだけにトークンをクライアントに返してしまうと、ブラウザ拡張や XSS でトークンを抜かれるリスクが新たに生まれる。だから「has_token: true/false」のフラグだけを返し、本物の鍵は絶対サーバの外に出さない。これは仕様書 §12.1 の「クライアントに返さない / ログに出さない」ルールに対応する。",
       "description": "/settings ページのマウント時に呼ばれる。各 provider について status と has_token と connected_at だけを返し、トークン本体はサーバを出ない。Google が連携済みなら、続けて Google 側にカレンダー一覧を取りにいき、除外設定の UI を作る。",
       "steps": [
         { "from": "page-settings",   "to": "api-connections", "passes": "GET /api/connections",                                                  "note": "Bearer JWT" },
@@ -128,6 +136,8 @@
       "icon": "📊",
       "name": "5. /daily/[date] サマリ取得",
       "sub": "Wake-based Timeline で 1 日分の sleep / event / time_entry を集める読み取りパス",
+      "what": "/daily/[date] のマウント時にこれが走る。同期は一切起こさず、すでに DB に入っているレコードだけから wake range を計算し、その時間幅にオーバーラップする睡眠 / カレンダー / 作業時間を引いてくる。daily_sync_statuses も同時に返して、UI 側で「最終同期からの経過時間」を出せるようにする。",
+      "why": "ページ表示と外部 API 同期を分離しないと、外部サービスが遅い / 落ちている日に画面そのものが開かなくなる。表示は DB の最新スナップショットだけで完結させ、新鮮さの担保は Flow 6（手動 / バックグラウンド更新）と Flow 7（Cron）に任せる責務分割になっている。target_date 完全一致ではなく wake range のオーバーラップで引くのは「日付の境目をまたぐ睡眠・予定」を Wake-based Timeline 上で正しい場所に置くため。",
       "description": "/daily/[date] のマウント時にこれが走る。同期は一切起こさず、すでに DB に入っているレコードだけから wake range を計算し、その時間幅にオーバーラップする睡眠 / カレンダー / 作業時間を引いてくる。daily_sync_statuses も同時に返して、UI 側で「最終同期からの経過時間」を出せるようにする。",
       "steps": [
         { "from": "page-daily",   "to": "api-summary",  "passes": "GET /api/summary?date=YYYY-MM-DD",                                              "note": "Bearer JWT" },
@@ -144,6 +154,8 @@
       "icon": "🔄",
       "name": "6. 手動リフレッシュ（当日）",
       "sub": "Refresh ボタン or 30 分ステイル背景同期 → 3 サービスを並列同期 → DB 更新",
+      "what": "ユーザーが /daily/[date] で更新ボタンを押すか、当日のサマリが 30 分以上古いとバックグラウンドで自動発火する。refreshUserDate が 3 つの sync を並列に回し、それぞれ daily_sync_statuses にロックを取って実行する。部分失敗は許容で、Oura が落ちても Google / Toggl は止めない。",
+      "why": "外部 3 サービスは独立に落ちたりレート制限を返したりするので、どれか 1 つの失敗で全部止めると「ほぼ完成のサマリ」を見せられなくなる。だから provider 別にロック・成否を別管理し、エラーは記録するだけで他は通す（仕様 §9.2 の「部分失敗を許容」）。30 分ステイルの自動更新があるおかげで、ユーザーが意識的にボタンを押さなくても、画面を開き直すたびに自然と最新化される。",
       "description": "ユーザーが /daily/[date] で更新ボタンを押すか、当日のサマリが 30 分以上古いとバックグラウンドで自動発火する。refreshUserDate が 3 つの sync を並列に回し、それぞれ daily_sync_statuses にロックを取って実行する。部分失敗は許容で、Oura が落ちても Google / Toggl は止めない。",
       "steps": [
         { "from": "page-daily",    "to": "api-refresh",   "passes": "POST /api/summary/refresh · { date }",                                          "note": "Refresh ボタン or 30 分ステイル自動" },
@@ -167,6 +179,8 @@
       "icon": "⏰",
       "name": "7. Vercel Cron 14 日バッチ同期",
       "sub": "毎日 UTC 20:00（JST 05:00 翌日）に直近 14 日分を全ユーザー × 3 プロバイダで再同期",
+      "what": "vercel.json の crons で /api/cron/daily が叩かれる。CRON_SECRET の Bearer 認証を通過したら全ユーザーをループし、各ユーザーの TZ で「今日」を割り出して today, today-1, ..., today-13 の 14 日について refreshUserDate を呼ぶ。手動リフレッシュと同じ orchestrator を再利用しているので、ロック取得・部分失敗・ソフトデリートのルールが完全に一致する。",
+      "why": "外部サービスは「過去日のレコードを後から編集 / 削除」できるので、初回同期した内容と今の本当の姿はだんだんズレていく。14 日のスライディングウィンドウで毎朝同期し直すことで、過去 2 週間のサマリは常に外部の最新と一致する保証ができる。手動と同じ orchestrator を使い回しているのは、挙動が二重実装で食い違うとデバッグが地獄になるからで、Cron は「手動の自動連打」と等価になっている。",
       "description": "vercel.json の crons で /api/cron/daily が叩かれる。CRON_SECRET の Bearer 認証を通過したら全ユーザーをループし、各ユーザーの TZ で「今日」を割り出して today, today-1, ..., today-13 の 14 日について refreshUserDate を呼ぶ。手動リフレッシュと同じ orchestrator を再利用しているので、ロック取得・部分失敗・ソフトデリートのルールが完全に一致する。",
       "steps": [
         { "from": "ext-cron",    "to": "api-cron",      "passes": "GET /api/cron/daily · Authorization: Bearer ${CRON_SECRET}", "note": "vercel.json: \"0 20 * * *\"  → UTC 20:00 / JST 05:00 翌日" },
@@ -184,6 +198,8 @@
       "icon": "🔁",
       "name": "8. アクセストークンの 401 リカバリ",
       "sub": "外部 API から 401 が返ったら refresh_token で再発行 → 元の呼び出しを 1 度だけリトライ",
+      "what": "通常の sync 呼び出しの途中で外部 API が 401 を返すと、withFreshAccessToken が OauthUnauthorizedError をキャッチし、強制 refresh をかけて新しい access_token で 1 度だけリトライする。refresh も失敗したら service_connections.status を 'error' に落として、以降の sync は skip 対象になる。",
+      "why": "access_token は寿命が短いが、サーバ側で「いつ切れるか」を完璧に予測することはできない（プロバイダ側で取り消されることもある）。だから「失敗してから直す」自己修復ループが要る。同時に、refresh まで失敗した場合は明示的に status='error' に落とすことで、無効トークンで叩き続けて連続 401 を量産する事故を防ぐ。リトライを 1 度に絞っているのは無限ループ防止。",
       "description": "通常の sync 呼び出しの途中で外部 API が 401 を返すと、withFreshAccessToken が OauthUnauthorizedError をキャッチし、強制 refresh をかけて新しい access_token で 1 度だけリトライする。refresh も失敗したら service_connections.status を 'error' に落として、以降の sync は skip 対象になる。",
       "steps": [
         { "from": "util-sync",   "to": "ext-google",       "passes": "API call with Bearer access_token (例: /events)",          "note": "通常の sync 経路から到達" },
@@ -201,6 +217,8 @@
       "icon": "🚪",
       "name": "9. サービス連携解除",
       "sub": "ソフト切断 — 行は残し、status と暗号化トークンだけクリア",
+      "what": "ユーザーが /settings で「連携解除」を押すとこれが走る。service_connections の行は消さず、status='disconnected' にして access_token / refresh_token を null に上書きする。以降の sync 系コードはこの provider を skip するようになる。",
+      "why": "行ごと DELETE してしまうと、過去に同期したレコード（oura_sleep_records 等）の起点情報が失われ、再接続したときに connected_at の履歴も消える。ソフト切断なら「いつ繋いで、いつ外したか」を残せて、暗号化トークンだけ NULL にすれば漏洩経路はちゃんと閉じられる。トークン破棄と履歴保持を同時に満たすための設計。",
       "description": "ユーザーが /settings で「連携解除」を押すとこれが走る。service_connections の行は消さず、status='disconnected' にして access_token / refresh_token を null に上書きする。以降の sync 系コードはこの provider を skip するようになる。",
       "steps": [
         { "from": "page-settings",   "to": "api-connections", "passes": "DELETE /api/connections/{provider}",                                                    "note": "Bearer JWT" },
@@ -215,6 +233,8 @@
       "icon": "🧪",
       "name": "10. デモビュー（公開・認証なし）",
       "sub": "本番テーブルから完全に隔離された demo_* で固定日付のサマリを返す",
+      "what": "/demo はログインなしでアクセスでき、外部 API も叩かない。demo_oura_sleep_records / demo_google_calendar_events / demo_toggl_time_entries を Asia/Tokyo 固定で読み、本番と同じ summaryResponseSchema の形で返す。RLS は public read (true) で誰でも見られる。",
+      "why": "「ログインしないと何も見えない」状態だと、初見の人にプロダクトの価値を伝えられない。本番テーブルをそのまま public にすると個人データが漏れるので、テーブル自体を分けて『デモ専用の固定データ』を持っておく。レスポンスの形を本番 /api/summary と完全一致させているので、フロント側はデモか本番かを意識せず同じ描画ロジックで動かせる。",
       "description": "/demo はログインなしでアクセスでき、外部 API も叩かない。demo_oura_sleep_records / demo_google_calendar_events / demo_toggl_time_entries を Asia/Tokyo 固定で読み、本番と同じ summaryResponseSchema の形で返す。RLS は public read (true) で誰でも見られる。",
       "steps": [
         { "from": "page-demo",  "to": "api-demo",   "passes": "GET /api/demo/summary?date=YYYY-MM-DD",                       "note": "Bearer 不要 · 認証チェックなし" },
