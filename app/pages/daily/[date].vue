@@ -191,6 +191,14 @@ onMounted(async () => {
         <span v-if="refreshing">更新中…</span>
         <span v-else>更新</span>
       </button>
+      <NuxtLink to="/settings" class="daily-settings-btn" aria-label="設定">
+        <span
+          class="material-symbols-outlined daily-settings-btn__icon"
+          aria-hidden="true"
+        >
+          settings
+        </span>
+      </NuxtLink>
     </template>
   </DailySummaryView>
 </template>
@@ -247,5 +255,34 @@ $color-accent-hover: #ecce5c;
   to {
     transform: rotate(360deg);
   }
+}
+
+.daily-settings-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  text-decoration: none;
+  color: $color-text;
+  background: #fff;
+  border: 1px solid rgba(26, 24, 20, 0.08);
+  border-radius: 999px;
+  transition:
+    background 0.15s,
+    transform 0.08s;
+
+  &:hover {
+    background: #f2f0ea;
+  }
+
+  &:active {
+    transform: translateY(1px);
+  }
+}
+
+.daily-settings-btn__icon {
+  font-size: 20px;
+  line-height: 1;
 }
 </style>
