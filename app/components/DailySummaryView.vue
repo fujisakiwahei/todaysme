@@ -245,10 +245,12 @@ const togglEntries = computed<TogglTimelineEntry[]>(
 
 // =============================================================================
 // Free-time hover (Issue #110)
-//   タイムラインの空き領域にホバーすると、カーソル位置から次のイベント開始
-//   までの空き時間を表示する。"次のイベント" は Sleep / Calendar / Work の
-//   3 レーンを跨いで最も近いものを採用する (例: 同じ Work レーンの次の作業が
-//   1h 後でも、別レーンの MTG が 5min 後にあれば 5min を返す)。
+//   タイムラインの空き領域にホバーすると、その空き範囲全体 (= 直前のイベント
+//   終了から次のイベント開始まで) の最大値を表示する。カーソル位置に依存しない
+//   ので、同じ空き帯のどこにホバーしても同じ値が出る。
+//   "前 / 次" の判定は Sleep / Calendar / Work の 3 レーンを跨いで行う
+//   (例: 同じ Work レーン内では空きでも、別レーンで MTG が走っていれば
+//   その MTG で空きが区切られる)。
 // =============================================================================
 type LaneKey = "sleep" | "calendar" | "work";
 
@@ -300,8 +302,10 @@ interface FreeHoverInfo {
   lane: LaneKey;
   leftPct: number;
   widthPct: number;
-  cursorTime: number;
-  nextStart: number;
+  rangeStart: number;
+  rangeEnd: number;
+  prevLane: LaneKey | null;
+  prevTitle: string | null;
   nextLane: LaneKey | null;
   nextTitle: string | null;
   gapMinutes: number;
@@ -325,27 +329,43 @@ function onTrackMouseMove(e: MouseEvent, lane: LaneKey) {
   const { start, end, span } = timelineSpan.value;
   const cursorTime = start + ratio * span;
 
-  // カーソル以降に始まる最も近いイベントを全レーンから探す。
+  // 全レーンを横断してカーソル時刻を含む空き範囲の境界を求める:
+  //   prev = ev.end <= cursorTime のうち end が最も遅いイベント (= 空き開始)
+  //   next = ev.start >  cursorTime のうち start が最も早いイベント (= 空き終了)
+  // また、別レーンも含めて cursorTime がいずれかのバー内側にある場合は、
+  // 「いま走っている予定がある = 空きではない」のでオーバーレイを出さない。
+  let prev: TimelineEventLite | null = null;
   let next: TimelineEventLite | null = null;
   for (const ev of allTimelineEvents.value) {
-    if (ev.start <= cursorTime) continue;
-    if (!next || ev.start < next.start) next = ev;
+    if (ev.start <= cursorTime && cursorTime < ev.end) {
+      if (freeHover.value?.lane === lane) freeHover.value = null;
+      return;
+    }
+    if (ev.end <= cursorTime) {
+      if (!prev || ev.end > prev.end) prev = ev;
+    } else if (ev.start > cursorTime) {
+      if (!next || ev.start < next.start) next = ev;
+    }
   }
-  const nextStart = next ? next.start : end;
-  const gapMs = Math.max(0, nextStart - cursorTime);
+  const rangeStart = prev ? prev.end : start;
+  const rangeEnd = next ? next.start : end;
+  const gapMs = Math.max(0, rangeEnd - rangeStart);
   const gapMinutes = Math.round(gapMs / 60000);
   if (gapMinutes < 1) {
     if (freeHover.value?.lane === lane) freeHover.value = null;
     return;
   }
+  const leftPct = ((rangeStart - start) / span) * 100;
   const widthPct = (gapMs / span) * 100;
 
   freeHover.value = {
     lane,
-    leftPct: ratio * 100,
+    leftPct,
     widthPct,
-    cursorTime,
-    nextStart,
+    rangeStart,
+    rangeEnd,
+    prevLane: prev?.lane ?? null,
+    prevTitle: prev?.title ?? null,
     nextLane: next?.lane ?? null,
     nextTitle: next?.title ?? null,
     gapMinutes,
@@ -355,6 +375,16 @@ function onTrackMouseMove(e: MouseEvent, lane: LaneKey) {
 function onTrackMouseLeave(lane: LaneKey) {
   if (freeHover.value?.lane === lane) freeHover.value = null;
 }
+
+// 日付ナビなどで summary が差し替わったタイミングでオーバーレイ状態を残さない。
+// マウスがタイムライン上にとどまったまま別日へ遷移すると、新しい timelineSpan
+// に対して古い rangeStart / rangeEnd で再描画されてしまうため (Codex review)。
+watch(
+  () => props.summary,
+  () => {
+    freeHover.value = null;
+  },
+);
 
 function formatGap(min: number): string {
   if (min < 60) return `${min}m`;
@@ -809,14 +839,14 @@ onBeforeUnmount(() => {
                     <span class="tl-free__tooltip-time">
                       {{
                         formatHourMinute(
-                          new Date(freeHover.cursorTime).toISOString(),
+                          new Date(freeHover.rangeStart).toISOString(),
                           timezone,
                         )
                       }}
                       →
                       {{
                         formatHourMinute(
-                          new Date(freeHover.nextStart).toISOString(),
+                          new Date(freeHover.rangeEnd).toISOString(),
                           timezone,
                         )
                       }}
@@ -899,14 +929,14 @@ onBeforeUnmount(() => {
                     <span class="tl-free__tooltip-time">
                       {{
                         formatHourMinute(
-                          new Date(freeHover.cursorTime).toISOString(),
+                          new Date(freeHover.rangeStart).toISOString(),
                           timezone,
                         )
                       }}
                       →
                       {{
                         formatHourMinute(
-                          new Date(freeHover.nextStart).toISOString(),
+                          new Date(freeHover.rangeEnd).toISOString(),
                           timezone,
                         )
                       }}
@@ -984,14 +1014,14 @@ onBeforeUnmount(() => {
                     <span class="tl-free__tooltip-time">
                       {{
                         formatHourMinute(
-                          new Date(freeHover.cursorTime).toISOString(),
+                          new Date(freeHover.rangeStart).toISOString(),
                           timezone,
                         )
                       }}
                       →
                       {{
                         formatHourMinute(
-                          new Date(freeHover.nextStart).toISOString(),
+                          new Date(freeHover.rangeEnd).toISOString(),
                           timezone,
                         )
                       }}
@@ -1979,8 +2009,8 @@ $font-en:
     rgba(26, 24, 20, 0) 6px,
     rgba(26, 24, 20, 0) 12px
   );
-  border-left: 1px dashed rgba(26, 24, 20, 0.45);
   border-right: 1px dashed rgba(26, 24, 20, 0.45);
+  border-left: 1px dashed rgba(26, 24, 20, 0.45);
   border-radius: 4px;
   transform: translateY(-50%);
   pointer-events: none;
@@ -2031,14 +2061,14 @@ $font-en:
 
 .tl-free__tooltip-next {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.82);
   line-height: 1.35;
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .tl-free__tooltip-lane {
-  display: inline-block;
   margin-right: 4px;
   padding: 1px 6px;
+  display: inline-block;
   font-size: 10px;
   font-weight: 600;
   color: #fff;
