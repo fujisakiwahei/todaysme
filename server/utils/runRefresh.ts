@@ -113,6 +113,78 @@ function summarizeError(err: unknown): string {
   return "unknown error";
 }
 
+interface ProviderRefreshOutcome {
+  statuses: SyncStatusEntry[];
+  errors: ApiErrorItem[];
+}
+
+// 1 provider 分の refresh (ロック取得 → sync → status 更新)。
+// 部分失敗を許容するため、内部で発生したエラーはすべて outcome に詰めて
+// 正常 resolve する。呼び出し元の Promise.allSettled で reject 扱いされない
+// ようにすることで、他 provider の成功結果が握り潰されないようにしている。
+async function refreshProvider(
+  provider: ServiceProvider,
+  ctx: ProviderSyncContext,
+): Promise<ProviderRefreshOutcome> {
+  const { userId, targetDate } = ctx;
+  const outcome: ProviderRefreshOutcome = { statuses: [], errors: [] };
+
+  let lock;
+  try {
+    lock = await tryAcquireSyncLock(userId, targetDate, provider);
+  } catch (e) {
+    // ロック取得自体に失敗 = DB 異常。ステータス更新もできないので errors のみに残す。
+    outcome.errors.push({ service: provider, message: summarizeError(e) });
+    return outcome;
+  }
+
+  if (!lock.acquired) {
+    // 他 process が走行中 (in_progress)。現在のステータスをそのまま返す。
+    if (lock.current) {
+      outcome.statuses.push(toStatusEntry(provider, lock.current));
+    }
+    return outcome;
+  }
+
+  // lock.acquired=true なら lockId は必ず非 null (型上は string|null)。
+  const lockId = lock.lockId!;
+
+  try {
+    await RUNNERS[provider](ctx);
+    const updated = await markSyncSuccess(userId, targetDate, provider, lockId);
+    // updated === null = 自分の lock が stale 奪取された。新 worker が
+    // 最終 status を書くので、ここでは何も push しない。
+    if (updated) outcome.statuses.push(toStatusEntry(provider, updated));
+  } catch (e) {
+    // ServiceNotConnectedError はロック取得後に判明する稀ケース (connections と
+    // 復号結果がズレている等)。それも含めて failed として記録する。
+    const message =
+      e instanceof ServiceNotConnectedError
+        ? "service is not connected"
+        : summarizeError(e);
+    try {
+      const updated = await markSyncFailed(
+        userId,
+        targetDate,
+        provider,
+        lockId,
+        message,
+      );
+      if (updated) outcome.statuses.push(toStatusEntry(provider, updated));
+      // updated === null も「lock を奪われた」だけなので errors 側にだけ載せる。
+    } catch (markErr) {
+      // 万一 failed への更新も失敗したら errors にだけ残す。
+      outcome.errors.push({
+        service: provider,
+        message: `mark failed errored: ${summarizeError(markErr)}`,
+      });
+    }
+    outcome.errors.push({ service: provider, message });
+  }
+
+  return outcome;
+}
+
 export async function refreshUserDate(
   userId: string,
   targetDate: string,
@@ -130,69 +202,29 @@ export async function refreshUserDate(
   const sync_statuses: SyncStatusEntry[] = [];
   const errors: ApiErrorItem[] = [];
 
-  // 部分失敗を許容するため、各サービスを順に処理する。1 サービスの失敗が
-  // 他の sync を巻き込まないよう必ず try/catch で受ける。
-  for (const provider of ALL_PROVIDERS) {
-    if (!connected.has(provider)) continue;
+  // 各 provider は独立したテーブル / 外部 API に書くため並列実行する (Issue #140)。
+  // refreshProvider 内で全例外を outcome に詰めて正常 resolve するので
+  // Promise.allSettled の rejected ケースは「想定外バグ」のみ。
+  const ctx = { userId, targetDate, timezone };
+  const targets = ALL_PROVIDERS.filter((p) => connected.has(p));
+  const settled = await Promise.allSettled(
+    targets.map((provider) => refreshProvider(provider, ctx)),
+  );
 
-    let lock;
-    try {
-      lock = await tryAcquireSyncLock(userId, targetDate, provider);
-    } catch (e) {
-      // ロック取得自体に失敗 = DB 異常。ステータス更新もできないので errors のみに残す。
-      errors.push({ service: provider, message: summarizeError(e) });
-      continue;
+  // ALL_PROVIDERS の順序を維持するため targets と settled の index を合わせて読む。
+  settled.forEach((result, index) => {
+    const provider = targets[index]!;
+    if (result.status === "fulfilled") {
+      sync_statuses.push(...result.value.statuses);
+      errors.push(...result.value.errors);
+    } else {
+      // refreshProvider が想定外 throw した場合のフォールバック。
+      errors.push({
+        service: provider,
+        message: summarizeError(result.reason),
+      });
     }
-
-    if (!lock.acquired) {
-      // 他 process が走行中 (in_progress)。現在のステータスをそのまま返す。
-      if (lock.current) {
-        sync_statuses.push(toStatusEntry(provider, lock.current));
-      }
-      continue;
-    }
-
-    // lock.acquired=true なら lockId は必ず非 null (型上は string|null)。
-    const lockId = lock.lockId!;
-
-    try {
-      await RUNNERS[provider]({ userId, targetDate, timezone });
-      const updated = await markSyncSuccess(
-        userId,
-        targetDate,
-        provider,
-        lockId,
-      );
-      // updated === null = 自分の lock が stale 奪取された。新 worker が
-      // 最終 status を書くので、ここでは何も push しない。
-      if (updated) sync_statuses.push(toStatusEntry(provider, updated));
-    } catch (e) {
-      // ServiceNotConnectedError はロック取得後に判明する稀ケース (connections と
-      // 復号結果がズレている等)。それも含めて failed として記録する。
-      const message =
-        e instanceof ServiceNotConnectedError
-          ? "service is not connected"
-          : summarizeError(e);
-      try {
-        const updated = await markSyncFailed(
-          userId,
-          targetDate,
-          provider,
-          lockId,
-          message,
-        );
-        if (updated) sync_statuses.push(toStatusEntry(provider, updated));
-        // updated === null も「lock を奪われた」だけなので errors 側にだけ載せる。
-      } catch (markErr) {
-        // 万一 failed への更新も失敗したら errors にだけ残す。
-        errors.push({
-          service: provider,
-          message: `mark failed errored: ${summarizeError(markErr)}`,
-        });
-      }
-      errors.push({ service: provider, message });
-    }
-  }
+  });
 
   return { sync_statuses, errors };
 }
