@@ -458,10 +458,7 @@ onMounted(() => {
         <p v-if="loading" class="settings__loading">読み込み中...</p>
 
         <ul v-else class="conn-list">
-          <template
-            v-for="conn in nonGoogleConnections"
-            :key="conn.provider"
-          >
+          <template v-for="conn in nonGoogleConnections" :key="conn.provider">
             <li
               class="conn"
               :class="`conn--${providerMeta[conn.provider].variant}`"
@@ -593,10 +590,7 @@ onMounted(() => {
               </p>
 
               <!-- 接続済みアカウント (0..N 件) -->
-              <ul
-                v-if="googleAccounts.length > 0"
-                class="g-accounts"
-              >
+              <ul v-if="googleAccounts.length > 0" class="g-accounts">
                 <li
                   v-for="acc in googleAccounts"
                   :key="acc.connection_id"
@@ -610,10 +604,7 @@ onMounted(() => {
                         `Google (...${(acc.provider_user_id ?? "").slice(-4)})`
                       }}
                     </span>
-                    <span
-                      class="g-accounts__badge"
-                      :data-status="acc.status"
-                    >
+                    <span class="g-accounts__badge" :data-status="acc.status">
                       {{
                         acc.status === "needs_reauth"
                           ? "再認可が必要"
@@ -693,7 +684,9 @@ onMounted(() => {
                     </p>
 
                     <ul
-                      v-else-if="getPane(acc.connection_id).calendars.length > 0"
+                      v-else-if="
+                        getPane(acc.connection_id).calendars.length > 0
+                      "
                       class="conn__exclude-list"
                     >
                       <li
@@ -715,10 +708,7 @@ onMounted(() => {
                           <span class="conn__exclude-name">
                             {{ cal.name || "（無題のカレンダー）" }}
                           </span>
-                          <span
-                            v-if="cal.primary"
-                            class="conn__exclude-badge"
-                          >
+                          <span v-if="cal.primary" class="conn__exclude-badge">
                             Primary
                           </span>
                         </label>
@@ -782,7 +772,6 @@ onMounted(() => {
                   }}
                 </button>
               </div>
-
             </li>
           </template>
         </ul>
