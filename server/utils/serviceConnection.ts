@@ -451,6 +451,49 @@ export async function disconnectGoogleConnectionById(
   return { found: true };
 }
 
+// Issue #139: 接続行 id 単位で「アカウントごと削除」する hard delete。
+//
+//   - 連携解除 (disconnect) では行を残し soft 状態にするだけだが、ユーザーが
+//     完全に該当アカウントを Today's ME から取り除きたいケース (= 過去 events も
+//     見えないように消し、settings の一覧からも消したい) のための入口。
+//   - 連携状態に関わらず物理削除する (前提として settings UI 側で disconnected
+//     のときだけ呼ぶ運用を取るが、API 側では status を制約しない)。
+//   - 関連する google_calendar_events / google_excluded_calendars は
+//     `on delete cascade` (Phase 4 / Phase 5 migration) で自動的に消える。
+//   - 戻り値は disconnect 版と同じく { found } のみ。404 判定は呼び出し元責務。
+export async function deleteGoogleConnectionPermanently(
+  userId: string,
+  connectionId: string,
+): Promise<DisconnectByIdResult> {
+  const admin = getSupabaseAdmin();
+
+  const { data: row, error: readErr } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select("id")
+    .eq("id", connectionId)
+    .eq("user_id", userId)
+    .eq("provider", "google")
+    .maybeSingle();
+  if (readErr) {
+    throw new Error(`failed to read connection: ${readErr.message}`);
+  }
+  if (!row) {
+    return { found: false };
+  }
+
+  const { error: delErr } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .delete()
+    .eq("id", connectionId)
+    .eq("user_id", userId)
+    .eq("provider", "google");
+  if (delErr) {
+    throw new Error(`failed to delete connection: ${delErr.message}`);
+  }
+
+  return { found: true };
+}
+
 // =============================================================================
 // Issue #75: 遅延型 access_token 再発行
 //

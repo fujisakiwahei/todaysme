@@ -318,6 +318,39 @@ async function disconnectGoogleAccount(account: GoogleAccount) {
   }
 }
 
+// Issue #139: 接続行ごと物理削除する。soft disconnect (連携解除) と違い、
+// アカウントの行と過去 events を Today's ME から完全に取り除く。
+// disconnected 状態でのみ UI から呼ばれる前提だが、API 側でも status を
+// 制約していないため、誤って connected 中に呼ばれても削除される。
+// 取り返しがつかない操作なので confirm で警告する。
+async function deleteGoogleAccount(account: GoogleAccount) {
+  const label = account.account_email ?? account.provider_user_id ?? "Google";
+  if (
+    !confirm(
+      `Google アカウント (${label}) を Today's ME から削除しますか？\n` +
+        `過去に取得した予定データも含めて完全に削除されます。この操作は取り消せません。`,
+    )
+  )
+    return;
+  googleSubmittingId.value = account.connection_id;
+  errorMessage.value = null;
+  successMessage.value = null;
+  try {
+    const headers = await bearerHeaders();
+    await $fetch(`/api/connections/google/${account.connection_id}/account`, {
+      method: "DELETE",
+      headers,
+    });
+    successMessage.value = `Google アカウント (${label}) を削除しました。`;
+    await loadConnections();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "failed to delete account";
+    errorMessage.value = `Google アカウントの削除に失敗しました: ${msg}`;
+  } finally {
+    googleSubmittingId.value = null;
+  }
+}
+
 type ProviderMeta = {
   variant: "sleep" | "calendar" | "work";
   name: string;
@@ -634,7 +667,24 @@ onMounted(() => {
                     >
                       再認可する
                     </button>
+                    <!-- Issue #139: 既に未接続の行は「連携解除」が無意味なので、
+                         代わりに「アカウント削除」(行ごと物理削除) を出す。
+                         needs_reauth / error / connected では従来通り soft の
+                         「連携解除」を残す。 -->
                     <button
+                      v-if="acc.status === 'disconnected'"
+                      type="button"
+                      class="btn btn--danger"
+                      :disabled="
+                        submitting !== null ||
+                        googleSubmittingId === acc.connection_id
+                      "
+                      @click="deleteGoogleAccount(acc)"
+                    >
+                      アカウント削除
+                    </button>
+                    <button
+                      v-else
                       type="button"
                       class="btn btn--ghost"
                       :disabled="
@@ -1399,6 +1449,19 @@ $font-en:
   &:hover:not(:disabled) {
     color: $color-text;
     background: $color-surface;
+  }
+}
+
+// Issue #139: アカウント削除など破壊的操作向け。連携解除 (ghost) と並べる
+// ケースを想定して、塗りつぶしではなく赤いアウトラインに留める。
+.btn--danger {
+  color: $color-error;
+  background: #fff;
+  border: 1px solid $color-error;
+
+  &:hover:not(:disabled) {
+    color: #fff;
+    background: $color-error;
   }
 }
 </style>
