@@ -11,12 +11,12 @@ import {
   summaryRefreshRequestSchema,
   summaryRefreshResponseSchema,
 } from "../../../shared/schemas";
-import { requireUserId } from "../../utils/auth";
+import { requireUserIdAllowCookie } from "../../utils/auth";
 import { refreshUserDate } from "../../utils/runRefresh";
 import { parseOrThrow } from "../../utils/validation";
 
 export default defineEventHandler(async (event) => {
-  const userId = await requireUserId(event);
+  const userId = await requireUserIdAllowCookie(event);
   const raw = await readBody(event);
   const body = parseOrThrow(summaryRefreshRequestSchema, raw);
 
