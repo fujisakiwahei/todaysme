@@ -600,6 +600,32 @@ onBeforeUnmount(() => {
                     }}
                   </dd>
                 </div>
+                <div>
+                  <dt>ベッドにいた時間</dt>
+                  <dd>
+                    <template
+                      v-if="
+                        formatMinutes(
+                          summary.todays_me.oura.time_in_bed_minutes,
+                        )
+                      "
+                    >
+                      {{
+                        formatMinutes(
+                          summary.todays_me.oura.time_in_bed_minutes,
+                        )!.hours
+                      }}h
+                      {{
+                        String(
+                          formatMinutes(
+                            summary.todays_me.oura.time_in_bed_minutes,
+                          )!.minutes,
+                        ).padStart(2, "0")
+                      }}m
+                    </template>
+                    <template v-else>—</template>
+                  </dd>
+                </div>
               </dl>
             </template>
             <p v-else class="metric__placeholder">
@@ -1122,8 +1148,22 @@ onBeforeUnmount(() => {
                     {{ formatHourMinute(s.wake_at, timezone) }}
                   </span>
                   <span class="entry__title">睡眠</span>
-                  <span class="entry__dur">
-                    {{ formatDuration(s.sleep_start_at, s.wake_at) }}
+                  <span class="entry__dur entry__dur--sleep">
+                    <span class="entry__dur-main">
+                      <template v-if="formatMinutes(s.sleep_minutes)">
+                        {{ formatMinutes(s.sleep_minutes)!.hours }}h
+                        {{
+                          String(
+                            formatMinutes(s.sleep_minutes)!.minutes,
+                          ).padStart(2, "0")
+                        }}m
+                      </template>
+                      <template v-else>—</template>
+                    </span>
+                    <span class="entry__dur-sub">
+                      ベッド
+                      {{ formatDuration(s.sleep_start_at, s.wake_at) }}
+                    </span>
                   </span>
                 </li>
               </ul>
@@ -2570,6 +2610,26 @@ $font-en:
   font-family: $font-en;
   font-variant-numeric: tabular-nums;
   font-size: 13px;
+  font-weight: 500;
+  color: $color-text-muted;
+}
+
+// 睡眠エントリのみ「実際に寝た時間」と「ベッドにいた時間」を上下に並べる。
+.entry__dur--sleep {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+}
+
+.entry__dur-main {
+  font-size: 16px;
+  font-weight: 600;
+  color: $color-text;
+}
+
+.entry__dur-sub {
+  font-size: 11px;
   font-weight: 500;
   color: $color-text-muted;
 }

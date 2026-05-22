@@ -82,7 +82,11 @@ export const timelineSchema = z.object({
 // -----------------------------------------------------------------------------
 
 export const todaysMeOuraSchema = z.object({
+  // Oura `total_sleep_duration` を分換算した「実際に寝た時間」。
   sleep_minutes: z.number().int().nullable(),
+  // bedtime_start → bedtime_end (= sleep_start_at → wake_at) の長さ。
+  // 「ベッドにいた時間」として sleep_minutes と並べて表示する (dashboard Oura)。
+  time_in_bed_minutes: z.number().int().nullable(),
   wake_at: isoDateTimeSchema.nullable(),
 });
 
