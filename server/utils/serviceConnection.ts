@@ -27,8 +27,13 @@ export interface ServiceConnectionRow {
   id: string;
   user_id: string;
   provider: ServiceProvider;
-  status: "connected" | "disconnected" | "error";
+  // Issue #131 Phase 2: 'needs_reauth' を追加。Phase 2 migration で sub 未取得の
+  // 既存 Google 行を一旦この状態に落とし、ユーザーに再認可を促す。
+  status: "connected" | "disconnected" | "error" | "needs_reauth";
   provider_user_id: string | null;
+  // Issue #131 Phase 2: id_token の email claim から取った表示用メアド。
+  // 設定 UI に「どのアカウントか」を見せる用途のみ。
+  account_email: string | null;
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   token_expires_at: string | null;
@@ -41,7 +46,7 @@ export interface UpsertServiceConnectionInput {
   userId: string;
   provider: ServiceProvider;
   accessToken: string;
-  // refresh_token / scopes / providerUserId は共通で 3 状態を区別する:
+  // refresh_token / scopes / providerUserId / accountEmail は共通で 3 状態を区別する:
   //   - undefined → 既存の DB 値を保持する
   //                 (Google は再認可時に refresh_token を返さない / refresh
   //                 レスポンスに scope が含まれないことがあり、null で
@@ -52,6 +57,8 @@ export interface UpsertServiceConnectionInput {
   expiresInSeconds?: number | null;
   scopes?: readonly string[] | string | null;
   providerUserId?: string | null;
+  // Issue #131 Phase 2: id_token の email claim から取った表示用メアド。
+  accountEmail?: string | null;
 }
 
 function packEncrypted(payload: EncryptedPayload): string {
@@ -64,13 +71,15 @@ export async function upsertServiceConnection(
   const admin = getSupabaseAdmin();
   const now = new Date();
 
-  // 既存行は 1 回だけ読む。refresh_token / scopes / provider_user_id を
-  // undefined 保持仕様で扱うのに加え、connected_at は「初回接続時刻」を
-  // 保持するため (refresh のたびに上書きされると /api/connections の
-  // 表示が常に「今接続した」になってしまう)。
+  // 既存行は 1 回だけ読む。refresh_token / scopes / provider_user_id /
+  // account_email を undefined 保持仕様で扱うのに加え、connected_at は
+  // 「初回接続時刻」を保持するため (refresh のたびに上書きされると
+  // /api/connections の表示が常に「今接続した」になってしまう)。
   const { data: existing, error: existingErr } = await admin
     .from(SERVICE_CONNECTIONS_TABLE)
-    .select("refresh_token_encrypted, provider_user_id, scopes, connected_at")
+    .select(
+      "refresh_token_encrypted, provider_user_id, account_email, scopes, connected_at",
+    )
     .eq("user_id", input.userId)
     .eq("provider", input.provider)
     .maybeSingle();
@@ -112,6 +121,11 @@ export async function upsertServiceConnection(
       ? (existing?.provider_user_id ?? null)
       : input.providerUserId;
 
+  const accountEmail =
+    input.accountEmail === undefined
+      ? (existing?.account_email ?? null)
+      : input.accountEmail;
+
   const connectedAt = existing?.connected_at ?? now.toISOString();
 
   const { error } = await admin.from(SERVICE_CONNECTIONS_TABLE).upsert(
@@ -120,6 +134,7 @@ export async function upsertServiceConnection(
       provider: input.provider,
       status: "connected",
       provider_user_id: providerUserId,
+      account_email: accountEmail,
       access_token_encrypted: accessEnc,
       refresh_token_encrypted: refreshEnc,
       token_expires_at: tokenExpiresAt,
@@ -142,7 +157,7 @@ export async function listServiceConnections(
   const { data, error } = await admin
     .from(SERVICE_CONNECTIONS_TABLE)
     .select(
-      "id, user_id, provider, status, provider_user_id, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, connected_at, updated_at",
+      "id, user_id, provider, status, provider_user_id, account_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, connected_at, updated_at",
     )
     .eq("user_id", userId);
 
@@ -217,7 +232,7 @@ export class OauthUnauthorizedError extends Error {
 }
 
 interface ServiceConnectionTokenRow {
-  status: "connected" | "disconnected" | "error";
+  status: "connected" | "disconnected" | "error" | "needs_reauth";
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   token_expires_at: string | null;

@@ -235,10 +235,16 @@ const providerMeta: Record<ServiceProvider, ProviderMeta> = {
 function statusInfo(s: ConnectionSummary): {
   label: string;
   emoji: string;
-  variant: "connected" | "disconnected" | "error";
+  variant: "connected" | "disconnected" | "error" | "needs_reauth";
 } {
   if (s.status === "connected" && s.has_token) {
     return { label: "接続中", emoji: "✅", variant: "connected" };
+  }
+  if (s.status === "needs_reauth") {
+    // Issue #131 Phase 2: 既存接続だが provider_user_id (sub) を取り直す
+    // 必要がある状態。loadConnectionForToken はこの行を未接続扱いするため、
+    // 表示上もユーザーに再認可を促すラベルにする。
+    return { label: "再認可が必要", emoji: "⚠️", variant: "needs_reauth" };
   }
   if (s.status === "error") {
     return { label: "エラー", emoji: "⚠️", variant: "error" };
@@ -367,6 +373,22 @@ onMounted(() => {
             </div>
 
             <div v-else-if="conn.provider === 'google'" class="conn__actions">
+              <!-- Issue #131 Phase 2: needs_reauth のときは再認可が必須である
+                   ことをバナーで明示する。クリック先は通常の再認可 (start) と
+                   同じ。再認可するとサーバ側で id_token を JWKS 検証して
+                   provider_user_id / account_email を埋め、自動で connected に
+                   戻る。 -->
+              <p
+                v-if="conn.status === 'needs_reauth'"
+                class="conn__reauth-banner"
+                role="alert"
+              >
+                Google アカウント連携の仕様変更があり、再認可が必要です。
+                「再認可する」ボタンを押すと自動で復旧します。
+              </p>
+              <p v-if="conn.account_email" class="conn__account-email">
+                {{ conn.account_email }}
+              </p>
               <button
                 type="button"
                 class="btn btn--primary"
@@ -680,6 +702,10 @@ $font-en:
     border-color: $color-error;
   }
 
+  &[data-status="needs_reauth"] {
+    border-color: $color-warning;
+  }
+
   &[data-status="disconnected"] {
     background: $color-surface;
   }
@@ -783,6 +809,31 @@ $font-en:
     background: $color-error-bg;
     border: 1px solid rgba(197, 48, 48, 0.25);
   }
+
+  .conn[data-status="needs_reauth"] & {
+    color: $color-warning;
+    background: #fff7e0;
+    border: 1px solid rgba(183, 121, 31, 0.35);
+  }
+}
+
+.conn__reauth-banner {
+  padding: 8px 12px;
+  width: 100%;
+  font-size: 12px;
+  line-height: 1.5;
+  color: #6a4d00;
+  background: #fff7e0;
+  border: 1px solid #f0d27a;
+  border-radius: 8px;
+}
+
+.conn__account-email {
+  width: 100%;
+  font-family: $font-mono;
+  font-size: 12px;
+  color: $color-text-muted;
+  word-break: break-all;
 }
 
 .conn__actions {

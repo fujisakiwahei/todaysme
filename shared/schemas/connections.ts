@@ -67,6 +67,9 @@ export const connectionSummarySchema = z.object({
   has_token: z.boolean(),
   connected_at: isoDateTimeSchema.nullable(),
   token_expires_at: isoDateTimeSchema.nullable(),
+  // Issue #131 Phase 2: 設定 UI に「どの Google アカウントか」を識別表示する
+  // ためだけの表示用フィールド。Oura / Toggl では常に null。
+  account_email: z.string().nullable(),
 });
 
 export const connectionListResponseSchema = z.object({

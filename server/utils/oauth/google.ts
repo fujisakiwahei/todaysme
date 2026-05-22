@@ -24,9 +24,16 @@ const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 // 追加で calendar.calendarlist.readonly: SPEC §3 の分類ルールに必要な
 // calendarList.list (カレンダー一覧 / calendar_name) を引くために必要。
 // (events.readonly 単体では calendarList.list が 403 になる)
+//
+// Issue #131 (Phase 2): openid + email を追加。
+//   - openid : token endpoint レスポンスに id_token を含めるための必須スコープ。
+//   - email  : id_token に email / email_verified claim を含めるためのスコープ。
+//     設定 UI でアカウントを識別表示する用 (account_email)。
 export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events.readonly",
   "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
+  "openid",
+  "email",
 ] as const;
 
 interface GoogleOauthEnv {
@@ -42,9 +49,19 @@ function loadEnv(): GoogleOauthEnv {
   return { clientId, clientSecret };
 }
 
+export interface BuildGoogleAuthorizeUrlOptions {
+  // Issue #131 Phase 3: アカウント追加フローでは
+  // `prompt=consent select_account` を指定して Google 側のアカウント
+  // ピッカーを必ず出す。デフォルト (再認可 / 初回接続) は consent のみ。
+  // (consent を外すと Google が refresh_token を返さなくなることがあるため、
+  //  少なくとも consent は常に付ける。)
+  selectAccount?: boolean;
+}
+
 export function buildGoogleAuthorizeUrl(
   state: string,
   redirectUri: string,
+  options: BuildGoogleAuthorizeUrlOptions = {},
 ): string {
   const env = loadEnv();
   const url = new URL(GOOGLE_AUTHORIZE_URL);
@@ -55,7 +72,10 @@ export function buildGoogleAuthorizeUrl(
   url.searchParams.set("state", state);
   // refresh_token を確実に得るための定型
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set("prompt", "consent");
+  url.searchParams.set(
+    "prompt",
+    options.selectAccount ? "consent select_account" : "consent",
+  );
   url.searchParams.set("include_granted_scopes", "true");
   return url.toString();
 }

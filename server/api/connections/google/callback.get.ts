@@ -1,9 +1,13 @@
 // =============================================================================
 // GET /api/connections/google/callback
-// SPEC §6 / Issue #52
+// SPEC §6 / Issue #52 / #131 (Phase 2)
 // =============================================================================
 import { oauthCallbackQuerySchema } from "../../../../shared/schemas";
 import { exchangeGoogleCode } from "../../../utils/oauth/google";
+import {
+  IdTokenVerificationError,
+  verifyGoogleIdToken,
+} from "../../../utils/oauth/idTokenVerify";
 import { resolveOauthRedirectUri } from "../../../utils/oauth/redirectUri";
 import { OauthStateError, verifyOauthState } from "../../../utils/oauthState";
 import { upsertServiceConnection } from "../../../utils/serviceConnection";
@@ -57,6 +61,33 @@ export default defineEventHandler(async (event) => {
     // (token 交換時の redirect_uri は authorize 時と必ず一致させる必要がある)
     const redirectUri = resolveOauthRedirectUri(event, "google");
     const token = await exchangeGoogleCode(query.code, redirectUri);
+
+    // Issue #131 Phase 2: id_token を JWKS で検証して sub / email を取得する。
+    // 未検証の claim を provider_user_id に使うとアカウント mis-link に
+    // 繋がるため必ず検証する (設計ドラフト §4.2 (2) / Codex review #127 P1)。
+    //
+    // openid scope を含めて認可しているので id_token は必ず返るはずだが、
+    // 念のため欠落しているケースは「再認可してください」に倒す。
+    if (!token.id_token) {
+      return redirectToSettings(event, {
+        provider: "google",
+        error: "missing_id_token",
+      });
+    }
+
+    let claims: Awaited<ReturnType<typeof verifyGoogleIdToken>>;
+    try {
+      claims = await verifyGoogleIdToken(token.id_token);
+    } catch (e) {
+      const reason =
+        e instanceof IdTokenVerificationError ? e.reason : "id_token_invalid";
+      console.error("[google callback] id_token verification failed", e);
+      return redirectToSettings(event, {
+        provider: "google",
+        error: `id_token_${reason}`,
+      });
+    }
+
     await upsertServiceConnection({
       userId,
       provider: "google",
@@ -66,6 +97,8 @@ export default defineEventHandler(async (event) => {
       refreshToken: token.refresh_token,
       expiresInSeconds: token.expires_in ?? null,
       scopes: token.scope ?? null,
+      providerUserId: claims.sub,
+      accountEmail: claims.email,
     });
   } catch {
     return redirectToSettings(event, {

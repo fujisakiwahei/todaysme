@@ -29,10 +29,16 @@ export const syncStatusSchema = z.enum([
 ]);
 
 // service_connections.status
+//   - needs_reauth: Issue #131 Phase 2。OAuth scope の拡張 (openid email)
+//     や id_token 検証フローへの移行で、既存トークンは生きているが
+//     provider_user_id (sub) / account_email が未取得のため再認可を促す状態。
+//     loadConnectionForToken はこの行を ServiceNotConnectedError として扱い、
+//     settings UI が「再認可してください」バナーを出す。
 export const connectionStatusSchema = z.enum([
   "connected",
   "disconnected",
   "error",
+  "needs_reauth",
 ]);
 
 // IANA タイムゾーン (DB は text)。'Asia/Tokyo' 等
