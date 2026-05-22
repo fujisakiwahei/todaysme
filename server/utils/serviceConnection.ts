@@ -331,6 +331,8 @@ export class OauthUnauthorizedError extends Error {
 }
 
 interface ServiceConnectionTokenRow {
+  id: string;
+  provider: ServiceProvider;
   status: "connected" | "disconnected" | "error" | "needs_reauth";
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
@@ -340,6 +342,11 @@ interface ServiceConnectionTokenRow {
   updated_at: string;
 }
 
+// 既存の (user_id, provider) で接続行を 1 件特定する経路。Oura / Toggl
+// (= partial unique で 1 行に絞られる) で引き続き使う。
+// Google は Phase 4 以降、複数行になりうるため
+// loadConnectionForTokenById を使う (本関数を Google で呼ぶと
+// `.maybeSingle()` の「多重行」エラーになる)。
 async function loadConnectionForToken(
   userId: string,
   provider: ServiceProvider,
@@ -348,7 +355,7 @@ async function loadConnectionForToken(
   const { data, error } = await admin
     .from(SERVICE_CONNECTIONS_TABLE)
     .select(
-      "status, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at",
+      "id, provider, status, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at",
     )
     .eq("user_id", userId)
     .eq("provider", provider)
@@ -363,6 +370,64 @@ async function loadConnectionForToken(
   return data as ServiceConnectionTokenRow;
 }
 
+// Issue #131 Phase 4: 接続行 id で 1 件特定する経路。Google 複数アカウント
+// 対応の sync ループ (syncGoogleForDate) や接続単位の calendarList 取得
+// (Phase 5 の calendars.get) から使う。
+async function loadConnectionForTokenById(
+  connectionId: string,
+): Promise<ServiceConnectionTokenRow> {
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select(
+      "id, provider, status, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at",
+    )
+    .eq("id", connectionId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`failed to read service_connections: ${error.message}`);
+  }
+  if (!data || data.status !== "connected" || !data.access_token_encrypted) {
+    // 行が引けない / status が不適合 → 未接続扱い。provider が分からなく
+    // ても呼び出し側 (Phase 4 の sync ループ) は接続行 list を持ったうえで
+    // ループに入るので、provider は data?.provider にフォールバックで載せる。
+    const provider =
+      (data?.provider as ServiceProvider | undefined) ?? "google";
+    throw new ServiceNotConnectedError(provider);
+  }
+  return data as ServiceConnectionTokenRow;
+}
+
+// Issue #131 Phase 4: ある user の Google 接続行を「sync 対象になりうる」
+// もの (status='connected') のみ取得する。複数アカウント sync ループの
+// 入口で使う。Oura / Toggl は単一行前提で従来通り withFreshAccessToken を
+// (user, provider) で呼ぶため、この helper は Google 専用。
+export interface GoogleConnectionForSync {
+  id: string;
+  provider_user_id: string | null;
+  account_email: string | null;
+}
+
+export async function listConnectedGoogleConnections(
+  userId: string,
+): Promise<GoogleConnectionForSync[]> {
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select("id, provider_user_id, account_email")
+    .eq("user_id", userId)
+    .eq("provider", "google")
+    .eq("status", "connected")
+    .order("connected_at", { ascending: true });
+  if (error) {
+    throw new Error(
+      `failed to list google connections: ${error.message}`,
+    );
+  }
+  return (data ?? []) as GoogleConnectionForSync[];
+}
+
 function decryptStoredToken(packed: string, label: string): string {
   let payload: EncryptedPayload;
   try {
@@ -374,8 +439,7 @@ function decryptStoredToken(packed: string, label: string): string {
 }
 
 async function markConnectionError(
-  userId: string,
-  provider: ServiceProvider,
+  connectionId: string,
   expectedUpdatedAt: string,
 ): Promise<void> {
   // status="error" にすると次回 loadConnectionForToken が ServiceNotConnectedError を
@@ -385,12 +449,14 @@ async function markConnectionError(
   // しまわないよう、楽観ロックとして「読み取り時点の updated_at と一致する場合のみ」
   // 更新する。並走側が既に新しいトークンを書き込んでいれば updated_at が動くので
   // フィルタが一致せず no-op になる。
+  //
+  // Issue #131 Phase 4: 接続 id で絞ることで、複数 Google アカウントのうち
+  // 片方の refresh 失敗が他方の行を巻き込まないようにする。
   const admin = getSupabaseAdmin();
   await admin
     .from(SERVICE_CONNECTIONS_TABLE)
     .update({ status: "error", updated_at: new Date().toISOString() })
-    .eq("user_id", userId)
-    .eq("provider", provider)
+    .eq("id", connectionId)
     .eq("updated_at", expectedUpdatedAt);
 }
 
@@ -438,13 +504,12 @@ async function callProviderRefresh(
 // 行が変わっていないときのみ status=error にする)。並走 refresh が片方成功・
 // 片方失敗するケースで healthy な接続を error 状態に巻き戻さないため。
 async function performRefresh(
-  userId: string,
-  provider: ServiceProvider,
-  refreshTokenEncrypted: string | null,
-  expectedUpdatedAt: string,
+  row: ServiceConnectionTokenRow,
 ): Promise<string> {
+  const { id: connectionId, provider, refresh_token_encrypted: refreshTokenEncrypted, updated_at: expectedUpdatedAt } = row;
+
   if (!refreshTokenEncrypted) {
-    await markConnectionError(userId, provider, expectedUpdatedAt);
+    await markConnectionError(connectionId, expectedUpdatedAt);
     throw new OauthRefreshError(provider, "no refresh_token stored");
   }
 
@@ -455,7 +520,7 @@ async function performRefresh(
       `${provider} refresh_token_encrypted`,
     );
   } catch (e) {
-    await markConnectionError(userId, provider, expectedUpdatedAt);
+    await markConnectionError(connectionId, expectedUpdatedAt);
     throw new OauthRefreshError(
       provider,
       e instanceof Error ? e.message : "decrypt failed",
@@ -466,24 +531,68 @@ async function performRefresh(
   try {
     refreshed = await callProviderRefresh(provider, refreshTokenPlain);
   } catch (e) {
-    await markConnectionError(userId, provider, expectedUpdatedAt);
+    await markConnectionError(connectionId, expectedUpdatedAt);
     throw new OauthRefreshError(
       provider,
       e instanceof Error ? e.message : "token endpoint error",
     );
   }
 
-  await upsertServiceConnection({
-    userId,
-    provider,
-    accessToken: refreshed.accessToken,
-    // 既存の 3 状態仕様: undefined のまま渡せば DB 側の refresh_token を保持。
-    refreshToken: refreshed.refreshToken,
-    expiresInSeconds: refreshed.expiresInSeconds,
-    scopes: refreshed.scopes,
-  });
+  // Issue #131 Phase 4: 接続 id を指定して直接 UPDATE する。
+  // upsertServiceConnection を経由しないことで、複数 Google アカウントが
+  // ある状態でも「正しい行」だけを更新できる (upsert は (user_id, provider)
+  // で SELECT してしまうため、Google 複数行で多重マッチが起きる)。
+  await rotateConnectionTokensById(connectionId, refreshed);
 
   return refreshed.accessToken;
+}
+
+// Issue #131 Phase 4: 接続行 id を直接指定してトークン関連カラムを更新する。
+// `upsertServiceConnection` は新規 OAuth (provider_user_id / account_email が
+// 確定するケース) 用、こちらは refresh 専用。
+async function rotateConnectionTokensById(
+  connectionId: string,
+  refreshed: Awaited<ReturnType<typeof callProviderRefresh>>,
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  const now = new Date();
+  const accessEnc = packEncrypted(encrypt(refreshed.accessToken));
+
+  // 既存の 3 状態仕様: refresh_token / scopes は undefined のとき既存値を保持。
+  const refreshEnc =
+    refreshed.refreshToken === undefined
+      ? undefined
+      : refreshed.refreshToken === null || refreshed.refreshToken === ""
+        ? null
+        : packEncrypted(encrypt(refreshed.refreshToken));
+
+  const tokenExpiresAt =
+    refreshed.expiresInSeconds != null && refreshed.expiresInSeconds > 0
+      ? new Date(now.getTime() + refreshed.expiresInSeconds * 1000).toISOString()
+      : null;
+
+  const update: Record<string, unknown> = {
+    status: "connected",
+    access_token_encrypted: accessEnc,
+    token_expires_at: tokenExpiresAt,
+    updated_at: now.toISOString(),
+  };
+  if (refreshEnc !== undefined) {
+    update.refresh_token_encrypted = refreshEnc;
+  }
+  if (refreshed.scopes !== undefined) {
+    update.scopes = refreshed.scopes ?? null;
+  }
+
+  const { error } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .update(update)
+    .eq("id", connectionId);
+  if (error) {
+    throw new Error(
+      `failed to rotate service_connection tokens: ${error.message}`,
+    );
+  }
 }
 
 // 期限が切れる前 (もしくは既に切れている) なら refresh、それ以外は復号した
@@ -497,8 +606,22 @@ export async function getValidAccessToken(
   provider: ServiceProvider,
 ): Promise<string> {
   const row = await loadConnectionForToken(userId, provider);
+  return getValidAccessTokenFromRow(row);
+}
 
-  if (provider === "toggl") {
+// Issue #131 Phase 4: 接続行 id を指定して有効な access_token を取得する。
+// Google の複数アカウント sync ループから呼ぶ。
+export async function getValidAccessTokenByConnectionId(
+  connectionId: string,
+): Promise<string> {
+  const row = await loadConnectionForTokenById(connectionId);
+  return getValidAccessTokenFromRow(row);
+}
+
+async function getValidAccessTokenFromRow(
+  row: ServiceConnectionTokenRow,
+): Promise<string> {
+  if (row.provider === "toggl") {
     return decryptStoredToken(
       row.access_token_encrypted!,
       "toggl access_token_encrypted",
@@ -512,36 +635,24 @@ export async function getValidAccessToken(
     expiresAt !== null && expiresAt - Date.now() < TOKEN_REFRESH_LEEWAY_MS;
 
   if (needsRefresh) {
-    return performRefresh(
-      userId,
-      provider,
-      row.refresh_token_encrypted,
-      row.updated_at,
-    );
+    return performRefresh(row);
   }
 
   return decryptStoredToken(
     row.access_token_encrypted!,
-    `${provider} access_token_encrypted`,
+    `${row.provider} access_token_encrypted`,
   );
 }
 
 // 401 が来た直後など、保存中の expires に関係なく必ず refresh したいときに使う。
 async function forceRefreshAccessToken(
-  userId: string,
-  provider: ServiceProvider,
+  row: ServiceConnectionTokenRow,
 ): Promise<string> {
-  if (provider === "toggl") {
+  if (row.provider === "toggl") {
     // Toggl には refresh が無いので、これ以上できることがない。
-    throw new OauthRefreshError(provider, "refresh is not supported");
+    throw new OauthRefreshError(row.provider, "refresh is not supported");
   }
-  const row = await loadConnectionForToken(userId, provider);
-  return performRefresh(
-    userId,
-    provider,
-    row.refresh_token_encrypted,
-    row.updated_at,
-  );
+  return performRefresh(row);
 }
 
 // 401 リトライラッパ (Issue #75)。
@@ -555,18 +666,40 @@ export async function withFreshAccessToken<T>(
   provider: ServiceProvider,
   fn: (accessToken: string) => Promise<T>,
 ): Promise<T> {
-  const initialToken = await getValidAccessToken(userId, provider);
+  const row = await loadConnectionForToken(userId, provider);
+  return runWithRetry(row, fn);
+}
+
+// Issue #131 Phase 4: 接続行 id を指定して fn を回す版。Google の複数アカウント
+// sync ループ等から使う。withFreshAccessToken と同じ 401 リトライ挙動。
+export async function withFreshAccessTokenByConnectionId<T>(
+  connectionId: string,
+  fn: (accessToken: string) => Promise<T>,
+): Promise<T> {
+  const row = await loadConnectionForTokenById(connectionId);
+  return runWithRetry(row, fn);
+}
+
+async function runWithRetry<T>(
+  row: ServiceConnectionTokenRow,
+  fn: (accessToken: string) => Promise<T>,
+): Promise<T> {
+  const initialToken = await getValidAccessTokenFromRow(row);
   try {
     return await fn(initialToken);
   } catch (err) {
     if (
       !(err instanceof OauthUnauthorizedError) ||
-      err.provider !== provider ||
-      provider === "toggl"
+      err.provider !== row.provider ||
+      row.provider === "toggl"
     ) {
       throw err;
     }
-    const refreshedToken = await forceRefreshAccessToken(userId, provider);
+    // 強制 refresh のためには「現在の」行をもう一度読む (並走する refresh が
+    // 既に更新を入れている可能性があり、その後で再度 refresh するなら
+    // 最新の refresh_token_encrypted / updated_at を使うのが正しい)。
+    const fresh = await loadConnectionForTokenById(row.id);
+    const refreshedToken = await forceRefreshAccessToken(fresh);
     return fn(refreshedToken);
   }
 }
