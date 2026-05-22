@@ -24,16 +24,44 @@
 --     `limit 1` で済む。Phase 3 で 2 アカウント目を追加した直後で本
 --     マイグレーションが流れる順序になることは無い (本マイグは Phase 3
 --     よりも先行する設計順)。
+--   - 上記前提を守れているか pre-update guard で明示的に検証する。Google
+--     接続行が同 user に複数ある状態で `UPDATE ... FROM` を流すと JOIN が
+--     非決定的に 1 件を拾い、events が誤った接続に紐付くため
+--     (Codex review #136 P1)、ambiguity を観測した時点で exception で
+--     止める。
 -- =============================================================================
 
 -- 1. connection_id 列を追加 (nullable で開始 → backfill → NOT NULL に締める)。
 alter table public.google_calendar_events
   add column connection_id uuid;
 
--- 2. 既存行を backfill。「同 user の Google 接続行」を 1 件取って紐付ける。
---    Phase 3 適用前 (= 単一 Google アカウントしかない) を想定。
---    複数行に紐付くケース (LIMIT 1 が複数候補から拾うケース) は MVP では発生
---    しないが、念のため不一致を検出できるよう backfill 後にチェックを行う。
+-- 2. Pre-update guard: 同 user に Google 接続行が 2 件以上ある状態で本マイグを
+--    流すと、UPDATE ... FROM の JOIN が複数候補から非決定的に 1 件を拾い、
+--    events が誤った接続に紐付く可能性がある (Codex review #136 P1)。
+--    Phase 4 は Phase 3 (UI 上の「別のアカウントを追加」導線) よりも先行する
+--    設計順なので、ここで >=2 件が観測されたら設計順違反として止める。
+do $$
+declare
+  ambiguous_users integer;
+begin
+  select count(*) into ambiguous_users
+    from (
+      select user_id
+        from public.service_connections
+       where provider = 'google'
+       group by user_id
+      having count(*) > 1
+    ) t;
+
+  if ambiguous_users > 0 then
+    raise exception
+      'Phase 4 backfill aborted: % user(s) have multiple google service_connections rows at migration time. Apply this migration before Phase 3 introduces multi-account, or manually resolve the duplicates first (UPDATE...FROM cannot deterministically map events to a single connection in this state).',
+      ambiguous_users;
+  end if;
+end$$;
+
+-- 3. 既存行を backfill。Guard により「同 user の Google 接続行は最大 1 件」が
+--    保証されているため、JOIN は決定的に 1 行へ収束する。
 update public.google_calendar_events ev
    set connection_id = sc.id
   from public.service_connections sc
@@ -41,7 +69,7 @@ update public.google_calendar_events ev
    and sc.provider = 'google'
    and ev.connection_id is null;
 
--- 3. 監査: backfill 後に NULL が残っていれば failsafe で止める。
+-- 4. 監査: backfill 後に NULL が残っていれば failsafe で止める。
 --    NULL が残るのは「対応する Google 接続行がそもそも存在しない」古いゴミ
 --    データのみ。MVP では 0 件のはず。
 do $$
@@ -59,11 +87,11 @@ begin
   end if;
 end$$;
 
--- 4. NOT NULL を付ける。以後 sync 経路はすべて connection_id を埋める。
+-- 5. NOT NULL を付ける。以後 sync 経路はすべて connection_id を埋める。
 alter table public.google_calendar_events
   alter column connection_id set not null;
 
--- 5. FK 制約: 接続行が物理的に消えたら events も巻き取って消える。
+-- 6. FK 制約: 接続行が物理的に消えたら events も巻き取って消える。
 --    MVP では disconnect 系統は soft (status='disconnected') で済ませているため
 --    cascade は実質発火しないが、論理整合性のため宣言する。
 alter table public.google_calendar_events
@@ -72,7 +100,7 @@ alter table public.google_calendar_events
     references public.service_connections (id)
     on delete cascade;
 
--- 6. unique 制約を connection_id 込みへ張替。
+-- 7. unique 制約を connection_id 込みへ張替。
 --    旧: (user_id, calendar_id, google_event_id)
 --    新: (user_id, connection_id, calendar_id, google_event_id)
 alter table public.google_calendar_events
@@ -82,7 +110,7 @@ alter table public.google_calendar_events
   add constraint google_calendar_events_user_connection_calendar_event_unique
     unique (user_id, connection_id, calendar_id, google_event_id);
 
--- 7. sync 同期で「同一接続内の取得結果に含まれない既存行をソフトデリート」する
+-- 8. sync 同期で「同一接続内の取得結果に含まれない既存行をソフトデリート」する
 --    sweep クエリが connection_id 単位で絞れるよう、補助 index を張る。
 create index if not exists google_calendar_events_connection_target_idx
   on public.google_calendar_events (user_id, connection_id, target_date);
