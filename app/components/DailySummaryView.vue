@@ -181,8 +181,11 @@ const timelineSpan = computed(() => {
   return { start, end, span: Math.max(1, end - start) };
 });
 
+// PC は横方向 (left/width)、SP は縦方向 (top/height) に同じ %値を流用するため、
+// CSS カスタムプロパティ (--tl-pos / --tl-len) に詰めて返し、向きはスタイル側で
+// 切り替える (Issue #128)。
 function barStyle(start: string, end: string | null) {
-  if (!timelineSpan.value) return { left: "0%", width: "0%" };
+  if (!timelineSpan.value) return { "--tl-pos": "0%", "--tl-len": "0%" };
   const { start: s, end: e, span } = timelineSpan.value;
   const sMs = new Date(start).getTime();
   const eMs = end == null ? e : new Date(end).getTime();
@@ -190,7 +193,7 @@ function barStyle(start: string, end: string | null) {
   const clampedEnd = Math.min(eMs, e);
   const left = ((clampedStart - s) / span) * 100;
   const width = Math.max(0, ((clampedEnd - clampedStart) / span) * 100);
-  return { left: `${left}%`, width: `${width}%` };
+  return { "--tl-pos": `${left}%`, "--tl-len": `${width}%` };
 }
 
 // 軸目盛: 経過時間が長いほど間隔を広げる
@@ -213,7 +216,8 @@ const nowLineStyle = computed(() => {
   const { start, span } = timelineSpan.value;
   const left = ((now.value.getTime() - start) / span) * 100;
   if (left < 0 || left > 100) return null;
-  return { left: `${left}%` };
+  // barStyle と同じく、向きは CSS 側で切り替える (Issue #128)。
+  return { "--tl-pos": `${left}%` };
 });
 
 // =============================================================================
@@ -800,7 +804,7 @@ onBeforeUnmount(() => {
                 v-for="tick in axisTicks"
                 :key="tick.label"
                 class="tl-axis__tick"
-                :style="{ left: `${tick.left}%` }"
+                :style="{ '--tl-pos': `${tick.left}%` }"
                 :data-origin="tick.left === 0 || undefined"
               >
                 {{ tick.label }}
@@ -829,8 +833,8 @@ onBeforeUnmount(() => {
                   v-if="freeHover && freeHover.lane === 'sleep'"
                   class="tl-free"
                   :style="{
-                    left: `${freeHover.leftPct}%`,
-                    width: `${freeHover.widthPct}%`,
+                    '--tl-pos': `${freeHover.leftPct}%`,
+                    '--tl-len': `${freeHover.widthPct}%`,
                   }"
                   aria-hidden="true"
                 >
@@ -919,8 +923,8 @@ onBeforeUnmount(() => {
                   v-if="freeHover && freeHover.lane === 'calendar'"
                   class="tl-free"
                   :style="{
-                    left: `${freeHover.leftPct}%`,
-                    width: `${freeHover.widthPct}%`,
+                    '--tl-pos': `${freeHover.leftPct}%`,
+                    '--tl-len': `${freeHover.widthPct}%`,
                   }"
                   aria-hidden="true"
                 >
@@ -1005,8 +1009,8 @@ onBeforeUnmount(() => {
                   v-if="freeHover && freeHover.lane === 'work'"
                   class="tl-free"
                   :style="{
-                    left: `${freeHover.leftPct}%`,
-                    width: `${freeHover.widthPct}%`,
+                    '--tl-pos': `${freeHover.leftPct}%`,
+                    '--tl-len': `${freeHover.widthPct}%`,
                   }"
                   aria-hidden="true"
                 >
@@ -1768,6 +1772,7 @@ $font-en:
   position: absolute;
   top: 0;
   bottom: -4px;
+  left: var(--tl-pos, 0);
   font-family: $font-mono;
   font-size: 10px;
   color: $color-text-muted;
@@ -1784,6 +1789,7 @@ $font-en:
   z-index: 2;
   top: -8px;
   bottom: -176px;
+  left: var(--tl-pos, 0);
   width: 2px;
   background: #dc2626;
   pointer-events: none;
@@ -1870,7 +1876,9 @@ $font-en:
 .tl-bar {
   position: absolute;
   top: 50%;
+  left: var(--tl-pos, 0);
   padding: 0 8px;
+  width: var(--tl-len, 0);
   height: 28px;
   display: flex;
   align-items: center;
@@ -2013,6 +2021,8 @@ $font-en:
 .tl-free {
   position: absolute;
   top: 50%;
+  left: var(--tl-pos, 0);
+  width: var(--tl-len, 0);
   height: 28px;
   // overlay は track 上に描くがバーよりは下に置く (z-index 0)。
   // ツールチップ側で z-index を上げる。
@@ -2097,6 +2107,228 @@ $font-en:
   }
   &[data-lane="work"] {
     background: rgba(200, 130, 80, 0.55);
+  }
+}
+
+// -----------------------------------------------------------
+// Timeline — SP vertical layout (Issue #128)
+//   PC では横軸 (起床 = 左, NOW = 右) のタイムラインだが、SP では幅が足りず
+//   バーが潰れて読めなくなるため、同じ %値を縦軸 (起床 = 上, NOW = 下) に
+//   読み替えて 3 レーンを縦カラムに並べる。
+//   レイアウトの幾何だけを切り替え、空き時間ホバー等のロジック側は触らない。
+// -----------------------------------------------------------
+@media (max-width: 640px) {
+  .timeline__body {
+    position: relative;
+    min-height: 520px;
+    display: grid;
+    column-gap: 4px;
+    grid-template-columns: 36px repeat(3, minmax(0, 1fr));
+    grid-template-rows: 28px 1fr;
+  }
+
+  // 軸は track 領域 (label の下) に全幅で敷き、目盛りと NOW ライン用の
+  // 相対基準にする。トラック側より z-index を下げて背景扱いにする。
+  .tl-axis {
+    z-index: 0;
+    margin-left: 0;
+    width: 100%;
+    height: 100%;
+    grid-column: 1 / -1;
+    grid-row: 2;
+    border-right: none;
+    border-bottom: none;
+    pointer-events: none;
+  }
+
+  .tl-axis__tick {
+    top: var(--tl-pos, 0);
+    right: auto;
+    bottom: auto;
+    left: 0;
+    padding-right: 4px;
+    width: 36px;
+    text-align: right;
+    transform: translateY(-50%);
+  }
+
+  .tl-now {
+    z-index: 3;
+    top: var(--tl-pos, 0);
+    right: 0;
+    bottom: auto;
+    left: 0;
+    width: 100%;
+    height: 2px;
+  }
+
+  .tl-now__label {
+    top: -14px;
+    left: 0;
+    padding-right: 4px;
+    width: 36px;
+    text-align: right;
+  }
+
+  // 各レーン (Sleep / Calendar / Work) を縦カラムに。
+  .tl-row {
+    position: relative;
+    z-index: 1;
+    height: auto;
+    flex-direction: column;
+    align-items: stretch;
+    border-bottom: none;
+  }
+
+  .tl-row--sleep {
+    grid-column: 2;
+    grid-row: 1 / -1;
+  }
+  .tl-row--calendar {
+    grid-column: 3;
+    grid-row: 1 / -1;
+  }
+  .tl-row--work {
+    grid-column: 4;
+    grid-row: 1 / -1;
+  }
+
+  .tl-row__label {
+    width: 100%;
+    height: 28px;
+    display: flex;
+    flex-shrink: 0;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    border-bottom: 1px dashed $color-border-2;
+  }
+
+  .tl-row__track {
+    width: 100%;
+    height: auto;
+    flex: 1;
+  }
+
+  // PC では中央水平の点線。SP では中央垂直の点線に切替。
+  .tl-row__track::before {
+    top: 0;
+    right: auto;
+    bottom: 0;
+    left: 50%;
+    border-top: none;
+    border-left: 1px dotted $color-border-2;
+  }
+
+  // 前夜の睡眠メタは、Sleep カラムのトラック上部 (= 起床時刻付近) に置く。
+  .tl-row__meta {
+    top: 4px;
+    right: 2px;
+    left: 2px;
+    padding: 4px 6px;
+    font-size: 10px;
+    line-height: 1.35;
+    text-align: left;
+    white-space: normal;
+    word-break: break-word;
+    transform: none;
+  }
+
+  .tl-row__empty {
+    top: 12px;
+    right: 0;
+    left: 0;
+    text-align: center;
+    transform: none;
+  }
+
+  // バーは横軸の left/width ではなく、縦軸の top/height にマッピングする。
+  // ツールチップ (.tl-bar__tooltip) はバー外へ絶対配置するため overflow は
+  // visible のまま (PC と同じ方針)。バー内テキストの ellipsis は
+  // .tl-bar__text 側の line-clamp で行う。
+  .tl-bar {
+    top: var(--tl-pos, 0);
+    right: 2px;
+    left: 2px;
+    padding: 4px 6px;
+    width: auto;
+    height: var(--tl-len, 0);
+    min-height: 18px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    align-items: stretch;
+    transform: none;
+  }
+
+  .tl-bar__text {
+    // 高さに応じて自動で 1〜2 行に収まるように。
+    display: -webkit-box;
+    flex: 0 0 auto;
+    overflow: hidden;
+    line-height: 1.25;
+    white-space: normal;
+    word-break: break-word;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+  }
+
+  .tl-bar__live {
+    margin-top: 4px;
+    margin-left: 0;
+  }
+
+  // ツールチップはバーの上に出る既存挙動でほぼそのまま使えるが、
+  // 縦バーは左右いっぱいに広がるので、左端基準に揃え直す。
+  .tl-bar__tooltip {
+    top: 100%;
+    bottom: auto;
+    left: 0;
+    margin-top: 6px;
+    transform: translate(0, -4px);
+
+    &::after {
+      top: auto;
+      bottom: 100%;
+      left: 20px;
+      border-top-color: transparent;
+      border-bottom-color: rgba(26, 24, 20, 0.94);
+    }
+
+    .tl-bar:hover &,
+    .tl-bar--active & {
+      transform: translate(0, 0);
+    }
+  }
+
+  // 空き時間ホバーオーバーレイも縦に切り替える。
+  .tl-free {
+    top: var(--tl-pos, 0);
+    right: 2px;
+    left: 2px;
+    width: auto;
+    height: var(--tl-len, 0);
+    border-top: 1px dashed rgba(26, 24, 20, 0.45);
+    border-right: none;
+    border-bottom: 1px dashed rgba(26, 24, 20, 0.45);
+    border-left: none;
+    transform: none;
+  }
+
+  .tl-free__tooltip {
+    top: 100%;
+    bottom: auto;
+    left: 0;
+    margin-top: 6px;
+
+    &::after {
+      top: auto;
+      bottom: 100%;
+      left: 14px;
+      border-top-color: transparent;
+      border-bottom-color: rgba(26, 24, 20, 0.94);
+    }
   }
 }
 
@@ -2257,8 +2489,15 @@ $font-en:
   white-space: nowrap;
   color: $color-text;
 
+  // SP では幅が足りずタイトルが省略されて読めなくなるため、
+  // ellipsis をやめて折り返し表示にする (長いメールアドレス等も break)。
   @media (max-width: 560px) {
+    overflow: visible;
     font-size: 15px;
+    text-overflow: clip;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -2289,8 +2528,8 @@ $font-en:
   font-family: $font-mono;
   font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.04em;
   line-height: 1.2;
+  letter-spacing: 0.04em;
   color: $color-text-muted;
   background: $color-bg;
   border: 1px dashed $color-border;
