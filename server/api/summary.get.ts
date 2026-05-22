@@ -58,6 +58,9 @@ interface TogglRow {
   id: string;
   toggl_entry_id: string;
   title: string | null;
+  // Issue #112: Toggl の project_id / project_name。未割当 / 未解決は null。
+  project_id: number | null;
+  project_name: string | null;
   start_at: string;
   end_at: string | null;
 }
@@ -185,7 +188,9 @@ export default defineEventHandler(async (event) => {
       // end_at >= fromIso のものだけを DB 側で絞り込み、JS の overlaps() で最終判定する。
       admin
         .from("toggl_time_entries")
-        .select("id, toggl_entry_id, title, start_at, end_at")
+        .select(
+          "id, toggl_entry_id, title, project_id, project_name, start_at, end_at",
+        )
         .eq("user_id", userId)
         .eq("is_deleted", false)
         .lte("start_at", toIso)
@@ -260,6 +265,8 @@ export default defineEventHandler(async (event) => {
       id: r.id,
       toggl_entry_id: r.toggl_entry_id,
       title: r.title,
+      project_id: r.project_id,
+      project_name: r.project_name,
       start_at: r.start_at,
       end_at: r.end_at,
     })),
@@ -378,14 +385,17 @@ export default defineEventHandler(async (event) => {
     };
   }
 
-  // Toggl: wake range と重なる時間でタイトル別集計。
-  // by_title は SPEC §4.1 の定義どおり title 単位で集約する。
-  // Toggl の project_id は DB スキーマに保持していないため、別プロジェクトで
-  // 同名タイトルを使うと同一バケットに入る。将来 project_id を永続化する
-  // 場合はキーを (title, project_id) に拡張する。
+  // Toggl: wake range と重なる時間で (タイトル, プロジェクト) 別に集計。
+  // Issue #112: 同名タイトルでも異なる project に紐付くものは別バケットにし、
+  // by_title の各エントリに project_name を持たせる。project 未割当は null。
+  // 集計キーは `${title} ${project_name ?? ""}` (区切り文字でタイトルと
+  // プロジェクト名の衝突を防ぐ)。
   let toggl: TodaysMe["toggl"] = null;
   if (connected.has("toggl")) {
-    const byTitleMs = new Map<string, number>();
+    const byKey = new Map<
+      string,
+      { title: string; project_name: string | null; ms: number }
+    >();
     let totalMs = 0;
     if (internalRange) {
       for (const t of togglRows) {
@@ -393,14 +403,22 @@ export default defineEventHandler(async (event) => {
         if (ms <= 0) continue;
         totalMs += ms;
         const title = t.title ?? "";
-        byTitleMs.set(title, (byTitleMs.get(title) ?? 0) + ms);
+        const projectName = t.project_name ?? null;
+        const key = `${title} ${projectName ?? ""}`;
+        const cur = byKey.get(key);
+        if (cur) {
+          cur.ms += ms;
+        } else {
+          byKey.set(key, { title, project_name: projectName, ms });
+        }
       }
     }
     toggl = {
       total_minutes: msToMinutes(totalMs),
-      by_title: Array.from(byTitleMs.entries()).map(([title, ms]) => ({
-        title,
-        minutes: msToMinutes(ms),
+      by_title: Array.from(byKey.values()).map((v) => ({
+        title: v.title,
+        project_name: v.project_name,
+        minutes: msToMinutes(v.ms),
       })),
     };
   }

@@ -17,7 +17,9 @@
 import { Buffer } from "node:buffer";
 
 import {
+  togglProjectsResponseSchema,
   togglTimeEntriesResponseSchema,
+  type TogglProject,
   type TogglTimeEntry,
 } from "../../shared/schemas";
 
@@ -50,8 +52,9 @@ export interface GetTogglDataOptions {
 }
 
 // `toggl_time_entries` 行に対応する正規化済みレコード。
-// `project_id` は DB カラムにはないが、将来同一タイトルを別プロジェクトで
-// 区別する集計を入れる場合に備えてレコード上では保持している。
+// `project_id` / `project_name` は Issue #112 で DB カラム化したため
+// そのまま永続化する。`project_name` は同期時に project マップから解決される
+// (呼び出し側で `enrichWithProjectNames` を通すと埋まる)。
 export interface TogglTimeEntryRecord {
   toggl_entry_id: string;
   title: string | null;
@@ -59,6 +62,7 @@ export interface TogglTimeEntryRecord {
   end_at: string | null;
   target_date: string;
   project_id: number | null;
+  project_name: string | null;
   // Toggl 側で削除されたエントリを呼び出し側でソフトデリート扱いするための情報。
   // `since` ベース取得時に削除通知として返るレコードは server_deleted_at が
   // 非 null になる。`null` なら現存するエントリ。
@@ -84,6 +88,9 @@ function toRecord(
     end_at: entry.stop ?? null,
     target_date: targetDateOf(entry.start, timezone),
     project_id: entry.project_id ?? null,
+    // project_name は別途 project 一覧 (/me/projects) から解決する
+    // (Issue #112)。`enrichWithProjectNames` を通した後で値が入る。
+    project_name: null,
     server_deleted_at: entry.server_deleted_at ?? null,
   };
 }
@@ -190,4 +197,64 @@ export async function getTogglData(
   }
 
   return result;
+}
+
+// ----------------------------------------------------------------------------
+// Projects (Issue #112)
+//   `/me/projects` は自分が参加する workspace 横断の project 一覧を返す。
+//   time entry の project_id → project_name を引くために使う。
+//   `/me/time_entries` と違ってページング指定は無く、現状の使い方
+//   (個人 MVP の project 数) では十分にレスポンスに収まる。
+// ----------------------------------------------------------------------------
+
+export async function getTogglProjects(
+  apiToken: string,
+): Promise<TogglProject[]> {
+  if (!apiToken) {
+    throw new Error("apiToken is required");
+  }
+
+  const url = new URL(`${TOGGL_API_BASE}/me/projects`);
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: buildAuthorizationHeader(apiToken),
+      Accept: "application/json",
+    },
+  });
+
+  if (!res.ok) {
+    throw new Error(`Toggl projects API request failed: HTTP ${res.status}`);
+  }
+
+  const raw: unknown = await res.json();
+  return parseExternal(togglProjectsResponseSchema, raw, "toggl");
+}
+
+// project_id -> project_name の Map を組み立てる。
+// 名前が空・無し (Toggl 上では稀だが) のものは Map に入れない。
+export function buildProjectNameMap(
+  projects: TogglProject[],
+): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const p of projects) {
+    if (p.name && p.name.length > 0) {
+      map.set(p.id, p.name);
+    }
+  }
+  return map;
+}
+
+// time entry の project_id を見て、与えられたマップから名前を解決して埋める。
+// 元配列はミューテートせず、新しい配列を返す。
+export function enrichWithProjectNames(
+  entries: TogglTimeEntryRecord[],
+  projectNameById: Map<number, string>,
+): TogglTimeEntryRecord[] {
+  return entries.map((e) => {
+    if (e.project_id == null) return e;
+    const name = projectNameById.get(e.project_id);
+    if (!name) return e;
+    return { ...e, project_name: name };
+  });
 }
