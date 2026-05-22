@@ -9,7 +9,10 @@ import {
   type ServiceProvider,
 } from "../../../shared/schemas";
 import { requireUserId } from "../../utils/auth";
-import { listServiceConnections } from "../../utils/serviceConnection";
+import {
+  pickPrimaryConnectionRow,
+  listServiceConnections,
+} from "../../utils/serviceConnection";
 import { parseOrThrow } from "../../utils/validation";
 
 const PROVIDERS: ServiceProvider[] = ["oura", "google", "toggl"];
@@ -19,12 +22,11 @@ export default defineEventHandler(async (event) => {
   const rows = await listServiceConnections(userId);
 
   // 3 サービス分必ず返す。未連携は status=disconnected / has_token=false。
-  // Issue #131 Phase 2 過渡期: Google は最大 1 行前提で動く (Phase 1b 適用後に
-  // 複数行が許可される)。Phase 6 で /api/connections/google/accounts に
-  // 分離する想定だが、当面は最初に見つけた 1 行を返す。
-  const byProvider = new Map(rows.map((r) => [r.provider, r]));
+  // Issue #131 Phase 4+: Google は同一ユーザーに 0..N 行存在しうるため、
+  // 「最も active な 1 行」を決定的に選ぶ (pickPrimaryConnectionRow)。
+  // アカウント単位の詳細は /api/connections/google/accounts から取得する。
   const connections: ConnectionSummary[] = PROVIDERS.map((provider) => {
-    const row = byProvider.get(provider);
+    const row = pickPrimaryConnectionRow(rows, provider);
     if (!row) {
       return {
         provider,

@@ -249,6 +249,52 @@ async function tryUpsertOnce(
   return true;
 }
 
+// Issue #131 Phase 4+: 同一ユーザー × 同一 provider に複数行ありうる
+// (現状は Google のみ) ケースで、provider サマリ用に「代表となる 1 行」を
+// 決定的に選ぶ。優先順位:
+//   1. status: connected > needs_reauth > error > disconnected
+//      (= 1 行でも connected があれば「接続済み」を見せる)
+//   2. 同 status 内: connected_at 昇順 (古いほど優先)
+//      → /api/connections/google/accounts の並びと一致し、UI 上の表示が
+//        ふらつかない
+//
+// /api/connections や /api/internal/connections-required のような
+// 「provider あたり 1 行」を返す経路は必ず本関数を通すこと。
+// Map にそのまま投げると挿入順 (= 上流 query の並び依存) で結果が
+// 非決定的になる (Codex review #136 P2)。
+const CONNECTION_STATUS_PRIORITY: Record<
+  ServiceConnectionRow["status"],
+  number
+> = {
+  connected: 0,
+  needs_reauth: 1,
+  error: 2,
+  disconnected: 3,
+};
+
+export function pickPrimaryConnectionRow(
+  rows: readonly ServiceConnectionRow[],
+  provider: ServiceProvider,
+): ServiceConnectionRow | undefined {
+  let best: ServiceConnectionRow | undefined;
+  for (const r of rows) {
+    if (r.provider !== provider) continue;
+    if (!best) {
+      best = r;
+      continue;
+    }
+    const sp =
+      CONNECTION_STATUS_PRIORITY[r.status] -
+      CONNECTION_STATUS_PRIORITY[best.status];
+    if (sp < 0) {
+      best = r;
+    } else if (sp === 0 && r.connected_at < best.connected_at) {
+      best = r;
+    }
+  }
+  return best;
+}
+
 export async function listServiceConnections(
   userId: string,
 ): Promise<ServiceConnectionRow[]> {
@@ -495,9 +541,7 @@ export async function listConnectedGoogleConnections(
     .eq("status", "connected")
     .order("connected_at", { ascending: true });
   if (error) {
-    throw new Error(
-      `failed to list google connections: ${error.message}`,
-    );
+    throw new Error(`failed to list google connections: ${error.message}`);
   }
   return (data ?? []) as GoogleConnectionForSync[];
 }
@@ -577,10 +621,13 @@ async function callProviderRefresh(
 // expectedUpdatedAt は markConnectionError の楽観ロック条件 (読み取り時点から
 // 行が変わっていないときのみ status=error にする)。並走 refresh が片方成功・
 // 片方失敗するケースで healthy な接続を error 状態に巻き戻さないため。
-async function performRefresh(
-  row: ServiceConnectionTokenRow,
-): Promise<string> {
-  const { id: connectionId, provider, refresh_token_encrypted: refreshTokenEncrypted, updated_at: expectedUpdatedAt } = row;
+async function performRefresh(row: ServiceConnectionTokenRow): Promise<string> {
+  const {
+    id: connectionId,
+    provider,
+    refresh_token_encrypted: refreshTokenEncrypted,
+    updated_at: expectedUpdatedAt,
+  } = row;
 
   if (!refreshTokenEncrypted) {
     await markConnectionError(connectionId, expectedUpdatedAt);
@@ -642,7 +689,9 @@ async function rotateConnectionTokensById(
 
   const tokenExpiresAt =
     refreshed.expiresInSeconds != null && refreshed.expiresInSeconds > 0
-      ? new Date(now.getTime() + refreshed.expiresInSeconds * 1000).toISOString()
+      ? new Date(
+          now.getTime() + refreshed.expiresInSeconds * 1000,
+        ).toISOString()
       : null;
 
   const update: Record<string, unknown> = {

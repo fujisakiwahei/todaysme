@@ -18,7 +18,10 @@ import {
   connectionsRequiredResponseSchema,
   type ServiceProvider,
 } from "../../../shared/schemas";
-import { listServiceConnections } from "../../utils/serviceConnection";
+import {
+  pickPrimaryConnectionRow,
+  listServiceConnections,
+} from "../../utils/serviceConnection";
 import { parseOrThrow } from "../../utils/validation";
 
 // Oura の起床時刻 (wake_at) が無いと SPEC §4.2 の Wake-based Timeline が
@@ -36,9 +39,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const rows = await listServiceConnections(userId);
-  const byProvider = new Map(rows.map((r) => [r.provider, r] as const));
+  // Issue #131 Phase 4+: Google は同一ユーザーに 0..N 行存在しうるため、
+  // 「最も active な 1 行」を決定的に選ぶ。1 つでも connected があれば
+  // missing から外れる挙動になる。
   const missing = REQUIRED_PROVIDERS.filter(
-    (p) => byProvider.get(p)?.status !== "connected",
+    (p) => pickPrimaryConnectionRow(rows, p)?.status !== "connected",
   );
 
   return parseOrThrow(connectionsRequiredResponseSchema, { missing });

@@ -11,12 +11,19 @@
 --   という非対称な制約を表現する。
 --
 -- 順序の制約 (設計 §4.1 / §4.2 (3) / §6):
---   - 適用前提: provider='google' AND provider_user_id IS NULL な行が 0 件。
+--   - 適用前提: provider='google' AND provider_user_id IS NULL かつ
+--     status IN ('connected', 'needs_reauth') な行が 0 件。
 --     人手でユーザーに再認可を踏ませて Phase 2 callback で backfill した
 --     状態のみで本マイグレーションを流すこと。NULL 持ち旧行が残ったまま
 --     3 列 partial unique を張ると、PostgreSQL の合成 unique が NULL を
 --     distinct と見なすため、NULL 行と sub 持ち行が同 user / 同 provider で
 --     共存できてしまう (Codex review #127 P1)。
+--   - ただし status='disconnected' / 'error' な行は除外する。Phase 2 の
+--     update 文は status='connected' な行だけを 'needs_reauth' に落とすので、
+--     それより前に既に disconnect / error 状態だった旧 Google 接続行は
+--     NULL のまま永続的に残る。これらは access_token も持たず sync 経路に
+--     乗らないので、partial unique と共存しても active 行と衝突しない
+--     (Codex review #136 P1)。
 --   - 本マイグレーションの先頭で DO ブロックの assert を行い、NULL 残存が
 --     あれば exception で止める (= migration が走らない / 後段の DDL は
 --     1 つも実行されない)。
@@ -26,7 +33,10 @@
 --     とセットで適用する必要がある。
 -- =============================================================================
 
--- 1. ガード: backfill 完了確認。Phase 2 で全行 backfill されていれば 0 件。
+-- 1. ガード: backfill 完了確認。
+--    対象は「アクティブな (= 同期されうる) Google 接続行のうち sub 未取得」のみ。
+--    disconnected / error な旧行は token も無く sync 対象外なので、NULL を
+--    残したまま partial unique を張っても sub 持ち行と衝突しない。
 do $$
 declare
   legacy_count integer;
@@ -35,11 +45,12 @@ begin
     into legacy_count
     from public.service_connections
    where provider = 'google'
-     and provider_user_id is null;
+     and provider_user_id is null
+     and status in ('connected', 'needs_reauth');
 
   if legacy_count > 0 then
     raise exception
-      'Phase 1b prerequisite failed: % google rows still have NULL provider_user_id. Re-auth via /settings to backfill provider_user_id before applying this migration.',
+      'Phase 1b prerequisite failed: % active google rows (status connected/needs_reauth) still have NULL provider_user_id. Re-auth via /settings to backfill provider_user_id before applying this migration.',
       legacy_count;
   end if;
 end$$;
