@@ -143,11 +143,26 @@ google_excluded_calendars (新規 / 既存 users 配列の置換)
    - state payload に `intent: "add"` を含める（あるいは cookie 名を `todaysme_oauth_state_google_add` に分離して並行フローを許容）。
    - 認可 URL には `prompt=consent select_account` を渡し、Google 側で別アカウントを選ばせる。
 2. **callback での識別**
-   - scope に `openid email` を追加 → token endpoint レスポンスから `id_token` を取り、`sub` / `email` を取得（jwt 検証は MVP では不要 / Google から直接得るレスポンスなのでマシン間信用で十分）。
-   - 既存 `service_connections` に `(user_id, provider='google', provider_user_id=sub)` の行があれば update（**=「再認可」**として扱う）、無ければ insert（**=「新規アカウント追加」**）。
+   - scope に `openid email` を追加 → token endpoint レスポンスに含まれる `id_token` を **必ず検証してから** `sub` / `email` を取り出す。検証項目：
+     - 署名（Google の JWKS `https://www.googleapis.com/oauth2/v3/certs` で検証。RS256）
+     - `iss` が `https://accounts.google.com` または `accounts.google.com`
+     - `aud` が `GOOGLE_CLIENT_ID` と一致
+     - `exp` が現在時刻より未来 / `iat` の clock skew を 5 分以内で許容
+     - `nonce` を渡している場合は state 側に保持した nonce と一致（CSRF 二重防御。MVP では state cookie で代替してもよいが、検証ロジック自体は実装しておく）
+   - JWKS は短期キャッシュ（5–15 分）して連続呼び出しを避ける。`jose` 等のライブラリを使う想定。
+   - **token endpoint は HTTPS 直通だが、`id_token` の中身は OAuth 仕様上「クライアントが検証する責務」を持つ**。Codex review #127 で「未検証 claim を `provider_user_id` に使うと、トークンが malformed / 想定外の発行元を指していた場合にアカウント mis-link 〜 不正な行紐付けに繋がる」と指摘済み（P1）。
+   - 検証後、既存 `service_connections` に `(user_id, provider='google', provider_user_id=sub)` の行があれば update（**=「再認可」**として扱う）、無ければ insert（**=「新規アカウント追加」**）。
    - `upsertServiceConnection` の onConflict を `(user_id, provider, provider_user_id)` に変える。
-3. **既存 1 接続のマイグレーション**
-   - 既存行は `provider_user_id` が NULL の可能性が高い → 起動時にユーザーが Google 接続を**再認可**したタイミングで `provider_user_id` を埋める。バッチ backfill は **不要**（個人運用の Today's ME では再認可コストが小さい）。
+3. **既存 1 接続のマイグレーション（必須 backfill）**
+   - **重要**: PostgreSQL の unique constraint は **NULL 値を distinct に扱う**ため、`unique(user_id, provider, provider_user_id)` を張った状態で既存行の `provider_user_id` を NULL のまま放置すると、**「NULL 持ちレガシー行」と「sub を持つ新規行」が同じ user / 同じ provider で共存できてしまう**（= 同期処理が両方の行に対して走り、Google Calendar イベントが重複 / 整合性破壊）。Codex review #127 で P1 指摘あり。
+   - 取りうる対処（採用候補は (a)）：
+     - **(a) Phase 1 のマイグレーションで「既存 Google 行の `provider_user_id` を埋めるまでは unique 制約を張らない」フェーズ分割**。
+       - Phase 1a: `provider_user_id` カラムを追加（NULL 許容のまま）／`unique(user_id, provider)` は維持。
+       - Phase 1b: 既存 Google 行を一律 `status = 'needs_reauth'` などに落とし、ユーザーに再認可を促す UI を出す。
+       - Phase 1c: ユーザーが再認可を完了 → callback で id_token から `sub` を埋める。
+       - Phase 1d: バッチ（or 移行スクリプト）で `provider_user_id IS NULL AND provider = 'google'` な行が 0 件であることを確認した上で、`unique(user_id, provider)` を drop して `unique(user_id, provider, provider_user_id)` を張る。**この時点までは「アカウント追加」UI は無効化**しておく。
+     - (b) NULL を含めて distinct にしたくない場合は **partial unique index** で代替: `create unique index ... on service_connections (user_id, provider) where provider_user_id is null;` を経過措置として張り、レガシー行が 1 件だけになるよう物理的に強制する。ただしロジックが分散するため (a) より複雑度が高い。
+   - 個人運用とはいえ、Phase 2（OAuth callback）と Phase 3（アカウント追加 UI）の間に **必ず backfill 完了の検査ステップ** を挟む。
 4. **切断フロー**
    - `DELETE /api/connections/google/:connectionId` 形式へ拡張する（or クエリで `?connection_id=...`）。`[provider].delete.ts` の API 形を変える必要があるため、Oura / Toggl も含めた API 互換性は別途検討。
 
@@ -198,7 +213,7 @@ google_excluded_calendars (新規 / 既存 users 配列の置換)
 4. **切断 API のシェイプ変更**
    - `/api/connections/google` を `/api/connections/google/:connectionId` 化するか、`?connection_id=` クエリで凌ぐか。
 5. **マイグレーション順序**
-   - 単一ユーザー個人運用なので、`service_connections.unique(user_id, provider)` drop → 既存行 backfill → callback 改修 → UI 改修、の順で問題は出ない見込み。Vercel preview で段階的に動作確認できる。
+   - §4.2 の「既存 1 接続のマイグレーション」で詳述したとおり、**unique 制約の張り替えは backfill 完了を確認したあと**にする。順序は: ①`provider_user_id` カラム追加（NULL 許容）→ ②再認可で `sub` 埋め → ③ NULL 残存ゼロを確認 → ④ unique を `(user_id, provider, provider_user_id)` に張り替え → ⑤「アカウント追加」UI 有効化。Vercel preview で段階的に検証する。
 6. **デモデータへの波及**
    - `demo_*` テーブル / `demo/summary` は今回触らない方針で良いか（デモはあくまで「1 アカウント分のショーケース」）。
 
@@ -209,8 +224,9 @@ google_excluded_calendars (新規 / 既存 users 配列の置換)
 | 段階 | 概要 | 主な変更先 |
 | --- | --- | --- |
 | Phase 0（本 PR） | この設計ドラフト Doc | `docs/designs/multi-google-account.md` |
-| Phase 1 | DB マイグレーション: `service_connections` の unique 改訂 / `provider_user_id` 必須化（Google のみ運用） | `supabase/migrations/`, `serviceConnection.ts` |
-| Phase 2 | OAuth callback で `id_token.sub` を取得し `provider_user_id` を埋める / 既存接続の再認可で backfill | `oauth/google.ts`, `connections/google/callback.get.ts`, `shared/schemas/google.ts` |
+| Phase 1a | DB マイグレーション 第1段: `service_connections` に `provider_user_id` カラム追加（NULL 許容）。**この時点では `unique(user_id, provider)` は維持**し、レガシー行を残せる状態にする。 | `supabase/migrations/` |
+| Phase 2 | OAuth callback で `id_token` を **JWKS で検証**（iss / aud / exp / 署名）した上で `sub` / `email` を取り、`provider_user_id` を埋める。`shared/schemas/google.ts` に `id_token` を含むトークンレスポンス検証を追加。Google 接続行に `status='needs_reauth'` のセマンティクスを追加し、settings に再認可バナーを出す。 | `oauth/google.ts`, `connections/google/callback.get.ts`, `shared/schemas/google.ts`, `serviceConnection.ts`, `app/pages/settings.vue` |
+| Phase 1b | Backfill 完了の検査スクリプト（`provider_user_id IS NULL AND provider='google'` が 0 件であること）を回したうえで、`unique(user_id, provider)` を drop して `unique(user_id, provider, provider_user_id)` に張り替えるマイグレーション。**ここを通過するまで「アカウント追加」UI は出さない**。 | `supabase/migrations/`, `serviceConnection.ts`（onConflict 更新） |
 | Phase 3 | settings UI に「別のアカウントを追加」導線 / `intent=add` フローと `prompt=select_account` 対応 | `app/pages/settings.vue`, `connections/google/start.get.ts` |
 | Phase 4 | `google_calendar_events.connection_id` 追加 / sync ロジックを接続単位ループに変更 / `softDeleteEventsForRemovedCalendars` の絞り込み | `supabase/migrations/`, `syncGoogle.ts`, `getGoogleData.ts` |
 | Phase 5 | 除外カレンダー設定を `google_excluded_calendars` テーブルへ移行（接続単位） | `supabase/migrations/`, `connections/google/calendars.get.ts`, `excluded-calendars.put.ts`, `settings.vue` |
