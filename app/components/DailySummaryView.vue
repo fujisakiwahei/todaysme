@@ -245,6 +245,157 @@ const togglEntries = computed<TogglTimelineEntry[]>(
   () => props.summary?.timeline.toggl ?? [],
 );
 
+// =============================================================================
+// Free-time hover (Issue #110)
+//   タイムラインの空き領域にホバーすると、その空き範囲全体 (= 直前のイベント
+//   終了から次のイベント開始まで) の最大値を表示する。カーソル位置に依存しない
+//   ので、同じ空き帯のどこにホバーしても同じ値が出る。
+//   "前 / 次" の判定は Sleep / Calendar / Work の 3 レーンを跨いで行う
+//   (例: 同じ Work レーン内では空きでも、別レーンで MTG が走っていれば
+//   その MTG で空きが区切られる)。
+// =============================================================================
+type LaneKey = "sleep" | "calendar" | "work";
+
+interface TimelineEventLite {
+  start: number;
+  end: number;
+  lane: LaneKey;
+  title: string;
+}
+
+const laneLabels: Record<LaneKey, string> = {
+  sleep: "Sleep",
+  calendar: "Calendar",
+  work: "Work",
+};
+
+const allTimelineEvents = computed<TimelineEventLite[]>(() => {
+  if (!props.summary) return [];
+  const fallbackEnd = timelineSpan.value?.end ?? Date.now();
+  const items: TimelineEventLite[] = [];
+  for (const s of props.summary.timeline.sleep) {
+    items.push({
+      start: new Date(s.sleep_start_at).getTime(),
+      end: new Date(s.wake_at).getTime(),
+      lane: "sleep",
+      title: "仮眠",
+    });
+  }
+  for (const ev of props.summary.timeline.calendar) {
+    items.push({
+      start: new Date(ev.start_at).getTime(),
+      end: new Date(ev.end_at).getTime(),
+      lane: "calendar",
+      title: ev.title || ev.calendar_name || "(無題)",
+    });
+  }
+  for (const t of props.summary.timeline.toggl) {
+    items.push({
+      start: new Date(t.start_at).getTime(),
+      end: t.end_at ? new Date(t.end_at).getTime() : fallbackEnd,
+      lane: "work",
+      title: t.title || "(タイトル無し)",
+    });
+  }
+  return items.sort((a, b) => a.start - b.start);
+});
+
+interface FreeHoverInfo {
+  lane: LaneKey;
+  leftPct: number;
+  widthPct: number;
+  rangeStart: number;
+  rangeEnd: number;
+  prevLane: LaneKey | null;
+  prevTitle: string | null;
+  nextLane: LaneKey | null;
+  nextTitle: string | null;
+  gapMinutes: number;
+}
+
+const freeHover = ref<FreeHoverInfo | null>(null);
+
+function onTrackMouseMove(e: MouseEvent, lane: LaneKey) {
+  if (!timelineSpan.value) return;
+  const target = e.target as HTMLElement | null;
+  // 既存のバー上では空き時間ではないので非表示にする。
+  if (target && target.closest(".tl-bar")) {
+    if (freeHover.value?.lane === lane) freeHover.value = null;
+    return;
+  }
+  const trackEl = e.currentTarget as HTMLElement;
+  const rect = trackEl.getBoundingClientRect();
+  if (rect.width <= 0) return;
+  const offsetX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+  const ratio = offsetX / rect.width;
+  const { start, end, span } = timelineSpan.value;
+  const cursorTime = start + ratio * span;
+
+  // 全レーンを横断してカーソル時刻を含む空き範囲の境界を求める:
+  //   prev = ev.end <= cursorTime のうち end が最も遅いイベント (= 空き開始)
+  //   next = ev.start >  cursorTime のうち start が最も早いイベント (= 空き終了)
+  // また、別レーンも含めて cursorTime がいずれかのバー内側にある場合は、
+  // 「いま走っている予定がある = 空きではない」のでオーバーレイを出さない。
+  let prev: TimelineEventLite | null = null;
+  let next: TimelineEventLite | null = null;
+  for (const ev of allTimelineEvents.value) {
+    if (ev.start <= cursorTime && cursorTime < ev.end) {
+      if (freeHover.value?.lane === lane) freeHover.value = null;
+      return;
+    }
+    if (ev.end <= cursorTime) {
+      if (!prev || ev.end > prev.end) prev = ev;
+    } else if (ev.start > cursorTime) {
+      if (!next || ev.start < next.start) next = ev;
+    }
+  }
+  const rangeStart = prev ? prev.end : start;
+  const rangeEnd = next ? next.start : end;
+  const gapMs = Math.max(0, rangeEnd - rangeStart);
+  const gapMinutes = Math.round(gapMs / 60000);
+  if (gapMinutes < 1) {
+    if (freeHover.value?.lane === lane) freeHover.value = null;
+    return;
+  }
+  const leftPct = ((rangeStart - start) / span) * 100;
+  const widthPct = (gapMs / span) * 100;
+
+  freeHover.value = {
+    lane,
+    leftPct,
+    widthPct,
+    rangeStart,
+    rangeEnd,
+    prevLane: prev?.lane ?? null,
+    prevTitle: prev?.title ?? null,
+    nextLane: next?.lane ?? null,
+    nextTitle: next?.title ?? null,
+    gapMinutes,
+  };
+}
+
+function onTrackMouseLeave(lane: LaneKey) {
+  if (freeHover.value?.lane === lane) freeHover.value = null;
+}
+
+// 日付ナビなどで summary が差し替わったタイミングでオーバーレイ状態を残さない。
+// マウスがタイムライン上にとどまったまま別日へ遷移すると、新しい timelineSpan
+// に対して古い rangeStart / rangeEnd で再描画されてしまうため (Codex review)。
+watch(
+  () => props.summary,
+  () => {
+    freeHover.value = null;
+  },
+);
+
+function formatGap(min: number): string {
+  if (min < 60) return `${min}m`;
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
 // Accordion 開閉状態
 const openAccordions = reactive<{
   sleep: boolean;
@@ -669,7 +820,54 @@ onBeforeUnmount(() => {
             <!-- Sleep lane -->
             <div class="tl-row tl-row--sleep">
               <div class="tl-row__label">Sleep</div>
-              <div class="tl-row__track">
+              <div
+                class="tl-row__track"
+                @mousemove="onTrackMouseMove($event, 'sleep')"
+                @mouseleave="onTrackMouseLeave('sleep')"
+              >
+                <div
+                  v-if="freeHover && freeHover.lane === 'sleep'"
+                  class="tl-free"
+                  :style="{
+                    left: `${freeHover.leftPct}%`,
+                    width: `${freeHover.widthPct}%`,
+                  }"
+                  aria-hidden="true"
+                >
+                  <span class="tl-free__tooltip" role="tooltip">
+                    <span class="tl-free__tooltip-title">
+                      空き {{ formatGap(freeHover.gapMinutes) }}
+                    </span>
+                    <span class="tl-free__tooltip-time">
+                      {{
+                        formatHourMinute(
+                          new Date(freeHover.rangeStart).toISOString(),
+                          timezone,
+                        )
+                      }}
+                      →
+                      {{
+                        formatHourMinute(
+                          new Date(freeHover.rangeEnd).toISOString(),
+                          timezone,
+                        )
+                      }}
+                    </span>
+                    <span
+                      v-if="freeHover.nextTitle && freeHover.nextLane"
+                      class="tl-free__tooltip-next"
+                    >
+                      次:
+                      <span
+                        class="tl-free__tooltip-lane"
+                        :data-lane="freeHover.nextLane"
+                      >
+                        {{ laneLabels[freeHover.nextLane] }}
+                      </span>
+                      {{ freeHover.nextTitle }}
+                    </span>
+                  </span>
+                </div>
                 <span v-if="preWakeSleep" class="tl-row__meta">
                   就寝
                   {{ formatHourMinute(preWakeSleep.sleep_start_at, timezone) }}
@@ -712,7 +910,54 @@ onBeforeUnmount(() => {
             <!-- Calendar lane -->
             <div class="tl-row tl-row--calendar">
               <div class="tl-row__label">Calendar</div>
-              <div class="tl-row__track">
+              <div
+                class="tl-row__track"
+                @mousemove="onTrackMouseMove($event, 'calendar')"
+                @mouseleave="onTrackMouseLeave('calendar')"
+              >
+                <div
+                  v-if="freeHover && freeHover.lane === 'calendar'"
+                  class="tl-free"
+                  :style="{
+                    left: `${freeHover.leftPct}%`,
+                    width: `${freeHover.widthPct}%`,
+                  }"
+                  aria-hidden="true"
+                >
+                  <span class="tl-free__tooltip" role="tooltip">
+                    <span class="tl-free__tooltip-title">
+                      空き {{ formatGap(freeHover.gapMinutes) }}
+                    </span>
+                    <span class="tl-free__tooltip-time">
+                      {{
+                        formatHourMinute(
+                          new Date(freeHover.rangeStart).toISOString(),
+                          timezone,
+                        )
+                      }}
+                      →
+                      {{
+                        formatHourMinute(
+                          new Date(freeHover.rangeEnd).toISOString(),
+                          timezone,
+                        )
+                      }}
+                    </span>
+                    <span
+                      v-if="freeHover.nextTitle && freeHover.nextLane"
+                      class="tl-free__tooltip-next"
+                    >
+                      次:
+                      <span
+                        class="tl-free__tooltip-lane"
+                        :data-lane="freeHover.nextLane"
+                      >
+                        {{ laneLabels[freeHover.nextLane] }}
+                      </span>
+                      {{ freeHover.nextTitle }}
+                    </span>
+                  </span>
+                </div>
                 <span v-if="calendarEvents.length === 0" class="tl-row__empty">
                   予定なし
                 </span>
@@ -751,7 +996,54 @@ onBeforeUnmount(() => {
             <!-- Work lane -->
             <div class="tl-row tl-row--work">
               <div class="tl-row__label">Work</div>
-              <div class="tl-row__track">
+              <div
+                class="tl-row__track"
+                @mousemove="onTrackMouseMove($event, 'work')"
+                @mouseleave="onTrackMouseLeave('work')"
+              >
+                <div
+                  v-if="freeHover && freeHover.lane === 'work'"
+                  class="tl-free"
+                  :style="{
+                    left: `${freeHover.leftPct}%`,
+                    width: `${freeHover.widthPct}%`,
+                  }"
+                  aria-hidden="true"
+                >
+                  <span class="tl-free__tooltip" role="tooltip">
+                    <span class="tl-free__tooltip-title">
+                      空き {{ formatGap(freeHover.gapMinutes) }}
+                    </span>
+                    <span class="tl-free__tooltip-time">
+                      {{
+                        formatHourMinute(
+                          new Date(freeHover.rangeStart).toISOString(),
+                          timezone,
+                        )
+                      }}
+                      →
+                      {{
+                        formatHourMinute(
+                          new Date(freeHover.rangeEnd).toISOString(),
+                          timezone,
+                        )
+                      }}
+                    </span>
+                    <span
+                      v-if="freeHover.nextTitle && freeHover.nextLane"
+                      class="tl-free__tooltip-next"
+                    >
+                      次:
+                      <span
+                        class="tl-free__tooltip-lane"
+                        :data-lane="freeHover.nextLane"
+                      >
+                        {{ laneLabels[freeHover.nextLane] }}
+                      </span>
+                      {{ freeHover.nextTitle }}
+                    </span>
+                  </span>
+                </div>
                 <span v-if="togglEntries.length === 0" class="tl-row__empty">
                   作業ログなし
                 </span>
@@ -1713,6 +2005,99 @@ $font-en:
   font-size: 11px;
   color: rgba(255, 255, 255, 0.78);
   font-variant-numeric: tabular-nums;
+}
+
+// -----------------------------------------------------------
+// Free-time hover overlay (Issue #110)
+// -----------------------------------------------------------
+.tl-free {
+  position: absolute;
+  top: 50%;
+  height: 28px;
+  // overlay は track 上に描くがバーよりは下に置く (z-index 0)。
+  // ツールチップ側で z-index を上げる。
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(26, 24, 20, 0.06) 0,
+    rgba(26, 24, 20, 0.06) 6px,
+    rgba(26, 24, 20, 0) 6px,
+    rgba(26, 24, 20, 0) 12px
+  );
+  border-right: 1px dashed rgba(26, 24, 20, 0.45);
+  border-left: 1px dashed rgba(26, 24, 20, 0.45);
+  border-radius: 4px;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.tl-free__tooltip {
+  position: absolute;
+  z-index: 6;
+  bottom: calc(100% + 6px);
+  left: 0;
+  padding: 8px 12px;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 32px));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: $font-en;
+  font-size: 12px;
+  font-weight: 500;
+  text-align: left;
+  color: #fff;
+  background: rgba(26, 24, 20, 0.94);
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+
+  &::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 14px;
+    border: 5px solid transparent;
+    border-top-color: rgba(26, 24, 20, 0.94);
+  }
+}
+
+.tl-free__tooltip-title {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.tl-free__tooltip-time {
+  font-family: $font-mono;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.78);
+  font-variant-numeric: tabular-nums;
+}
+
+.tl-free__tooltip-next {
+  font-size: 11px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.tl-free__tooltip-lane {
+  margin-right: 4px;
+  padding: 1px 6px;
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+
+  &[data-lane="sleep"] {
+    background: rgba(120, 145, 200, 0.55);
+  }
+  &[data-lane="calendar"] {
+    background: rgba(120, 175, 140, 0.55);
+  }
+  &[data-lane="work"] {
+    background: rgba(200, 130, 80, 0.55);
+  }
 }
 
 @keyframes blink {
