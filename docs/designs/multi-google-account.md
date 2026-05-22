@@ -125,6 +125,7 @@ create unique index service_connections_single_provider_unique
 - Oura / Toggl は `provider_user_id` 不在のまま「1 ユーザー × 1 行」を物理的に強制できる（NULL 重複が起きない）。`loadConnectionForToken` の `.maybeSingle()` 前提が崩れない。
 - Google は `provider_user_id IS NULL` の状態を許容するが、その NULL 状態でも複数行は作れない（後述の Phase 1a で「Google 行は最大 1 件」のレガシー前提を維持する別 partial index を併用する。§6 Phase 1a 参照）。
 - 既存の Google 接続が backfill 前に 2 件以上できないよう、Phase 1a の `provider_user_id` NULL 期間は **`unique(user_id, provider)` を維持** することでさらに安全側に倒す。
+- **アプリ側からは `ON CONFLICT` 推論に依存しない**（§4.2「callback での識別」末尾参照）。PostgREST/Supabase JS の `upsert({ onConflict: "cols" })` は partial index を推論できないので、`upsertServiceConnection` は explicit な「SELECT → UPDATE or INSERT」に切り替える。partial unique index は並行書き込み時の整合性ガードとしてだけ使う。
 - `account_email` / `account_label` は表示用。ラベルが無ければ email、それも無ければ "Google (...sub末尾4桁)" 等にフォールバック。
 
 ```
@@ -167,7 +168,12 @@ google_excluded_calendars (新規 / 既存 users 配列の置換)
    - JWKS は短期キャッシュ（5–15 分）して連続呼び出しを避ける。`jose` 等のライブラリを使う想定。
    - **token endpoint は HTTPS 直通だが、`id_token` の中身は OAuth 仕様上「クライアントが検証する責務」を持つ**。Codex review #127 で「未検証 claim を `provider_user_id` に使うと、トークンが malformed / 想定外の発行元を指していた場合にアカウント mis-link 〜 不正な行紐付けに繋がる」と指摘済み（P1）。
    - 検証後、既存 `service_connections` に `(user_id, provider='google', provider_user_id=sub)` の行があれば update（**=「再認可」**として扱う）、無ければ insert（**=「新規アカウント追加」**）。
-   - `upsertServiceConnection` の onConflict は **Google のみ** `(user_id, provider, provider_user_id)`、Oura / Toggl は従来通り `(user_id, provider)`。`server/utils/serviceConnection.ts` の `upsert(..., { onConflict })` 呼び出しを provider 分岐させる（Phase 1b の制約張替と同時に修正する）。
+   - **`upsertServiceConnection` は `upsert(..., { onConflict })` をやめ、explicit な「SELECT → UPDATE or INSERT」に切り替える**（Codex review #127 追加 P1）。
+     - 理由: Supabase JS / PostgREST の `onConflict` パラメータは **カラム列名のみ** を受け取り、生成される SQL は `ON CONFLICT (cols)` だけ。PostgreSQL の `ON CONFLICT` 推論が partial unique index にマッチするには **`ON CONFLICT (cols) WHERE <predicate>` のように predicate を併記** する必要があり、partial index には PostgREST 経由で到達できない → Phase 1b で旧 `unique(user_id, provider)` を drop した瞬間に `42P10 (no unique or exclusion constraint matching the ON CONFLICT specification)` で全 upsert が失敗する。
+     - 既存実装でも `upsertServiceConnection` は最初に `select(...).eq("user_id", ...).eq("provider", ...).maybeSingle()` で既存行を読んでいる（`server/utils/serviceConnection.ts:71-76`）。この select を **「Google は `(user_id, provider, provider_user_id)` で 1 行特定」「Oura / Toggl は `(user_id, provider)` で 1 行特定」** に分岐させ、ヒットすれば `update().eq(...)`、無ければ `insert(...)` を呼ぶ。
+     - partial unique index は **write 時の整合性ガード**（並行 INSERT の二重行を物理的に防ぐ）として残す。アプリ側はそれを `ON CONFLICT` 推論には使わず、explicit な存在チェック + UPDATE/INSERT 経路で運用する。
+     - `performRefresh` 等の経路も同じ関数を通るので、リファクタは `upsertServiceConnection` 1 関数の差し替えで済む。`getValidAccessToken` / `loadConnectionForToken` 側のクエリも Google だけは `provider_user_id` を引数に取れるよう（`(userId, "google", providerUserId)`）拡張する必要がある（Phase 4 同期ループから渡される）。
+     - 補足: 代替案として「Postgres 側で RPC（`security definer` の関数）を作り、`ON CONFLICT (..., provider_user_id) WHERE provider = 'google'` を生 SQL で書く」もあるが、関数の維持コスト・RLS との相性を踏まえると explicit select / update / insert のほうがシンプル。
 3. **既存 1 接続のマイグレーション（必須 backfill）**
    - **重要**: PostgreSQL の unique constraint / unique index は **NULL を distinct と見なす**ため、`unique(user_id, provider, provider_user_id)` を張った状態で既存行の `provider_user_id` を NULL のまま放置すると、**「NULL 持ちレガシー行」と「sub を持つ新規行」が同じ user / 同じ provider で共存できてしまう**（= 同期処理が両方の行に対して走り、Google Calendar イベントが重複 / 整合性破壊）。Codex review #127 で P1 指摘あり。
    - 採用案: **Phase 分割 + provider 別 partial unique index** の組み合わせ（§4.1 参照）。
@@ -250,7 +256,7 @@ google_excluded_calendars (新規 / 既存 users 配列の置換)
 | Phase 0（本 PR） | この設計ドラフト Doc | `docs/designs/multi-google-account.md` |
 | Phase 1a | DB マイグレーション 第1段: `service_connections` に `provider_user_id` カラム追加（NULL 許容）。`unique(user_id, provider)` は **そのまま維持**し、追加で「Google かつ provider_user_id IS NULL の行は 1 件まで」の過渡期用 partial unique index を張る（再認可フローと並行運用するための保険）。 | `supabase/migrations/` |
 | Phase 2 | OAuth callback で `id_token` を **JWKS で検証**（iss / aud / exp / 署名）した上で `sub` / `email` を取り、`provider_user_id` を埋める。`shared/schemas/google.ts` に `id_token` を含むトークンレスポンス検証を追加。Google 接続行に `status='needs_reauth'` のセマンティクスを追加し、settings に再認可バナーを出す。 | `oauth/google.ts`, `connections/google/callback.get.ts`, `shared/schemas/google.ts`, `serviceConnection.ts`, `app/pages/settings.vue` |
-| Phase 1b | Backfill 完了の検査スクリプト（`provider_user_id IS NULL AND provider='google'` が 0 件）を回したうえで、1 トランザクションで: ①旧 `unique(user_id, provider)` constraint を drop ②過渡期用 partial index を drop ③§4.1 の 2 本の partial unique index（Google = 3 列 / Oura・Toggl = 2 列）を作成 ④`upsertServiceConnection` の `onConflict` を provider 別に分岐。**ここを通過するまで「アカウント追加」UI は出さない**。 | `supabase/migrations/`, `serviceConnection.ts` |
+| Phase 1b | Backfill 完了の検査スクリプト（`provider_user_id IS NULL AND provider='google'` が 0 件）を回したうえで、1 トランザクションで: ①旧 `unique(user_id, provider)` constraint を drop ②過渡期用 partial index を drop ③§4.1 の 2 本の partial unique index（Google = 3 列 / Oura・Toggl = 2 列）を作成 ④**`upsertServiceConnection` を `upsert({ onConflict })` から explicit な「SELECT → UPDATE or INSERT」に書き換え**（PostgREST の `onConflict` は partial index に推論マッチせず `42P10` で落ちるため。§4.2 末尾参照）。**ここを通過するまで「アカウント追加」UI は出さない**。 | `supabase/migrations/`, `serviceConnection.ts` |
 | Phase 3 | settings UI に「別のアカウントを追加」導線 / `intent=add` フローと `prompt=select_account` 対応 | `app/pages/settings.vue`, `connections/google/start.get.ts` |
 | Phase 4 | `google_calendar_events.connection_id` 追加 / sync ロジックを接続単位ループに変更 / `softDeleteEventsForRemovedCalendars` の絞り込み | `supabase/migrations/`, `syncGoogle.ts`, `getGoogleData.ts` |
 | Phase 5 | 除外カレンダー設定を `google_excluded_calendars` テーブルへ移行（接続単位） | `supabase/migrations/`, `connections/google/calendars.get.ts`, `excluded-calendars.put.ts`, `settings.vue` |
