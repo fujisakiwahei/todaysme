@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // =============================================================================
 // /daily/[date]
-// SPEC §4 / §5 / §9.3 / §10 / Issue #35
+// SPEC §4 / §5 / §9.3 / §10 / Issue #35 / Issue #141
 //
 //   - GET /api/summary?date=YYYY-MM-DD で対象日の Today's ME と Wake-based
 //     Timeline 用データを取得して表示する。
@@ -10,6 +10,9 @@
 //   - 手動「更新」ボタンで同じ refresh を呼び、終了後に再フェッチする。
 //   - 過去日も手動更新は許容する (SPEC §10.2 / §10.3)。
 //   - 描画は DailySummaryView コンポーネントに委譲する (Issue #31)。
+//   - 初回取得は useAsyncData で SSR 側に倒し、hydration 待ち / Bearer
+//     token 取得 (supabase.auth.getSession) の往復を省略する (Issue #141)。
+//     認証は cookie 経路 (`requireUserIdAllowCookie`) に統一。
 // =============================================================================
 import { isoDateSchema, type SummaryResponse } from "~~/shared/schemas";
 
@@ -29,69 +32,66 @@ if (!isoDateSchema.safeParse(dateParam.value).success) {
   });
 }
 
-const supabase = useSupabaseClient();
-
-async function bearerHeaders(): Promise<HeadersInit> {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+// SSR では Nuxt の internal $fetch にリクエスト cookie を引き継ぐ必要がある。
+// client では useRequestHeaders は空オブジェクトを返し、ブラウザが同一オリジン
+// cookie を自動付与するため、どちらのモードでも安全に動く。
+// (require-connections middleware と同じ流儀)
+function summaryFetchHeaders() {
+  return useRequestHeaders(["cookie"]);
 }
 
-const summary = ref<SummaryResponse | null>(null);
-const loading = ref(true);
+// 日付遷移時の再フェッチは下の watch(dateParam) から refreshSummary() を呼ぶ
+// (= useAsyncData の watch オプションを使わない)。
+// 理由: 日付が変わった直後に stale なら backgroundRefreshIfStale を続けて
+// 走らせたいので、再フェッチ完了を await できる経路が要る。
+//
+// default オプションで初期値を null にして、useAsyncData が型に混ぜてくる
+// undefined を消す (DailySummaryView の props は SummaryResponse | null)。
+const {
+  data: summary,
+  pending: loading,
+  refresh: refreshSummary,
+  error: summaryError,
+} = await useAsyncData<SummaryResponse, Error, SummaryResponse | null>(
+  "daily-summary",
+  () =>
+    $fetch<SummaryResponse>("/api/summary", {
+      query: { date: dateParam.value },
+      headers: summaryFetchHeaders(),
+    }),
+  { default: () => null },
+);
+
 const refreshing = ref(false);
-const errorMessage = ref<string | null>(null);
+const manualErrorMessage = ref<string | null>(null);
 
-// 連続して日付ナビを叩いたときに、古いリクエストのレスポンスで新しい
-// 日付の表示を上書きしないよう、各フェッチに連番を振って「自分が最新
-// でなければ summary / errorMessage / loading を書かない」で守る。
-let activeRequestId = 0;
-
-// /api/summary の取得本体。エラーハンドリング (errorMessage / loading) は呼び出し側に任せ、
-// バックグラウンド再フェッチが UI のエラーバナーを書き換えないよう分離している。
-// reqId が activeRequestId と一致しなければ stale なレスポンスとして破棄する。
-async function fetchSummaryCore(reqId: number) {
-  const headers = await bearerHeaders();
-  const res = await $fetch<SummaryResponse>("/api/summary", {
-    query: { date: dateParam.value },
-    headers,
-  });
-  if (reqId !== activeRequestId) return;
-  summary.value = res;
-}
-
-async function fetchSummary() {
-  const reqId = ++activeRequestId;
-  loading.value = true;
-  errorMessage.value = null;
-  try {
-    await fetchSummaryCore(reqId);
-  } catch (e) {
-    if (reqId !== activeRequestId) return;
-    const msg = e instanceof Error ? e.message : "failed to load summary";
-    errorMessage.value = `サマリー取得に失敗しました: ${msg}`;
-  } finally {
-    if (reqId === activeRequestId) {
-      loading.value = false;
-    }
-  }
-}
+// useAsyncData が拾ったエラー (= 初回 / 日付遷移時の取得失敗) と、
+// 手動更新ボタン由来のエラーを 1 つのバナーに集約する。手動 refresh のメッセージを
+// 優先し、消えたら useAsyncData 側の最新エラーへフォールバックする。
+const errorMessage = computed<string | null>(() => {
+  if (manualErrorMessage.value) return manualErrorMessage.value;
+  if (!summaryError.value) return null;
+  const msg =
+    summaryError.value instanceof Error
+      ? summaryError.value.message
+      : "failed to load summary";
+  return `サマリー取得に失敗しました: ${msg}`;
+});
 
 async function manualRefresh() {
   if (refreshing.value) return;
   refreshing.value = true;
-  errorMessage.value = null;
+  manualErrorMessage.value = null;
   try {
-    const headers = await bearerHeaders();
     await $fetch("/api/summary/refresh", {
       method: "POST",
-      headers,
+      headers: summaryFetchHeaders(),
       body: { date: dateParam.value },
     });
-    await fetchSummary();
+    await refreshSummary();
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed to refresh";
-    errorMessage.value = `更新に失敗しました: ${msg}`;
+    manualErrorMessage.value = `更新に失敗しました: ${msg}`;
   } finally {
     refreshing.value = false;
   }
@@ -128,20 +128,17 @@ function isStale(s: SummaryResponse): boolean {
 }
 
 async function backgroundRefreshIfStale() {
-  if (!summary.value) return;
-  if (!isStale(summary.value)) return;
+  const current = summary.value;
+  if (!current) return;
+  if (!isStale(current)) return;
   // user-initiated refresh と区別するため、エラーは UI に出さず黙って終わる。
-  // 再フェッチも errorMessage を書き換えない fetchSummaryCore を使う。
-  const reqId = ++activeRequestId;
   try {
-    const headers = await bearerHeaders();
     await $fetch("/api/summary/refresh", {
       method: "POST",
-      headers,
+      headers: summaryFetchHeaders(),
       body: { date: dateParam.value },
     });
-    if (reqId !== activeRequestId) return;
-    await fetchSummaryCore(reqId);
+    await refreshSummary();
   } catch {
     // 裏で失敗してもユーザー操作を妨げない
   }
@@ -150,19 +147,22 @@ async function backgroundRefreshIfStale() {
 // =============================================================================
 // Lifecycle
 // =============================================================================
-// 初回フェッチは onMounted (client) で行う。useSupabaseClient はクライアントで
-// セッションを Cookie から復元するが、$fetch の Authorization ヘッダを安全に
-// 載せるためにマウント後に session token を取得してから呼ぶ。
-// 日付遷移後の再フェッチは watcher で拾う (immediate: false)。
-watch(dateParam, async () => {
-  summary.value = null;
-  await fetchSummary();
+// 初回データは useAsyncData が SSR で確保するため、onMounted では
+// 「stale なら裏で refresh する」だけ走らせる。日付遷移時の再フェッチは
+// useAsyncData の watch オプションが拾う ので、別途 watcher は要らない。
+// stale 判定は hydration 後 (= client) のみ意味があるため、watch でも拾う。
+onMounted(() => {
   void backgroundRefreshIfStale();
 });
 
-onMounted(async () => {
-  await fetchSummary();
-  void backgroundRefreshIfStale();
+watch(dateParam, () => {
+  // useAsyncData が新しい dateParam で取得し直すので、こちらは
+  // 完了を待ってから stale チェックする。nextTick だと先に走り得るため、
+  // refresh promise を経由する。
+  void (async () => {
+    await refreshSummary();
+    await backgroundRefreshIfStale();
+  })();
 });
 </script>
 
