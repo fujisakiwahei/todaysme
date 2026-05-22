@@ -2243,6 +2243,9 @@ $font-en:
   }
 
   // バーは横軸の left/width ではなく、縦軸の top/height にマッピングする。
+  // ツールチップ (.tl-bar__tooltip) はバー外へ絶対配置するため overflow は
+  // visible のまま (PC と同じ方針)。バー内テキストの ellipsis は
+  // .tl-bar__text 側の line-clamp で行う。
   .tl-bar {
     top: var(--tl-pos, 0);
     right: 2px;
@@ -2255,7 +2258,6 @@ $font-en:
     flex-direction: column;
     justify-content: flex-start;
     align-items: stretch;
-    overflow: hidden;
     transform: none;
   }
 
@@ -2487,8 +2489,15 @@ $font-en:
   white-space: nowrap;
   color: $color-text;
 
+  // SP では幅が足りずタイトルが省略されて読めなくなるため、
+  // ellipsis をやめて折り返し表示にする (長いメールアドレス等も break)。
   @media (max-width: 560px) {
+    overflow: visible;
     font-size: 15px;
+    text-overflow: clip;
+    white-space: normal;
+    word-break: break-word;
+    overflow-wrap: anywhere;
   }
 }
 
