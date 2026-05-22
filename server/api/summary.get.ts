@@ -45,6 +45,7 @@ interface SleepRow {
 interface CalendarRow {
   id: string;
   google_event_id: string;
+  calendar_id: string;
   calendar_name: string | null;
   title: string | null;
   start_at: string;
@@ -91,10 +92,10 @@ export default defineEventHandler(async (event) => {
 
   const admin = getSupabaseAdmin();
 
-  // -- timezone -------------------------------------------------------------
+  // -- user (timezone + 除外設定) -------------------------------------------
   const { data: userRow, error: userErr } = await admin
     .from("users")
-    .select("timezone")
+    .select("timezone, excluded_google_calendar_ids")
     .eq("id", userId)
     .maybeSingle();
   if (userErr) {
@@ -112,6 +113,9 @@ export default defineEventHandler(async (event) => {
     });
   }
   const timezone = userRow.timezone;
+  const excludedCalendarIds = new Set<string>(
+    (userRow.excluded_google_calendar_ids ?? []) as string[],
+  );
 
   // -- wake range -----------------------------------------------------------
   const internalRange = await wakeRangeOf(date, userId, {
@@ -146,7 +150,9 @@ export default defineEventHandler(async (event) => {
         .order("wake_at", { ascending: true }),
       admin
         .from("google_calendar_events")
-        .select("id, google_event_id, calendar_name, title, start_at, end_at")
+        .select(
+          "id, google_event_id, calendar_id, calendar_name, title, start_at, end_at",
+        )
         .eq("user_id", userId)
         .eq("is_deleted", false)
         .lte("start_at", toIso)
@@ -220,10 +226,12 @@ export default defineEventHandler(async (event) => {
     calendar: calendarRows.map<CalendarTimelineEntry>((r) => ({
       id: r.id,
       google_event_id: r.google_event_id,
+      calendar_id: r.calendar_id,
       calendar_name: r.calendar_name,
       title: r.title,
       start_at: r.start_at,
       end_at: r.end_at,
+      is_excluded: excludedCalendarIds.has(r.calendar_id),
     })),
     toggl: togglRows.map<TogglTimelineEntry>((r) => ({
       id: r.id,
@@ -260,6 +268,7 @@ export default defineEventHandler(async (event) => {
 
   // Google: wake range と重なる時間で集計。
   // 累積 drift を避けるため ms で足し上げ、最後にまとめて分へ丸める。
+  // 除外対象 (users.excluded_google_calendar_ids) は集計から外す (Issue #108)。
   let google: TodaysMe["google"] = null;
   if (connected.has("google")) {
     const byCalendarMs = new Map<string, number>();
@@ -267,6 +276,7 @@ export default defineEventHandler(async (event) => {
     let meetingMs = 0;
     if (internalRange) {
       for (const ev of calendarRows) {
+        if (excludedCalendarIds.has(ev.calendar_id)) continue;
         const ms = overlappingMs(internalRange, ev.start_at, ev.end_at);
         if (ms <= 0) continue;
         totalMs += ms;

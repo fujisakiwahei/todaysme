@@ -177,10 +177,14 @@ export default defineEventHandler(async (event) => {
     calendar: calendarRows.map<CalendarTimelineEntry>((r) => ({
       id: r.id,
       google_event_id: r.google_event_id,
+      // デモテーブルは calendar_id を保持しない (本番のみ持つ列)。
+      // 除外設定はデモには適用しないので null + is_excluded:false で OK。
+      calendar_id: null,
       calendar_name: r.calendar_name,
       title: r.title,
       start_at: r.start_at,
       end_at: r.end_at,
+      is_excluded: false,
     })),
     toggl: togglRows.map<TogglTimelineEntry>((r) => ({
       id: r.id,
