@@ -26,12 +26,16 @@ import { parseOrThrow } from "../../utils/validation";
 const REQUIRED_PROVIDERS: ServiceProvider[] = ["oura", "google"];
 
 export default defineEventHandler(async (event) => {
+  // @nuxtjs/supabase v2 の serverSupabaseUser は JwtPayload を返すので、
+  // user id は `sub` クレームから取る (User オブジェクトの `id` ではない)。
+  // app/pages/daily/today.vue でも同じ流儀。
   const user = await serverSupabaseUser(event);
-  if (!user) {
+  const userId = user?.sub;
+  if (!userId) {
     throw createError({ statusCode: 401, statusMessage: "Unauthorized" });
   }
 
-  const rows = await listServiceConnections(user.id);
+  const rows = await listServiceConnections(userId);
   const byProvider = new Map(rows.map((r) => [r.provider, r] as const));
   const missing = REQUIRED_PROVIDERS.filter(
     (p) => byProvider.get(p)?.status !== "connected",
