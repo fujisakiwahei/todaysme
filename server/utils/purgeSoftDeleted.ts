@@ -17,7 +17,7 @@ import { getSupabaseAdmin } from "./supabaseAdmin";
 
 const PURGE_RETENTION_DAYS = 30;
 
-const PURGE_TARGETS = [
+export const PURGE_TARGETS = [
   "oura_sleep_records",
   "google_calendar_events",
   "toggl_time_entries",
@@ -49,6 +49,9 @@ export async function purgeSoftDeleted(
         .lt("updated_at", cutoffIso);
 
       if (error) {
+        // 個別エラー詳細はレスポンスに乗せない (cron 既存方針: 集計のみ返す)
+        // ので、運用検知のため Vercel ログに残す。
+        console.error(`[purgeSoftDeleted] ${table} failed: ${error.message}`);
         results.push({ table, deleted: 0, error: error.message });
         continue;
       }
@@ -56,6 +59,7 @@ export async function purgeSoftDeleted(
       results.push({ table, deleted: count ?? 0, error: null });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
+      console.error(`[purgeSoftDeleted] ${table} threw: ${message}`);
       results.push({ table, deleted: 0, error: message });
     }
   }
