@@ -1,0 +1,2167 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Today's ME — Workflow Map</title>
+    <meta name="robots" content="noindex" />
+    <style>
+      :root {
+        --bg: #0c1117;
+        --bg-2: #11171f;
+        --panel: #161d27;
+        --panel-2: #1a2330;
+        --line: #2a3340;
+        --text: #d6dde6;
+        --muted: #8a94a3;
+        --edge: #2c3441;
+        --edge-active: #ffd166;
+        --edge-active-glow: rgba(255, 209, 102, 0.55);
+        --gold-soft: #f0c267;
+        --anno-h: 320px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          -apple-system,
+          "Segoe UI",
+          "Hiragino Sans",
+          "Yu Gothic UI",
+          sans-serif;
+        font-size: 13px;
+        overflow: hidden;
+        height: 100vh;
+      }
+
+      body {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        grid-template-rows: auto 1fr 6px var(--anno-h);
+        grid-template-areas:
+          "header   header"
+          "sidebar  canvas"
+          "sidebar  resizer"
+          "sidebar  annotations";
+        height: 100vh;
+      }
+
+      header.app-header {
+        grid-area: header;
+        padding: 14px 22px 12px;
+        background: linear-gradient(180deg, #11171f, #0c1117);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: baseline;
+        gap: 18px;
+      }
+      header.app-header h1 {
+        margin: 0;
+        font-size: 16px;
+        letter-spacing: 0.04em;
+        color: var(--text);
+      }
+      header.app-header .repo-path {
+        font-family:
+          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 11.5px;
+        color: var(--gold-soft);
+      }
+      header.app-header .hint {
+        margin-left: auto;
+        font-size: 11.5px;
+        color: var(--muted);
+      }
+
+      aside.sidebar {
+        grid-area: sidebar;
+        background: var(--bg-2);
+        border-right: 1px solid var(--line);
+        padding: 14px 14px 18px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      .flow-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .flow-btn {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        color: var(--text);
+        text-align: left;
+        padding: 9px 11px 9px 12px;
+        border-radius: 8px;
+        cursor: pointer;
+        font: inherit;
+        line-height: 1.35;
+        transition:
+          background 0.15s,
+          border-color 0.15s,
+          transform 0.05s;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .flow-btn:hover {
+        background: var(--panel-2);
+        border-color: #3a4757;
+      }
+      .flow-btn:active {
+        transform: translateY(1px);
+      }
+      .flow-btn.active {
+        background: #2a2410;
+        border-color: var(--edge-active);
+        box-shadow: 0 0 0 1px var(--edge-active-glow);
+      }
+      .flow-btn .flow-title {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .flow-btn .flow-sub {
+        font-size: 10.5px;
+        color: var(--muted);
+        line-height: 1.4;
+      }
+      .flow-btn .flow-icon {
+        margin-right: 6px;
+      }
+
+      .panel-title {
+        font-size: 10.5px;
+        letter-spacing: 0.12em;
+        color: var(--muted);
+        text-transform: uppercase;
+        margin: 6px 2px 2px;
+      }
+
+      .reset-btn {
+        background: transparent;
+        border: 1px dashed #3a4757;
+        color: var(--muted);
+        padding: 7px 10px;
+        border-radius: 6px;
+        cursor: pointer;
+        font: inherit;
+        font-size: 11.5px;
+      }
+      .reset-btn:hover {
+        color: var(--text);
+        border-color: var(--gold-soft);
+      }
+
+      .legend {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 10px 11px;
+      }
+      .legend-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11px;
+      }
+      .legend-swatch {
+        width: 14px;
+        height: 10px;
+        border-radius: 3px;
+        border: 1.5px solid var(--line);
+      }
+      .legend-label {
+        color: var(--muted);
+      }
+
+      .canvas-wrap {
+        grid-area: canvas;
+        position: relative;
+        background:
+          radial-gradient(
+            circle at 20% 18%,
+            rgba(76, 201, 240, 0.04),
+            transparent 50%
+          ),
+          radial-gradient(
+            circle at 80% 70%,
+            rgba(255, 209, 102, 0.035),
+            transparent 50%
+          ),
+          var(--bg);
+        overflow: hidden;
+      }
+      .canvas-wrap svg {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+      }
+      .canvas-wrap svg.is-panning {
+        cursor: grabbing;
+      }
+
+      .resizer {
+        grid-area: resizer;
+        background: linear-gradient(180deg, var(--bg), var(--bg-2));
+        border-top: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
+        cursor: row-resize;
+        position: relative;
+      }
+      .resizer::before {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 50px;
+        height: 2px;
+        background: var(--line);
+        border-radius: 1px;
+      }
+      .resizer:hover::before {
+        background: var(--gold-soft);
+      }
+
+      .annotations {
+        grid-area: annotations;
+        background: var(--bg-2);
+        padding: 12px 22px 18px;
+        overflow-y: auto;
+        border-top: 1px solid var(--line);
+      }
+      .annotations .anno-header {
+        display: flex;
+        gap: 10px;
+        align-items: baseline;
+        margin-bottom: 8px;
+      }
+      .annotations .anno-icon {
+        font-size: 18px;
+      }
+      .annotations .anno-name {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .annotations .anno-sub {
+        color: var(--muted);
+        font-size: 11.5px;
+      }
+      .annotations .anno-desc {
+        color: var(--text);
+        font-size: 12.5px;
+        line-height: 1.65;
+        margin: 4px 0 12px;
+        max-width: 1000px;
+      }
+      .annotations ol {
+        counter-reset: step;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+      .annotations ol li {
+        counter-increment: step;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-left: 2px solid var(--gold-soft);
+        border-radius: 7px;
+        padding: 8px 12px 9px 38px;
+        position: relative;
+        cursor: pointer;
+        transition:
+          background 0.15s,
+          border-color 0.15s;
+      }
+      .annotations ol li::before {
+        content: counter(step);
+        position: absolute;
+        left: 10px;
+        top: 9px;
+        width: 20px;
+        height: 20px;
+        line-height: 20px;
+        text-align: center;
+        background: rgba(255, 209, 102, 0.12);
+        color: var(--gold-soft);
+        border: 1px solid rgba(255, 209, 102, 0.4);
+        border-radius: 50%;
+        font-size: 11px;
+        font-weight: 600;
+      }
+      .annotations ol li:hover {
+        background: var(--panel-2);
+        border-color: #3a4757;
+      }
+      .annotations ol li.focused {
+        animation: anno-flash 1.2s ease-out 1;
+        border-color: var(--edge-active);
+      }
+      .annotations ol li .li-from-to {
+        font-family:
+          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      .annotations ol li .li-passes {
+        background: rgba(255, 209, 102, 0.06);
+        border-left: 2px solid var(--gold-soft);
+        padding: 4px 9px;
+        margin: 3px 0;
+        font-family:
+          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 11.5px;
+        line-height: 1.45;
+        color: var(--text);
+        border-radius: 0 3px 3px 0;
+        word-break: break-word;
+      }
+      .annotations ol li .li-note {
+        color: var(--muted);
+        font-size: 11.5px;
+        margin-top: 3px;
+        line-height: 1.5;
+      }
+      .annotations .empty {
+        color: var(--muted);
+        font-size: 12px;
+        font-style: italic;
+        padding: 6px 0;
+      }
+
+      @keyframes anno-flash {
+        0% {
+          background: rgba(255, 209, 102, 0.45);
+          box-shadow: 0 0 0 1px rgba(255, 209, 102, 0.7);
+        }
+        100% {
+          background: var(--panel);
+          box-shadow: none;
+        }
+      }
+
+      .col-header {
+        font-size: 11px;
+        letter-spacing: 0.22em;
+        fill: var(--muted);
+        text-transform: uppercase;
+        font-weight: 600;
+      }
+      .col-divider {
+        stroke: var(--line);
+        stroke-dasharray: 3 5;
+        stroke-width: 1;
+      }
+
+      .node-rect {
+        fill: var(--panel);
+        stroke-width: 1.5;
+        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+        transition:
+          fill 0.18s,
+          stroke-width 0.18s,
+          filter 0.18s;
+      }
+      .node-title {
+        font-size: 12px;
+        font-weight: 600;
+        fill: var(--text);
+        pointer-events: none;
+      }
+      .node-sub {
+        font-size: 10.5px;
+        fill: var(--muted);
+        pointer-events: none;
+      }
+      .node.dim .node-rect {
+        opacity: 0.18;
+      }
+      .node.dim .node-title,
+      .node.dim .node-sub {
+        opacity: 0.2;
+      }
+      .node.in-flow .node-rect {
+        stroke-width: 2.5;
+        filter:
+          drop-shadow(0 0 6px var(--edge-active-glow))
+          drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+      }
+      .node.endpoint .node-rect {
+        stroke-width: 3;
+        animation: node-glow 1.1s ease-in-out infinite;
+      }
+      @keyframes node-glow {
+        0%,
+        100% {
+          filter:
+            drop-shadow(0 0 6px var(--edge-active-glow))
+            drop-shadow(0 0 14px rgba(255, 209, 102, 0.35));
+        }
+        50% {
+          filter:
+            drop-shadow(0 0 10px #fffae0)
+            drop-shadow(0 0 22px rgba(255, 248, 224, 0.6));
+        }
+      }
+
+      .edge-path {
+        fill: none;
+        stroke: var(--edge);
+        stroke-width: 1.5;
+        transition:
+          stroke 0.2s,
+          stroke-width 0.2s,
+          opacity 0.2s;
+      }
+      .edge.in-flow .edge-path {
+        stroke: var(--edge-active);
+        stroke-width: 2.2;
+        filter: drop-shadow(0 0 4px var(--edge-active-glow));
+      }
+      .edge.dim .edge-path {
+        opacity: 0.12;
+      }
+      .edge.focused-edge .edge-path {
+        animation: edge-pulse 1.1s ease-in-out infinite;
+      }
+      @keyframes edge-pulse {
+        0%,
+        100% {
+          stroke: var(--edge-active);
+          stroke-width: 2.8;
+          filter: drop-shadow(0 0 6px var(--edge-active-glow));
+        }
+        50% {
+          stroke: #fff8d6;
+          stroke-width: 4.2;
+          filter:
+            drop-shadow(0 0 10px #fff8d6)
+            drop-shadow(0 0 18px var(--edge-active-glow));
+        }
+      }
+
+      .edge-tether {
+        fill: none;
+        stroke: var(--edge-active);
+        stroke-width: 1;
+        stroke-dasharray: 2 3;
+        opacity: 0.5;
+      }
+
+      .edge-step-badge {
+        cursor: pointer;
+      }
+      .edge-step-pill {
+        fill: #1a2330;
+        stroke: var(--edge-active);
+        stroke-width: 1.2;
+        transition:
+          fill 0.18s,
+          stroke 0.18s;
+      }
+      .edge-step-text {
+        fill: var(--edge-active);
+        font-size: 10.5px;
+        font-weight: 700;
+        text-anchor: middle;
+        dominant-baseline: middle;
+        pointer-events: none;
+        font-family:
+          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        letter-spacing: 0.02em;
+      }
+      .edge-step-halo {
+        fill: var(--edge-active);
+        opacity: 0;
+        pointer-events: none;
+      }
+      .edge-step-scale {
+        transform-origin: center;
+        transform-box: fill-box;
+      }
+      .edge-step-badge:hover .edge-step-pill {
+        fill: #2a2410;
+        stroke: #fff8d6;
+      }
+      .edge-step-badge.focused .edge-step-pill {
+        fill: var(--edge-active);
+        stroke: #fff8d6;
+        stroke-width: 1.6;
+      }
+      .edge-step-badge.focused .edge-step-text {
+        fill: #1a1100;
+      }
+      .edge-step-badge.focused .edge-step-scale {
+        animation: pulse 0.9s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+        transform-origin: center;
+        transform-box: fill-box;
+      }
+      .edge-step-badge.focused .edge-step-halo {
+        animation: halo-burst 1.3s ease-out infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          filter:
+            drop-shadow(0 0 3px #fff)
+            drop-shadow(0 0 6px var(--edge-active))
+            drop-shadow(0 0 12px var(--edge-active-glow));
+        }
+        50% {
+          transform: scale(1.42);
+          filter:
+            drop-shadow(0 0 8px #fff)
+            drop-shadow(0 0 14px var(--edge-active))
+            drop-shadow(0 0 22px var(--edge-active-glow));
+        }
+      }
+      @keyframes halo-burst {
+        0% {
+          transform: scale(0.55);
+          opacity: 0.85;
+        }
+        100% {
+          transform: scale(3);
+          opacity: 0;
+        }
+      }
+
+      #tooltip {
+        position: fixed;
+        background: rgba(14, 20, 28, 0.97);
+        border: 1px solid var(--edge-active);
+        border-radius: 8px;
+        padding: 10px 13px;
+        color: var(--text);
+        font-size: 12px;
+        line-height: 1.55;
+        max-width: 420px;
+        pointer-events: none;
+        z-index: 1000;
+        box-shadow:
+          0 8px 24px rgba(0, 0, 0, 0.55),
+          0 0 0 1px var(--edge-active-glow);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        opacity: 0;
+        transition: opacity 0.12s;
+      }
+      #tooltip.visible {
+        opacity: 1;
+      }
+      #tooltip .tt-flow {
+        font-size: 11px;
+        color: var(--gold-soft);
+        letter-spacing: 0.05em;
+        margin-bottom: 5px;
+      }
+      #tooltip .tt-step + .tt-step {
+        border-top: 1px dashed #3a4757;
+        margin-top: 8px;
+        padding-top: 8px;
+      }
+      #tooltip .tt-route {
+        font-family:
+          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 11px;
+        color: var(--muted);
+        margin-bottom: 4px;
+      }
+      #tooltip .tt-route .tt-chip {
+        background: #1a2330;
+        border: 1px solid var(--line);
+        color: var(--text);
+        padding: 1px 6px;
+        border-radius: 3px;
+        margin: 0 2px;
+      }
+      #tooltip .tt-passes {
+        background: rgba(255, 209, 102, 0.07);
+        border-left: 2px solid var(--gold-soft);
+        padding: 4px 8px;
+        margin: 4px 0;
+        font-family:
+          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-size: 11px;
+        word-break: break-word;
+      }
+      #tooltip .tt-note {
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .err-banner {
+        position: fixed;
+        bottom: 16px;
+        left: 16px;
+        right: 16px;
+        background: #2a0e1c;
+        border: 1px solid #f72585;
+        color: #ffd6e6;
+        padding: 12px 16px;
+        border-radius: 8px;
+        font-size: 12.5px;
+        z-index: 9999;
+      }
+
+      /* ===== Tablet ===== */
+      @media (max-width: 1024px) {
+        body {
+          grid-template-columns: 240px 1fr;
+        }
+        aside.sidebar {
+          padding: 12px 10px 14px;
+        }
+        .flow-btn {
+          padding: 8px 9px;
+        }
+        .flow-btn .flow-title {
+          font-size: 12px;
+        }
+        .flow-btn .flow-sub {
+          font-size: 10px;
+        }
+        header.app-header {
+          padding: 12px 16px 10px;
+        }
+        header.app-header h1 {
+          font-size: 14px;
+        }
+        header.app-header .repo-path {
+          font-size: 10.5px;
+        }
+        header.app-header .hint {
+          display: none;
+        }
+        .annotations {
+          padding: 12px 16px 16px;
+        }
+      }
+
+      /* ===== Mobile (smartphone) ===== */
+      @media (max-width: 767px) {
+        :root {
+          --anno-h: 200px;
+        }
+        html,
+        body {
+          font-size: 12px;
+        }
+        body {
+          grid-template-columns: 1fr;
+          grid-template-rows: auto auto 1fr var(--anno-h);
+          grid-template-areas:
+            "header"
+            "sidebar"
+            "canvas"
+            "annotations";
+          height: 100dvh;
+        }
+        header.app-header {
+          padding: 8px 12px;
+          gap: 8px;
+          flex-wrap: wrap;
+        }
+        header.app-header h1 {
+          font-size: 13px;
+        }
+        header.app-header .repo-path,
+        header.app-header .hint {
+          display: none;
+        }
+
+        aside.sidebar {
+          border-right: none;
+          border-bottom: 1px solid var(--line);
+          flex-direction: row;
+          overflow-x: auto;
+          overflow-y: hidden;
+          padding: 8px 10px;
+          gap: 8px;
+          align-items: stretch;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: thin;
+        }
+        .panel-title,
+        .legend {
+          display: none;
+        }
+        .reset-btn {
+          flex-shrink: 0;
+          align-self: center;
+          padding: 6px 9px;
+          font-size: 10.5px;
+          white-space: nowrap;
+        }
+        .flow-list {
+          flex-direction: row;
+          gap: 8px;
+          flex-shrink: 0;
+        }
+        .flow-btn {
+          width: 190px;
+          flex-shrink: 0;
+          padding: 7px 10px;
+          gap: 1px;
+        }
+        .flow-btn .flow-title {
+          font-size: 11.5px;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .flow-btn .flow-sub {
+          font-size: 10px;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          overflow: hidden;
+        }
+
+        .resizer {
+          display: none;
+        }
+
+        .canvas-wrap svg {
+          touch-action: none;
+        }
+
+        .annotations {
+          padding: 10px 14px 14px;
+        }
+        .annotations .anno-header {
+          flex-wrap: wrap;
+          gap: 6px;
+          margin-bottom: 6px;
+        }
+        .annotations .anno-icon {
+          font-size: 16px;
+        }
+        .annotations .anno-name {
+          font-size: 13px;
+        }
+        .annotations .anno-sub {
+          font-size: 11px;
+          flex-basis: 100%;
+        }
+        .annotations .anno-desc {
+          font-size: 11.5px;
+          line-height: 1.55;
+          margin: 2px 0 10px;
+        }
+        .annotations ol li {
+          padding: 7px 10px 8px 32px;
+        }
+        .annotations ol li::before {
+          left: 8px;
+          top: 8px;
+          width: 18px;
+          height: 18px;
+          line-height: 18px;
+          font-size: 10px;
+        }
+        .annotations ol li .li-from-to {
+          font-size: 10.5px;
+        }
+        .annotations ol li .li-passes {
+          font-size: 10.5px;
+        }
+        .annotations ol li .li-note {
+          font-size: 10.5px;
+        }
+
+        #tooltip {
+          max-width: calc(100vw - 24px);
+          font-size: 11.5px;
+          padding: 8px 11px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="app-header">
+      <h1 id="app-title">Today's ME — Workflow Map</h1>
+      <span class="repo-path" id="app-path">todaysme/</span>
+      <span class="hint" id="app-hint"></span>
+    </header>
+
+    <aside class="sidebar">
+      <div class="panel-title">フロー</div>
+      <div class="flow-list" id="flow-list"></div>
+      <button class="reset-btn" id="reset-btn">⊘ 全体表示にリセット (F)</button>
+      <div class="panel-title">凡例</div>
+      <div class="legend" id="legend"></div>
+    </aside>
+
+    <div class="canvas-wrap">
+      <svg
+        id="canvas"
+        xmlns="http://www.w3.org/2000/svg"
+        preserveAspectRatio="xMidYMid meet"
+      ></svg>
+    </div>
+
+    <div class="resizer" id="resizer" title="ドラッグで注釈パネルの高さを調整"></div>
+
+    <div class="annotations" id="annotations">
+      <div class="empty">
+        左のフローを選ぶか数字キー (1〜0) を押すと、ここに順序付き注釈が出る。
+      </div>
+    </div>
+
+    <div id="tooltip" role="tooltip"></div>
+
+    <!-- Fallback for file:// (embedded copy of flows.json) -->
+    <script type="application/json" id="workflow-data">
+{
+  "meta": {
+    "title": "Today's ME — Workflow Map",
+    "subtitle": "Nuxt 4 + Supabase + Oura / Google Calendar / Toggl",
+    "repoPath": "todaysme/",
+    "version": "2026-05-22",
+    "hint": "1〜0=フロー / F=全体 / +-=ズーム / Esc=フォーカス解除 / バッジクリック=ステップ"
+  },
+  "viewBox": { "w": 1620, "h": 820 },
+  "columns": [
+    { "id": "client",   "label": "CLIENT (browser · Nuxt SSR)", "x": 175,  "divider": 335 },
+    { "id": "api",      "label": "NUXT SERVER · /api",          "x": 495,  "divider": 655 },
+    { "id": "utils",    "label": "SERVER UTILS · server/utils", "x": 815,  "divider": 975 },
+    { "id": "db",       "label": "SUPABASE (Postgres + Auth)",  "x": 1135, "divider": 1295 },
+    { "id": "ext",      "label": "EXTERNAL APIs / CRON",         "x": 1455, "divider": null }
+  ],
+  "groups": [
+    { "id": "client", "label": "Vue pages (app/pages)",                 "stroke": "#4cc9f0", "fill": "#11242e", "sub": "#7cd3ec" },
+    { "id": "api",    "label": "Nuxt server routes (server/api)",       "stroke": "#90e0ef", "fill": "#0f2630", "sub": "#9ad6e6" },
+    { "id": "utils",  "label": "Server utilities (server/utils)",       "stroke": "#ffd166", "fill": "#2c2410", "sub": "#f0c267" },
+    { "id": "auth",   "label": "Auth & Session",                        "stroke": "#a594f9", "fill": "#1e1a30", "sub": "#b9adfc" },
+    { "id": "db",     "label": "Supabase tables",                       "stroke": "#52b788", "fill": "#0f2a1d", "sub": "#74c89f" },
+    { "id": "ext",    "label": "External services",                     "stroke": "#f72585", "fill": "#2a0e1c", "sub": "#f06ea6" },
+    { "id": "cron",   "label": "Scheduler",                             "stroke": "#f4a261", "fill": "#2a1c10", "sub": "#f6b682" }
+  ],
+  "nodes": [
+    { "id": "page-settings", "title": "/settings",        "subtitle": "app/pages/settings.vue",         "group": "client", "x": 40,   "y": 130, "w": 270, "h": 56 },
+    { "id": "page-daily",    "title": "/daily/[date]",    "subtitle": "app/pages/daily/[date].vue",     "group": "client", "x": 40,   "y": 340, "w": 270, "h": 56 },
+    { "id": "page-demo",     "title": "/demo",            "subtitle": "app/pages/demo.vue",             "group": "client", "x": 40,   "y": 550, "w": 270, "h": 56 },
+
+    { "id": "api-summary",       "title": "GET /api/summary",                    "subtitle": "server/api/summary.get.ts",                       "group": "api", "x": 360, "y": 80,  "w": 270, "h": 56 },
+    { "id": "api-refresh",       "title": "POST /api/summary/refresh",           "subtitle": "server/api/summary/refresh.post.ts",              "group": "api", "x": 360, "y": 175, "w": 270, "h": 56 },
+    { "id": "api-cron",          "title": "GET /api/cron/daily",                 "subtitle": "server/api/cron/daily.get.ts",                    "group": "api", "x": 360, "y": 270, "w": 270, "h": 56 },
+    { "id": "api-connections",   "title": "/api/connections (GET·POST·DELETE)",  "subtitle": "list · toggl · disconnect · calendars",           "group": "api", "x": 360, "y": 365, "w": 270, "h": 56 },
+    { "id": "api-oauth-start",   "title": "GET /connections/:p/start",           "subtitle": "Oura / Google",                                    "group": "api", "x": 360, "y": 460, "w": 270, "h": 56 },
+    { "id": "api-oauth-cb",      "title": "GET /connections/:p/callback",        "subtitle": "Oura / Google",                                    "group": "api", "x": 360, "y": 555, "w": 270, "h": 56 },
+    { "id": "api-demo",          "title": "GET /api/demo/summary",               "subtitle": "server/api/demo/summary.get.ts",                  "group": "api", "x": 360, "y": 650, "w": 270, "h": 56 },
+
+    { "id": "util-auth",    "title": "requireUserId",                "subtitle": "server/utils/auth.ts",                                        "group": "utils", "x": 680, "y": 100, "w": 270, "h": 56 },
+    { "id": "util-refresh", "title": "refreshUserDate (orchestrator)", "subtitle": "runRefresh.ts + syncLock.ts + wakeRange.ts",                "group": "utils", "x": 680, "y": 220, "w": 270, "h": 56 },
+    { "id": "util-sync",    "title": "syncOura / syncGoogle / syncToggl", "subtitle": "syncXxx.ts + getXxxData.ts",                              "group": "utils", "x": 680, "y": 340, "w": 270, "h": 56 },
+    { "id": "util-token",   "title": "serviceConnection + crypto",   "subtitle": "AES-256-GCM · refresh on expiry / 401",                       "group": "utils", "x": 680, "y": 460, "w": 270, "h": 56 },
+    { "id": "util-oauth",   "title": "oauthState + oauth/{google,oura}", "subtitle": "HMAC state · authorize/token endpoints",                   "group": "utils", "x": 680, "y": 580, "w": 270, "h": 56 },
+
+    { "id": "supa-auth",       "title": "Supabase Auth",       "subtitle": "auth.users · JWT verify",                "group": "auth", "x": 1000, "y": 80,  "w": 270, "h": 56 },
+    { "id": "tbl-users",       "title": "users",               "subtitle": "timezone · excluded_google_calendar_ids", "group": "db",  "x": 1000, "y": 195, "w": 270, "h": 56 },
+    { "id": "tbl-connections", "title": "service_connections", "subtitle": "AES-encrypted tokens · status",          "group": "db",  "x": 1000, "y": 310, "w": 270, "h": 56 },
+    { "id": "tbl-status",      "title": "daily_sync_statuses", "subtitle": "lock · status · error_message",          "group": "db",  "x": 1000, "y": 425, "w": 270, "h": 56 },
+    { "id": "tbl-records",     "title": "*_records / *_events / *_time_entries", "subtitle": "oura_sleep · google_calendar · toggl_time", "group": "db", "x": 1000, "y": 540, "w": 270, "h": 56 },
+    { "id": "tbl-demo",        "title": "demo_* (public-read)", "subtitle": "no RLS · no user_id · Asia/Tokyo",       "group": "db",  "x": 1000, "y": 655, "w": 270, "h": 56 },
+
+    { "id": "ext-cron",   "title": "Vercel Cron",       "subtitle": "0 20 * * * (UTC) · JST 05:00",                "group": "cron", "x": 1320, "y": 80,  "w": 270, "h": 56 },
+    { "id": "ext-oura",   "title": "Oura API v2",       "subtitle": "/usercollection/sleep · /oauth/token",         "group": "ext", "x": 1320, "y": 250, "w": 270, "h": 56 },
+    { "id": "ext-google", "title": "Google Calendar v3", "subtitle": "/calendars · /events · oauth2/token",         "group": "ext", "x": 1320, "y": 410, "w": 270, "h": 56 },
+    { "id": "ext-toggl",  "title": "Toggl Track v9",     "subtitle": "/me/time_entries (Basic Auth)",               "group": "ext", "x": 1320, "y": 570, "w": 270, "h": 56 }
+  ],
+  "flows": [
+    {
+      "id": "auth-session",
+      "icon": "🔐",
+      "name": "1. ログイン & セッション",
+      "sub": "Supabase Auth でログインし、その JWT を全 API リクエストで検証する",
+      "description": "Supabase の OAuth (Google identity provider) でログイン。返ってきた access_token がクライアントに保存され、以降のあらゆる /api/* 呼び出しで Bearer ヘッダとして送信される。サーバ側は requireUserId() でその JWT を Supabase Admin に問い合わせて検証する。",
+      "steps": [
+        { "from": "page-settings", "to": "supa-auth",     "passes": "supabase.auth.signInWithOAuth({ provider: 'google' })", "note": "Supabase の OAuth は Calendar 接続とは別物。アカウント識別だけに使う" },
+        { "from": "supa-auth",     "to": "page-settings", "passes": "session JWT (access_token + refresh_token)",            "note": "@nuxtjs/supabase が保存・自動更新" },
+        { "from": "page-settings", "to": "api-connections", "passes": "Authorization: Bearer <Supabase JWT>",                 "note": "認証必須 API はすべてこのヘッダを要求する" },
+        { "from": "api-connections", "to": "util-auth",   "passes": "requireUserId(event)",                                   "note": "server/utils/auth.ts" },
+        { "from": "util-auth",     "to": "supa-auth",     "passes": "supabaseAdmin.auth.getUser(token)",                       "note": "署名検証 + ユーザー存在確認" },
+        { "from": "supa-auth",     "to": "util-auth",     "passes": "{ user.id }",                                             "note": "不正なら 401 を throw" }
+      ]
+    },
+    {
+      "id": "oauth-connect",
+      "icon": "🔗",
+      "name": "2. Google / Oura OAuth 接続",
+      "sub": "外部サービスのアクセストークンを取得して暗号化保存するまでの全行程",
+      "description": "ユーザーが /settings の「Google Calendar と接続」ボタンを押すところから、ブラウザが外部サービスへ飛んでコードを持ち帰り、それを引き換えに access_token と refresh_token を取得し、AES-256-GCM で暗号化して service_connections に書き込み、/settings へ戻すまで。CSRF は HMAC-SHA256 で署名された state と httpOnly cookie の nonce の二段でガードする。",
+      "steps": [
+        { "from": "page-settings",  "to": "api-oauth-start", "passes": "GET /api/connections/google/start",                       "note": "Bearer JWT 必須" },
+        { "from": "api-oauth-start","to": "util-oauth",      "passes": "createOauthState(userId)",                                "note": "HMAC-SHA256 で署名した state と 10 分 TTL の nonce を生成" },
+        { "from": "util-oauth",    "to": "api-oauth-start",  "passes": "{ state, nonce, authorize_url }",                         "note": "buildGoogleAuthorizeUrl(state) で URL を組み立てる" },
+        { "from": "api-oauth-start","to": "page-settings",   "passes": "{ authorize_url } · Set-Cookie todaysme_oauth_state_google=<nonce>", "note": "httpOnly + SameSite=Lax" },
+        { "from": "page-settings", "to": "ext-google",       "passes": "window.location.href = authorize_url",                    "note": "scope: calendar.events.readonly + calendar.calendarlist.readonly · access_type=offline · prompt=consent" },
+        { "from": "ext-google",    "to": "api-oauth-cb",     "passes": "302 → /api/connections/google/callback?code=...&state=...","note": "ユーザーが同意した後のリダイレクト" },
+        { "from": "api-oauth-cb",  "to": "util-oauth",       "passes": "verifyOauthState(state, cookie_nonce)",                    "note": "署名・有効期限・nonce 一致を全部チェック → ダメなら 400" },
+        { "from": "api-oauth-cb",  "to": "ext-google",       "passes": "POST oauth2.googleapis.com/token (code, redirect_uri)",     "note": "認可コードと引き換えに token を取得" },
+        { "from": "ext-google",    "to": "api-oauth-cb",     "passes": "{ access_token, refresh_token, expires_in }",              "note": "parseExternal(googleTokenResponseSchema) で形を検証 · 失敗時 502" },
+        { "from": "api-oauth-cb",  "to": "util-token",       "passes": "upsertServiceConnection(userId, 'google', tokens)",         "note": "暗号化と DB 書き込みを一気にやる" },
+        { "from": "util-token",    "to": "tbl-connections",  "passes": "UPSERT service_connections (access_token_encrypted, refresh_token_encrypted, token_expires_at, status='connected')", "note": "iv / authTag / ciphertext を base64 で格納" },
+        { "from": "api-oauth-cb",  "to": "page-settings",    "passes": "302 Location: /settings?connected=google",                  "note": "nonce cookie は使い切りで削除" }
+      ]
+    },
+    {
+      "id": "toggl-connect",
+      "icon": "🎟️",
+      "name": "3. Toggl API トークン接続",
+      "sub": "OAuth ではなく Toggl ダッシュボードから取った API トークンを貼り付ける方式",
+      "description": "Toggl Track には OAuth フローがないので、ユーザーが Toggl 設定画面から自分の API トークンをコピペし、サーバ側で AES-256-GCM 暗号化してそのまま保存する。refresh の概念はない。",
+      "steps": [
+        { "from": "page-settings",   "to": "api-connections", "passes": "POST /api/connections/toggl · { api_token }",                "note": "togglConnectRequestSchema で parseOrThrow" },
+        { "from": "api-connections", "to": "util-auth",       "passes": "requireUserId(event)",                                       "note": "Bearer JWT 必須" },
+        { "from": "api-connections", "to": "util-token",      "passes": "upsertServiceConnection(userId, 'toggl', { accessToken: api_token, refreshToken: null })", "note": "refresh_token は常に null" },
+        { "from": "util-token",      "to": "tbl-connections", "passes": "UPSERT service_connections (provider='toggl', status='connected')", "note": "AES-256-GCM で暗号化済み" },
+        { "from": "api-connections", "to": "page-settings",   "passes": "{ ok: true }",                                                "note": "UI 側で /api/connections を再取得して状態を反映" }
+      ]
+    },
+    {
+      "id": "connections-list",
+      "icon": "⚙️",
+      "name": "4. /settings 初期化（接続一覧）",
+      "sub": "service_connections の状態を取り出すが、暗号化トークンの中身は絶対にクライアントへ返さない",
+      "description": "/settings ページのマウント時に呼ばれる。各 provider について status と has_token と connected_at だけを返し、トークン本体はサーバを出ない。Google が連携済みなら、続けて Google 側にカレンダー一覧を取りにいき、除外設定の UI を作る。",
+      "steps": [
+        { "from": "page-settings",   "to": "api-connections", "passes": "GET /api/connections",                                                  "note": "Bearer JWT" },
+        { "from": "api-connections", "to": "util-auth",       "passes": "requireUserId(event)",                                                   "note": "" },
+        { "from": "api-connections", "to": "tbl-connections", "passes": "SELECT provider, status, connected_at, token_expires_at WHERE user_id = auth.uid()", "note": "RLS で user_id が縛られる" },
+        { "from": "api-connections", "to": "page-settings",   "passes": "ConnectionListResponse [{ provider, status, has_token, connected_at }]",  "note": "access_token は never returned · CLAUDE.md §12.1" },
+        { "from": "page-settings",   "to": "api-connections", "passes": "GET /api/connections/google/calendars",                                    "note": "Google が connected な時だけ呼ばれる" },
+        { "from": "api-connections", "to": "util-token",      "passes": "withFreshAccessToken(userId, 'google', fetchCalendarList)",                "note": "decrypt → 期限近ければ refresh → 呼び出し" },
+        { "from": "util-token",      "to": "ext-google",      "passes": "GET /calendar/v3/users/me/calendarList (Bearer)",                          "note": "pagination 対応" },
+        { "from": "ext-google",      "to": "api-connections", "passes": "{ items: [{ id, summary, primary }] }",                                    "note": "users.excluded_google_calendar_ids と突き合わせて excluded フラグを付ける" },
+        { "from": "api-connections", "to": "page-settings",   "passes": "GoogleCalendarsResponse",                                                   "note": "PUT /api/connections/google/excluded-calendars で保存する" }
+      ]
+    },
+    {
+      "id": "summary-read",
+      "icon": "📊",
+      "name": "5. /daily/[date] サマリ取得",
+      "sub": "Wake-based Timeline で 1 日分の sleep / event / time_entry を集める読み取りパス",
+      "description": "/daily/[date] のマウント時にこれが走る。同期は一切起こさず、すでに DB に入っているレコードだけから wake range を計算し、その時間幅にオーバーラップする睡眠 / カレンダー / 作業時間を引いてくる。daily_sync_statuses も同時に返して、UI 側で「最終同期からの経過時間」を出せるようにする。",
+      "steps": [
+        { "from": "page-daily",   "to": "api-summary",  "passes": "GET /api/summary?date=YYYY-MM-DD",                                              "note": "Bearer JWT" },
+        { "from": "api-summary",  "to": "util-auth",    "passes": "requireUserId(event)",                                                          "note": "" },
+        { "from": "api-summary",  "to": "tbl-users",    "passes": "SELECT timezone, excluded_google_calendar_ids",                                  "note": "ユーザーの TZ が wake range の計算基準" },
+        { "from": "api-summary",  "to": "tbl-records",  "passes": "SELECT oura_sleep_records WHERE target_date IN {date-1, date}",                   "note": "wakeRangeOf() が [前回 sleep_start_at, wake_at] を確定する起点" },
+        { "from": "api-summary",  "to": "tbl-records",  "passes": "SELECT google_calendar_events / toggl_time_entries で wake range にオーバーラップ", "note": "target_date 完全一致ではなく時間範囲オーバーラップ · is_deleted=false · 除外カレンダーをフィルタ" },
+        { "from": "api-summary",  "to": "tbl-status",   "passes": "SELECT daily_sync_statuses for (user_id, target_date) × 3 providers",             "note": "last_synced_at と status を UI に渡すため" },
+        { "from": "api-summary",  "to": "page-daily",   "passes": "SummaryResponse { wake_range, todays_me, timeline, sync_statuses }",              "note": "Zod summaryResponseSchema で出力検証" }
+      ]
+    },
+    {
+      "id": "manual-refresh",
+      "icon": "🔄",
+      "name": "6. 手動リフレッシュ（当日）",
+      "sub": "Refresh ボタン or 30 分ステイル背景同期 → 3 サービスを並列同期 → DB 更新",
+      "description": "ユーザーが /daily/[date] で更新ボタンを押すか、当日のサマリが 30 分以上古いとバックグラウンドで自動発火する。refreshUserDate が 3 つの sync を並列に回し、それぞれ daily_sync_statuses にロックを取って実行する。部分失敗は許容で、Oura が落ちても Google / Toggl は止めない。",
+      "steps": [
+        { "from": "page-daily",    "to": "api-refresh",   "passes": "POST /api/summary/refresh · { date }",                                          "note": "Refresh ボタン or 30 分ステイル自動" },
+        { "from": "api-refresh",   "to": "util-auth",     "passes": "requireUserId(event)",                                                          "note": "" },
+        { "from": "api-refresh",   "to": "util-refresh",  "passes": "refreshUserDate(userId, date)",                                                  "note": "/api/cron/daily と共通の orchestrator" },
+        { "from": "util-refresh",  "to": "tbl-status",    "passes": "tryAcquireSyncLock — conditional UPDATE status → in_progress",                   "note": "stale lock = 10 分 · ownership key = sync_started_at" },
+        { "from": "util-refresh",  "to": "util-token",    "passes": "getValidAccessToken(userId, provider)",                                          "note": "decrypt · 残り 5 分未満なら事前 refresh" },
+        { "from": "util-token",    "to": "tbl-connections","passes": "SELECT access_token_encrypted, refresh_token_encrypted, token_expires_at",       "note": "TOKEN_ENCRYPTION_KEY で復号" },
+        { "from": "util-refresh",  "to": "util-sync",     "passes": "syncOuraForDate / syncGoogleForDate / syncTogglForDate (parallel)",               "note": "Promise.allSettled 相当 · 部分失敗を許容" },
+        { "from": "util-sync",     "to": "ext-oura",      "passes": "GET /v2/usercollection/sleep?start_date=&end_date= (Bearer)",                     "note": "target_date±1 · pagination · 429 → 1 リトライ" },
+        { "from": "util-sync",     "to": "ext-google",    "passes": "GET /calendar/v3/calendars/{id}/events (timeMin/timeMax or syncToken)",            "note": "事前に /calendarList も叩く · 410 Gone → 全件再同期" },
+        { "from": "util-sync",     "to": "ext-toggl",     "passes": "GET /api/v9/me/time_entries?start_date=&end_date= (Basic Auth)",                   "note": "server_deleted_at を見て is_deleted を立てる" },
+        { "from": "util-sync",     "to": "tbl-records",   "passes": "UPSERT *_records · 取れなかった ID は is_deleted=true でソフトデリート",            "note": "unique: (user_id, calendar_id, google_event_id) など" },
+        { "from": "util-sync",     "to": "tbl-status",    "passes": "markSyncSuccess(lockId) / markSyncFailed(lockId, message)",                        "note": "ownership-key が違うロックは上書きしない" },
+        { "from": "util-refresh",  "to": "api-refresh",   "passes": "{ sync_statuses[], errors[] }",                                                   "note": "errors は provider 別" },
+        { "from": "api-refresh",   "to": "page-daily",    "passes": "SummaryRefreshResponse",                                                          "note": "クライアントは続けて /api/summary を再取得して描画更新" }
+      ]
+    },
+    {
+      "id": "cron-batch",
+      "icon": "⏰",
+      "name": "7. Vercel Cron 14 日バッチ同期",
+      "sub": "毎日 UTC 20:00（JST 05:00 翌日）に直近 14 日分を全ユーザー × 3 プロバイダで再同期",
+      "description": "vercel.json の crons で /api/cron/daily が叩かれる。CRON_SECRET の Bearer 認証を通過したら全ユーザーをループし、各ユーザーの TZ で「今日」を割り出して today, today-1, ..., today-13 の 14 日について refreshUserDate を呼ぶ。手動リフレッシュと同じ orchestrator を再利用しているので、ロック取得・部分失敗・ソフトデリートのルールが完全に一致する。",
+      "steps": [
+        { "from": "ext-cron",    "to": "api-cron",      "passes": "GET /api/cron/daily · Authorization: Bearer ${CRON_SECRET}", "note": "vercel.json: \"0 20 * * *\"  → UTC 20:00 / JST 05:00 翌日" },
+        { "from": "api-cron",    "to": "tbl-users",     "passes": "SELECT id, timezone FROM users",                              "note": "MVP は単一ユーザーだがループは多人数対応" },
+        { "from": "api-cron",    "to": "tbl-connections","passes": "loadConnectedProviders(userId) — status='connected'",         "note": "disconnected / error な provider は skip" },
+        { "from": "api-cron",    "to": "util-refresh",   "passes": "refreshUserDate(userId, date, { timezone, connected }) × 14日 × Nユーザー", "note": "todayInTimezone(tz) から [today, today-13] を作る" },
+        { "from": "util-refresh","to": "util-sync",      "passes": "Flow 6 と同じ provider 別 sync runner を回す",                 "note": "手動とコードを共有 → 挙動が完全に一致" },
+        { "from": "util-sync",   "to": "tbl-records",    "passes": "UPSERT + soft-delete (Flow 6 と同じ)",                         "note": "14 日ウィンドウなので過去の編集も拾える" },
+        { "from": "util-sync",   "to": "tbl-status",     "passes": "markSyncSuccess / markSyncFailed",                             "note": "" },
+        { "from": "api-cron",    "to": "ext-cron",       "passes": "{ processed_at, users_processed, dates_processed, days_per_user:14, error_count }", "note": "個別の失敗があっても全体は 200 OK で返す" }
+      ]
+    },
+    {
+      "id": "token-refresh",
+      "icon": "🔁",
+      "name": "8. アクセストークンの 401 リカバリ",
+      "sub": "外部 API から 401 が返ったら refresh_token で再発行 → 元の呼び出しを 1 度だけリトライ",
+      "description": "通常の sync 呼び出しの途中で外部 API が 401 を返すと、withFreshAccessToken が OauthUnauthorizedError をキャッチし、強制 refresh をかけて新しい access_token で 1 度だけリトライする。refresh も失敗したら service_connections.status を 'error' に落として、以降の sync は skip 対象になる。",
+      "steps": [
+        { "from": "util-sync",   "to": "ext-google",       "passes": "API call with Bearer access_token (例: /events)",          "note": "通常の sync 経路から到達" },
+        { "from": "ext-google",  "to": "util-sync",        "passes": "401 Unauthorized",                                          "note": "OauthUnauthorizedError として raise" },
+        { "from": "util-sync",   "to": "util-token",       "passes": "withFreshAccessToken → forceRefreshAccessToken(userId, 'google')", "note": "expiry 関係なく強制 refresh" },
+        { "from": "util-token",  "to": "tbl-connections",  "passes": "SELECT refresh_token_encrypted",                            "note": "decrypt" },
+        { "from": "util-token",  "to": "ext-google",       "passes": "POST oauth2.googleapis.com/token (grant_type=refresh_token)", "note": "Oura も同じ構造の /oauth/token を持つ。Toggl は refresh 不能なので即 error" },
+        { "from": "ext-google",  "to": "util-token",       "passes": "{ access_token, [refresh_token], expires_in }",            "note": "parseExternal で形を検証 · 不正なら 502 · 失敗なら OauthRefreshError" },
+        { "from": "util-token",  "to": "tbl-connections",  "passes": "UPSERT service_connections (new access_token_encrypted · expires_at) / 失敗時は status='error' で tokens を null",  "note": "refresh_token が返ってこなければ既存のを保持" },
+        { "from": "util-token",  "to": "util-sync",        "passes": "新しい access_token (plain) を返す",                          "note": "fn(newToken) を 1 度だけリトライ" }
+      ]
+    },
+    {
+      "id": "disconnect",
+      "icon": "🚪",
+      "name": "9. サービス連携解除",
+      "sub": "ソフト切断 — 行は残し、status と暗号化トークンだけクリア",
+      "description": "ユーザーが /settings で「連携解除」を押すとこれが走る。service_connections の行は消さず、status='disconnected' にして access_token / refresh_token を null に上書きする。以降の sync 系コードはこの provider を skip するようになる。",
+      "steps": [
+        { "from": "page-settings",   "to": "api-connections", "passes": "DELETE /api/connections/{provider}",                                                    "note": "Bearer JWT" },
+        { "from": "api-connections", "to": "util-auth",       "passes": "requireUserId(event)",                                                                   "note": "" },
+        { "from": "api-connections", "to": "util-token",      "passes": "disconnectServiceConnection(userId, provider)",                                          "note": "" },
+        { "from": "util-token",      "to": "tbl-connections", "passes": "UPDATE service_connections SET status='disconnected', access_token_encrypted=NULL, refresh_token_encrypted=NULL", "note": "行は残す = 過去の connected_at を保持できる" },
+        { "from": "api-connections", "to": "page-settings",   "passes": "{ ok: true }",                                                                          "note": "UI 側は接続一覧を再取得して反映" }
+      ]
+    },
+    {
+      "id": "demo-view",
+      "icon": "🧪",
+      "name": "10. デモビュー（公開・認証なし）",
+      "sub": "本番テーブルから完全に隔離された demo_* で固定日付のサマリを返す",
+      "description": "/demo はログインなしでアクセスでき、外部 API も叩かない。demo_oura_sleep_records / demo_google_calendar_events / demo_toggl_time_entries を Asia/Tokyo 固定で読み、本番と同じ summaryResponseSchema の形で返す。RLS は public read (true) で誰でも見られる。",
+      "steps": [
+        { "from": "page-demo",  "to": "api-demo",   "passes": "GET /api/demo/summary?date=YYYY-MM-DD",                       "note": "Bearer 不要 · 認証チェックなし" },
+        { "from": "api-demo",   "to": "tbl-demo",   "passes": "SELECT demo_oura_sleep_records / demo_google_calendar_events / demo_toggl_time_entries", "note": "user_id 列を持たない · Asia/Tokyo 固定" },
+        { "from": "api-demo",   "to": "page-demo",  "passes": "SummaryResponse (sync_statuses は常に [])",                    "note": "本番 /api/summary と同じスキーマだが、外部 API も util-token も介在しない" }
+      ]
+    }
+  ]
+}
+
+    </script>
+
+    <script>
+      "use strict";
+
+      const SVG_NS = "http://www.w3.org/2000/svg";
+
+      const state = {
+        data: null,
+        nodeById: new Map(),
+        edges: [], // {key, from, to, lane, steps:[{flowId, idx, step}]}
+        edgeByKey: new Map(),
+        badgePos: [], // {edgeKey, x, y, w, h, t}
+        activeFlowId: null,
+        focusedStep: null, // {flowId, stepIdx}
+        focusCycleIdx: 0, // for multi-step badges
+        viewBox: { x: 0, y: 0, w: 1500, h: 820 },
+        defaultViewBox: { x: 0, y: 0, w: 1500, h: 820 },
+        panning: null,
+      };
+
+      // ---------- Data loading (fetch + embed fallback) ----------
+      async function loadData() {
+        try {
+          const res = await fetch("./flows.json", { cache: "no-store" });
+          if (res.ok) {
+            const txt = await res.text();
+            return JSON.parse(txt);
+          }
+        } catch (_) {}
+        const embed = document.getElementById("workflow-data");
+        if (embed && embed.textContent.trim()) {
+          try {
+            const txt = embed.textContent;
+            if (!txt.includes("__EMBEDDED_JSON__")) return JSON.parse(txt);
+          } catch (e) {
+            console.error("Embedded JSON parse error:", e);
+          }
+        }
+        throw new Error(
+          "flows.json も埋め込み JSON も読めなかった。flows.json と同じディレクトリで開くか、`python -m http.server` 経由でアクセスしてください。",
+        );
+      }
+
+      // ---------- Render: defs, columns, edges, nodes, badges ----------
+      function renderAll(data) {
+        state.data = data;
+        if (data.viewBox) {
+          state.viewBox = { x: 0, y: 0, w: data.viewBox.w, h: data.viewBox.h };
+          state.defaultViewBox = { ...state.viewBox };
+        }
+        const svg = document.getElementById("canvas");
+        svg.innerHTML = "";
+        applyViewBox();
+
+        // build node lookup
+        state.nodeById.clear();
+        for (const n of data.nodes) {
+          state.nodeById.set(n.id, n);
+        }
+
+        // Order of layers (z-order matters — badges must be on top of nodes)
+        const defs = svgEl("defs");
+        const colLayer = svgEl("g", { id: "col-layer" });
+        const edgeLayer = svgEl("g", { id: "edge-layer" });
+        const nodeLayer = svgEl("g", { id: "node-layer" });
+        const badgeLayer = svgEl("g", { id: "badge-layer" });
+        svg.append(defs, colLayer, edgeLayer, nodeLayer, badgeLayer);
+
+        // header text + path
+        if (data.meta) {
+          if (data.meta.title) {
+            document.getElementById("app-title").textContent = data.meta.title;
+          }
+          if (data.meta.repoPath) {
+            document.getElementById("app-path").textContent = data.meta.repoPath;
+          }
+          if (data.meta.hint) {
+            document.getElementById("app-hint").textContent = data.meta.hint;
+          }
+        }
+
+        // Build arrow markers per group color + active
+        const markers = new Map();
+        markers.set("__edge__", makeArrowMarker(defs, "arrow-edge", "var(--edge)"));
+        markers.set(
+          "__active__",
+          makeArrowMarker(defs, "arrow-active", "var(--edge-active)", 1.6),
+        );
+
+        // Render columns
+        for (const col of data.columns) {
+          const txt = svgEl("text", {
+            x: col.x,
+            y: 32,
+            "text-anchor": "middle",
+            class: "col-header",
+          });
+          txt.textContent = col.label;
+          colLayer.append(txt);
+          if (col.divider != null) {
+            const line = svgEl("line", {
+              x1: col.divider,
+              y1: 50,
+              x2: col.divider,
+              y2: data.viewBox.h - 20,
+              class: "col-divider",
+            });
+            colLayer.append(line);
+          }
+        }
+
+        // Build edges by aggregating flows
+        buildEdges(data);
+        assignLanes();
+
+        // Render edges (paths) first
+        for (const e of state.edges) {
+          const fromNode = state.nodeById.get(e.from);
+          const toNode = state.nodeById.get(e.to);
+          const d = computeEdgePath(fromNode, toNode, e.lane);
+          const path = svgEl("path", {
+            d,
+            class: "edge-path",
+            "marker-end": "url(#arrow-edge)",
+          });
+          const wrap = svgEl("g", {
+            class: "edge",
+            "data-key": e.key,
+            "data-flows": [...new Set(e.steps.map((s) => s.flowId))].join(","),
+          });
+          wrap.append(path);
+          edgeLayer.append(wrap);
+          e.pathEl = path;
+          e.wrapEl = wrap;
+        }
+
+        // Render nodes
+        const groupMap = new Map();
+        for (const g of data.groups) groupMap.set(g.id, g);
+
+        for (const n of data.nodes) {
+          const grp = groupMap.get(n.group) || {
+            stroke: "#4cc9f0",
+            fill: "#11242e",
+            sub: "#7cd3ec",
+          };
+          const wrap = svgEl("g", {
+            class: "node",
+            "data-id": n.id,
+            transform: `translate(${n.x},${n.y})`,
+          });
+          const rect = svgEl("rect", {
+            x: 0,
+            y: 0,
+            width: n.w,
+            height: n.h,
+            rx: 8,
+            class: "node-rect",
+            fill: grp.fill,
+            stroke: grp.stroke,
+          });
+          const title = svgEl("text", {
+            x: n.w / 2,
+            y: n.h / 2 - 5,
+            "text-anchor": "middle",
+            class: "node-title",
+            fill: "#e6edf3",
+          });
+          title.textContent = n.title;
+          const sub = svgEl("text", {
+            x: n.w / 2,
+            y: n.h / 2 + 11,
+            "text-anchor": "middle",
+            class: "node-sub",
+            fill: grp.sub,
+          });
+          sub.textContent = n.subtitle;
+          wrap.append(rect, title, sub);
+          nodeLayer.append(wrap);
+          n.el = wrap;
+        }
+
+        // Defer badge placement until after layout so getPointAtLength works
+        requestAnimationFrame(() => placeAndRenderBadges(badgeLayer));
+
+        // Sidebar / legend / event wiring
+        renderSidebar(data);
+        renderLegend(data);
+        renderAnnotations(null);
+        wireGlobalEvents();
+      }
+
+      function buildEdges(data) {
+        state.edges = [];
+        state.edgeByKey.clear();
+        for (const flow of data.flows) {
+          for (let i = 0; i < flow.steps.length; i++) {
+            const step = flow.steps[i];
+            const key = step.from + "→" + step.to;
+            let e = state.edgeByKey.get(key);
+            if (!e) {
+              e = { key, from: step.from, to: step.to, lane: 0, steps: [] };
+              state.edgeByKey.set(key, e);
+              state.edges.push(e);
+            }
+            e.steps.push({ flowId: flow.id, idx: i, step });
+          }
+        }
+      }
+
+      function assignLanes() {
+        for (const e of state.edges) {
+          const rev = state.edgeByKey.get(e.to + "→" + e.from);
+          if (rev) {
+            // deterministic: from id lex smaller gets +lane, the other gets -lane
+            e.lane = e.from < e.to ? 38 : -38;
+          } else {
+            e.lane = 0;
+          }
+        }
+      }
+
+      function computeEdgePath(fromNode, toNode, lane) {
+        // sameColumn = same x ⇒ vertical connection (top/bottom)
+        const sameCol = fromNode.x === toNode.x;
+        let p1, p2, cp1, cp2;
+        if (sameCol) {
+          const fc = fromNode.y + fromNode.h / 2;
+          const tc = toNode.y + toNode.h / 2;
+          if (fc < tc) {
+            p1 = { x: fromNode.x + fromNode.w / 2, y: fromNode.y + fromNode.h };
+            p2 = { x: toNode.x + toNode.w / 2, y: toNode.y };
+          } else {
+            p1 = { x: fromNode.x + fromNode.w / 2, y: fromNode.y };
+            p2 = { x: toNode.x + toNode.w / 2, y: toNode.y + toNode.h };
+          }
+          const midY = (p1.y + p2.y) / 2;
+          cp1 = { x: p1.x + lane, y: midY };
+          cp2 = { x: p2.x + lane, y: midY };
+        } else {
+          const goingRight = fromNode.x < toNode.x;
+          if (goingRight) {
+            p1 = { x: fromNode.x + fromNode.w, y: fromNode.y + fromNode.h / 2 };
+            p2 = { x: toNode.x, y: toNode.y + toNode.h / 2 };
+          } else {
+            p1 = { x: fromNode.x, y: fromNode.y + fromNode.h / 2 };
+            p2 = { x: toNode.x + toNode.w, y: toNode.y + toNode.h / 2 };
+          }
+          const midX = (p1.x + p2.x) / 2;
+          cp1 = { x: midX, y: p1.y + lane };
+          cp2 = { x: midX, y: p2.y + lane };
+        }
+        return `M ${p1.x} ${p1.y} C ${cp1.x} ${cp1.y}, ${cp2.x} ${cp2.y}, ${p2.x} ${p2.y}`;
+      }
+
+      function badgeLabel(stepIndices) {
+        if (stepIndices.length === 1) return String(stepIndices[0]);
+        if (stepIndices.length <= 5) return stepIndices.join(" · ");
+        return `${stepIndices[0]}–${stepIndices[stepIndices.length - 1]} (${stepIndices.length})`;
+      }
+
+      function placeAndRenderBadges(badgeLayer) {
+        // Collect badge candidates with metadata, organize by flow first
+        // 1 edge = 1 badge per flow (so an edge shared across flows gets a badge per flow,
+        // but only badges for the *active* flow are shown — we hide them via display:none)
+        // For each (edge, flow) pair, find which step indices belong
+        const badges = [];
+        const flowOrder = state.data.flows.map((f) => f.id);
+        for (const e of state.edges) {
+          // group by flow
+          const byFlow = new Map();
+          for (const s of e.steps) {
+            if (!byFlow.has(s.flowId)) byFlow.set(s.flowId, []);
+            byFlow.get(s.flowId).push(s.idx + 1); // human-readable 1-indexed
+          }
+          for (const [flowId, idxs] of byFlow.entries()) {
+            badges.push({
+              edge: e,
+              flowId,
+              stepIdxs: idxs.sort((a, b) => a - b),
+              isMulti: idxs.length > 1,
+              pathLen: e.pathEl.getTotalLength(),
+            });
+          }
+        }
+
+        // Placement order: longer step lists first (claim midpoint), then short ones
+        // Within same multi-status, prefer shorter paths first to keep them near midpoint
+        badges.sort((a, b) => {
+          if (b.isMulti !== a.isMulti) return b.isMulti ? 1 : -1;
+          if (b.stepIdxs.length !== a.stepIdxs.length)
+            return b.stepIdxs.length - a.stepIdxs.length;
+          return a.pathLen - b.pathLen;
+        });
+
+        // Node bbox list for collision
+        const nodeBoxes = state.data.nodes.map((n) => ({
+          x: n.x,
+          y: n.y,
+          w: n.w,
+          h: n.h,
+        }));
+
+        // Estimate pill size
+        const PADDING = 10;
+        const HEIGHT = 22;
+
+        const placed = []; // {x,y,w,h}
+
+        for (const b of badges) {
+          const label = badgeLabel(b.stepIdxs);
+          const approxTextW = Math.max(label.length * 6.3, 10);
+          const pillW = approxTextW + PADDING * 2;
+          const pillH = HEIGHT;
+
+          const candidates = [
+            0.5, 0.44, 0.56, 0.38, 0.62, 0.32, 0.68, 0.26, 0.74, 0.2, 0.8, 0.15,
+            0.85, 0.1, 0.9,
+          ];
+
+          let best = null;
+          let bestScore = -Infinity;
+          for (const t of candidates) {
+            const p = b.edge.pathEl.getPointAtLength(t * b.pathLen);
+            let score = -Math.abs(t - 0.5) * 0.5; // prefer midpoint
+            // other-badge ellipse distance
+            for (const o of placed) {
+              const dx = (p.x - o.x) / ((pillW + o.w) / 2);
+              const dy = (p.y - o.y) / ((pillH + o.h) / 2);
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < 1.05) score -= (1.05 - dist) * 6;
+            }
+            // node bbox overlap penalty (big)
+            for (const n of nodeBoxes) {
+              if (
+                p.x + pillW / 2 > n.x - 4 &&
+                p.x - pillW / 2 < n.x + n.w + 4 &&
+                p.y + pillH / 2 > n.y - 4 &&
+                p.y - pillH / 2 < n.y + n.h + 4
+              ) {
+                score -= 3.5;
+              }
+            }
+            if (score > bestScore) {
+              bestScore = score;
+              best = { x: p.x, y: p.y, t };
+            }
+          }
+
+          // Escape loop: if best is inside a node, walk along path to escape
+          if (best && insideAnyNode(best, nodeBoxes, pillW, pillH, 4)) {
+            const baseLen = best.t * b.pathLen;
+            const step = 6;
+            let escaped = null;
+            for (let i = 1; i < 40 && !escaped; i++) {
+              for (const dir of [+1, -1]) {
+                const tryLen = baseLen + dir * i * step;
+                if (tryLen < 0 || tryLen > b.pathLen) continue;
+                const p = b.edge.pathEl.getPointAtLength(tryLen);
+                if (!insideAnyNode({ x: p.x, y: p.y }, nodeBoxes, pillW, pillH, 4)) {
+                  escaped = { x: p.x, y: p.y, t: tryLen / b.pathLen };
+                  break;
+                }
+              }
+            }
+            if (escaped) best = escaped;
+          }
+
+          const midT = 0.5;
+          const midP = b.edge.pathEl.getPointAtLength(midT * b.pathLen);
+          b.position = best || { x: midP.x, y: midP.y, t: midT };
+          b.pillW = pillW;
+          b.pillH = pillH;
+          b.label = label;
+          b.midX = midP.x;
+          b.midY = midP.y;
+
+          placed.push({
+            x: b.position.x,
+            y: b.position.y,
+            w: pillW,
+            h: pillH,
+          });
+        }
+
+        // Render in DOM ordered by step number for predictable hit testing
+        badges.sort((a, b) => {
+          const af = flowOrder.indexOf(a.flowId);
+          const bf = flowOrder.indexOf(b.flowId);
+          if (af !== bf) return af - bf;
+          return a.stepIdxs[0] - b.stepIdxs[0];
+        });
+
+        for (const b of badges) {
+          renderBadge(badgeLayer, b);
+        }
+        state.badges = badges;
+      }
+
+      function insideAnyNode(p, nodes, w, h, margin) {
+        for (const n of nodes) {
+          if (
+            p.x + w / 2 > n.x - margin &&
+            p.x - w / 2 < n.x + n.w + margin &&
+            p.y + h / 2 > n.y - margin &&
+            p.y - h / 2 < n.y + n.h + margin
+          ) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function renderBadge(layer, b) {
+        const { x, y } = b.position;
+        const w = b.pillW;
+        const h = b.pillH;
+        const g = svgEl("g", {
+          class: "edge-step-badge",
+          "data-flow": b.flowId,
+          "data-edge-key": b.edge.key,
+          "data-steps": b.stepIdxs.join(","),
+          transform: `translate(${x},${y})`,
+        });
+        const halo = svgEl("ellipse", {
+          class: "edge-step-halo",
+          cx: 0,
+          cy: 0,
+          rx: w / 2 + 6,
+          ry: h / 2 + 4,
+        });
+        const hit = svgEl("rect", {
+          class: "edge-step-hit",
+          x: -w / 2 - 8,
+          y: -h / 2 - 8,
+          width: w + 16,
+          height: h + 16,
+          fill: "rgba(0,0,0,0.001)",
+          "pointer-events": "all",
+        });
+        const scale = svgEl("g", { class: "edge-step-scale" });
+        const pill = svgEl("rect", {
+          class: "edge-step-pill",
+          x: -w / 2,
+          y: -h / 2,
+          width: w,
+          height: h,
+          rx: h / 2,
+        });
+        const text = svgEl("text", {
+          class: "edge-step-text",
+          x: 0,
+          y: 0,
+        });
+        text.textContent = b.label;
+        scale.append(pill, text);
+        g.append(halo, hit, scale);
+
+        // tether if badge is far from midpoint
+        const dist = Math.hypot(x - b.midX, y - b.midY);
+        if (dist > 24) {
+          const tether = svgEl("path", {
+            class: "edge-tether",
+            d: `M 0 0 L ${b.midX - x} ${b.midY - y}`,
+          });
+          g.insertBefore(tether, halo);
+        }
+
+        // event handlers (mouseover/mouseout for bubble support)
+        g.addEventListener("mouseover", (ev) => onBadgeOver(ev, b));
+        g.addEventListener("mouseout", (ev) => onBadgeOut(ev, b));
+        g.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          onBadgeClick(b);
+        });
+
+        layer.append(g);
+        b.el = g;
+      }
+
+      // ---------- Sidebar ----------
+      function renderSidebar(data) {
+        const list = document.getElementById("flow-list");
+        list.innerHTML = "";
+        data.flows.forEach((f, i) => {
+          const btn = document.createElement("button");
+          btn.className = "flow-btn";
+          btn.dataset.flow = f.id;
+          const keyHint = i < 9 ? i + 1 : i === 9 ? "0" : "";
+          btn.innerHTML = `
+            <span class="flow-title"><span class="flow-icon">${f.icon || ""}</span>${escapeHtml(f.name)}${keyHint ? ` <span style="color:var(--muted);font-weight:400;font-size:10.5px">[${keyHint}]</span>` : ""}</span>
+            <span class="flow-sub">${escapeHtml(f.sub || "")}</span>
+          `;
+          btn.addEventListener("click", () => selectFlow(f.id));
+          list.append(btn);
+        });
+        document.getElementById("reset-btn").addEventListener("click", () => {
+          selectFlow(null);
+        });
+      }
+
+      function renderLegend(data) {
+        const el = document.getElementById("legend");
+        el.innerHTML = "";
+        for (const g of data.groups) {
+          const row = document.createElement("div");
+          row.className = "legend-row";
+          row.innerHTML = `<span class="legend-swatch" style="background:${g.fill};border-color:${g.stroke}"></span><span class="legend-label">${escapeHtml(g.label)}</span>`;
+          el.append(row);
+        }
+      }
+
+      function renderAnnotations(flow) {
+        const root = document.getElementById("annotations");
+        if (!flow) {
+          root.innerHTML = `<div class="empty">左のフローを選ぶか数字キー (1〜0) を押すと、ここに順序付き注釈が出る。</div>`;
+          return;
+        }
+        const header = `
+          <div class="anno-header">
+            <span class="anno-icon">${flow.icon || ""}</span>
+            <span class="anno-name">${escapeHtml(flow.name)}</span>
+            <span class="anno-sub">${escapeHtml(flow.sub || "")}</span>
+          </div>
+          <div class="anno-desc">${escapeHtml(flow.description || "")}</div>
+        `;
+        const items = flow.steps
+          .map((s, i) => {
+            const fromNode = state.nodeById.get(s.from);
+            const toNode = state.nodeById.get(s.to);
+            return `
+              <li data-flow="${flow.id}" data-step="${i}">
+                <div class="li-from-to">${escapeHtml(fromNode ? fromNode.title : s.from)} → ${escapeHtml(toNode ? toNode.title : s.to)}</div>
+                <div class="li-passes">${escapeHtml(s.passes || "")}</div>
+                ${s.note ? `<div class="li-note">${escapeHtml(s.note)}</div>` : ""}
+              </li>`;
+          })
+          .join("");
+        root.innerHTML = header + `<ol>${items}</ol>`;
+        root.querySelectorAll("ol li").forEach((li) => {
+          li.addEventListener("click", () => {
+            const idx = Number(li.dataset.step);
+            focusStep(flow.id, idx);
+          });
+        });
+      }
+
+      // ---------- Flow selection ----------
+      function selectFlow(flowId) {
+        state.activeFlowId = flowId;
+        state.focusedStep = null;
+        state.focusCycleIdx = 0;
+
+        const flow = flowId
+          ? state.data.flows.find((f) => f.id === flowId)
+          : null;
+
+        // sidebar buttons
+        document.querySelectorAll(".flow-btn").forEach((b) => {
+          b.classList.toggle("active", b.dataset.flow === flowId);
+        });
+
+        if (!flow) {
+          document.querySelectorAll(".node").forEach((n) => {
+            n.classList.remove("in-flow", "dim", "endpoint");
+          });
+          document.querySelectorAll(".edge").forEach((e) => {
+            e.classList.remove("in-flow", "dim", "focused-edge");
+          });
+          document.querySelectorAll(".edge-step-badge").forEach((b) => {
+            b.style.display = "";
+            b.classList.remove("focused");
+          });
+          renderAnnotations(null);
+          animateViewBox(state.defaultViewBox);
+          hideTooltip();
+          return;
+        }
+
+        const nodesInFlow = new Set();
+        const edgeKeys = new Set();
+        for (const s of flow.steps) {
+          nodesInFlow.add(s.from);
+          nodesInFlow.add(s.to);
+          edgeKeys.add(s.from + "→" + s.to);
+        }
+        document.querySelectorAll(".node").forEach((n) => {
+          const id = n.dataset.id;
+          n.classList.remove("endpoint");
+          n.classList.toggle("in-flow", nodesInFlow.has(id));
+          n.classList.toggle("dim", !nodesInFlow.has(id));
+        });
+        document.querySelectorAll(".edge").forEach((e) => {
+          const inFlow = edgeKeys.has(e.dataset.key);
+          e.classList.remove("focused-edge");
+          e.classList.toggle("in-flow", inFlow);
+          e.classList.toggle("dim", !inFlow);
+        });
+        document.querySelectorAll(".edge-step-badge").forEach((b) => {
+          b.classList.remove("focused");
+          b.style.display = b.dataset.flow === flowId ? "" : "none";
+        });
+
+        renderAnnotations(flow);
+        fitToFlow(flow);
+      }
+
+      function fitToFlow(flow) {
+        const ids = new Set();
+        for (const s of flow.steps) {
+          ids.add(s.from);
+          ids.add(s.to);
+        }
+        let minX = Infinity,
+          minY = Infinity,
+          maxX = -Infinity,
+          maxY = -Infinity;
+        for (const id of ids) {
+          const n = state.nodeById.get(id);
+          if (!n) continue;
+          minX = Math.min(minX, n.x);
+          minY = Math.min(minY, n.y);
+          maxX = Math.max(maxX, n.x + n.w);
+          maxY = Math.max(maxY, n.y + n.h);
+        }
+        if (!isFinite(minX)) return;
+        const padX = 80,
+          padY = 80;
+        const w = Math.max(maxX - minX + padX * 2, 600);
+        const h = Math.max(maxY - minY + padY * 2, 400);
+        const cx = (minX + maxX) / 2;
+        const cy = (minY + maxY) / 2;
+        // Maintain aspect ratio matching SVG container
+        const svg = document.getElementById("canvas");
+        const rect = svg.getBoundingClientRect();
+        const aspect = rect.width / rect.height || 1.7;
+        let finalW = w,
+          finalH = h;
+        if (w / h > aspect) {
+          finalH = w / aspect;
+        } else {
+          finalW = h * aspect;
+        }
+        animateViewBox({
+          x: cx - finalW / 2,
+          y: cy - finalH / 2,
+          w: finalW,
+          h: finalH,
+        });
+      }
+
+      function animateViewBox(target) {
+        const start = { ...state.viewBox };
+        const t0 = performance.now();
+        const dur = 380;
+        function step(t) {
+          const k = Math.min(1, (t - t0) / dur);
+          const e = 1 - Math.pow(1 - k, 3);
+          state.viewBox = {
+            x: start.x + (target.x - start.x) * e,
+            y: start.y + (target.y - start.y) * e,
+            w: start.w + (target.w - start.w) * e,
+            h: start.h + (target.h - start.h) * e,
+          };
+          applyViewBox();
+          if (k < 1) requestAnimationFrame(step);
+        }
+        requestAnimationFrame(step);
+      }
+
+      function applyViewBox() {
+        const svg = document.getElementById("canvas");
+        const v = state.viewBox;
+        svg.setAttribute("viewBox", `${v.x} ${v.y} ${v.w} ${v.h}`);
+      }
+
+      // ---------- Focus / PIKAPIKA ----------
+      function focusStep(flowId, stepIdx) {
+        if (state.activeFlowId !== flowId) {
+          selectFlow(flowId);
+          // selectFlow resets focus — we need to re-apply after a frame so DOM updates
+          requestAnimationFrame(() => focusStep(flowId, stepIdx));
+          return;
+        }
+        state.focusedStep = { flowId, stepIdx };
+        const flow = state.data.flows.find((f) => f.id === flowId);
+        if (!flow) return;
+        const step = flow.steps[stepIdx];
+        if (!step) return;
+
+        // Clear prior focus classes
+        document.querySelectorAll(".edge").forEach((e) => {
+          e.classList.remove("focused-edge");
+        });
+        document.querySelectorAll(".node").forEach((n) => {
+          n.classList.remove("endpoint");
+        });
+        document.querySelectorAll(".edge-step-badge").forEach((b) => {
+          b.classList.remove("focused");
+        });
+
+        // Focused edge
+        const edgeKey = step.from + "→" + step.to;
+        document
+          .querySelectorAll(`.edge[data-key="${cssEscape(edgeKey)}"]`)
+          .forEach((e) => e.classList.add("focused-edge"));
+
+        // Endpoints
+        [step.from, step.to].forEach((id) => {
+          document
+            .querySelectorAll(`.node[data-id="${cssEscape(id)}"]`)
+            .forEach((n) => n.classList.add("endpoint"));
+        });
+
+        // Badge focus — find badge whose stepIdxs include this step (flow + edge)
+        const matchBadge = (state.badges || []).find(
+          (b) =>
+            b.flowId === flowId &&
+            b.edge.key === edgeKey &&
+            b.stepIdxs.includes(stepIdx + 1),
+        );
+        if (matchBadge && matchBadge.el) {
+          matchBadge.el.classList.add("focused");
+        }
+
+        // Anno li flash — remove+reflow+add to allow restart
+        const lis = document.querySelectorAll(
+          `#annotations ol li[data-flow="${cssEscape(flowId)}"]`,
+        );
+        lis.forEach((li) => li.classList.remove("focused"));
+        const targetLi = document.querySelector(
+          `#annotations ol li[data-flow="${cssEscape(flowId)}"][data-step="${stepIdx}"]`,
+        );
+        if (targetLi) {
+          // force reflow to restart animation
+          // eslint-disable-next-line no-unused-expressions
+          targetLi.offsetWidth;
+          targetLi.classList.add("focused");
+          targetLi.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+
+      // ---------- Tooltip ----------
+      const tooltip = document.getElementById("tooltip");
+
+      function showTooltipForBadge(b, ev) {
+        const flow = state.data.flows.find((f) => f.id === b.flowId);
+        const fromNode = state.nodeById.get(b.edge.from);
+        const toNode = state.nodeById.get(b.edge.to);
+        const parts = [];
+        parts.push(
+          `<div class="tt-flow">${escapeHtml(flow.icon || "")} ${escapeHtml(flow.name)}</div>`,
+        );
+        for (const idx of b.stepIdxs) {
+          const step = flow.steps[idx - 1];
+          parts.push(`
+            <div class="tt-step">
+              <div class="tt-route">step ${idx}: <span class="tt-chip">${escapeHtml(fromNode ? fromNode.title : b.edge.from)}</span> → <span class="tt-chip">${escapeHtml(toNode ? toNode.title : b.edge.to)}</span></div>
+              <div class="tt-passes">${escapeHtml(step.passes || "")}</div>
+              ${step.note ? `<div class="tt-note">${escapeHtml(step.note)}</div>` : ""}
+            </div>
+          `);
+        }
+        tooltip.innerHTML = parts.join("");
+        positionTooltip(ev);
+        tooltip.classList.add("visible");
+      }
+
+      function positionTooltip(ev) {
+        const pad = 16;
+        const r = tooltip.getBoundingClientRect();
+        const vw = window.innerWidth;
+        const vh = window.innerHeight;
+        let x = ev.clientX + pad;
+        let y = ev.clientY + pad;
+        if (x + r.width + 8 > vw) x = ev.clientX - r.width - pad;
+        if (y + r.height + 8 > vh) y = ev.clientY - r.height - pad;
+        tooltip.style.left = x + "px";
+        tooltip.style.top = y + "px";
+      }
+
+      function hideTooltip() {
+        tooltip.classList.remove("visible");
+      }
+
+      function onBadgeOver(ev, b) {
+        if (!state.activeFlowId) return;
+        if (b.flowId !== state.activeFlowId) return;
+        showTooltipForBadge(b, ev);
+      }
+      function onBadgeOut(ev, b) {
+        // ignore intra-badge movement
+        if (b.el && b.el.contains(ev.relatedTarget)) return;
+        hideTooltip();
+      }
+      function onBadgeClick(b) {
+        if (state.activeFlowId !== b.flowId) {
+          selectFlow(b.flowId);
+          requestAnimationFrame(() => onBadgeClick(b));
+          return;
+        }
+        // cycle through stepIdxs
+        const cycleKey = b.flowId + ":" + b.edge.key;
+        if (state._lastCycleKey !== cycleKey) {
+          state._lastCycleKey = cycleKey;
+          state._cycleI = 0;
+        } else {
+          state._cycleI = ((state._cycleI || 0) + 1) % b.stepIdxs.length;
+        }
+        const idx = b.stepIdxs[state._cycleI] - 1;
+        focusStep(b.flowId, idx);
+      }
+
+      // ---------- Pan / zoom / keyboard ----------
+      function wireGlobalEvents() {
+        const svg = document.getElementById("canvas");
+
+        svg.addEventListener("wheel", (e) => {
+          e.preventDefault();
+          const rect = svg.getBoundingClientRect();
+          const cx = (e.clientX - rect.left) / rect.width;
+          const cy = (e.clientY - rect.top) / rect.height;
+          const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
+          const v = state.viewBox;
+          const newW = Math.max(200, Math.min(8000, v.w * factor));
+          const newH = Math.max(150, Math.min(5500, v.h * factor));
+          state.viewBox = {
+            x: v.x + (v.w - newW) * cx,
+            y: v.y + (v.h - newH) * cy,
+            w: newW,
+            h: newH,
+          };
+          applyViewBox();
+        }, { passive: false });
+
+        svg.addEventListener("mousedown", (e) => {
+          if (e.target.closest(".edge-step-badge")) return;
+          state.panning = {
+            startX: e.clientX,
+            startY: e.clientY,
+            vbX: state.viewBox.x,
+            vbY: state.viewBox.y,
+          };
+          svg.classList.add("is-panning");
+        });
+        document.addEventListener("mousemove", (e) => {
+          if (!state.panning) return;
+          const svg = document.getElementById("canvas");
+          const rect = svg.getBoundingClientRect();
+          const dx = ((e.clientX - state.panning.startX) / rect.width) * state.viewBox.w;
+          const dy = ((e.clientY - state.panning.startY) / rect.height) * state.viewBox.h;
+          state.viewBox.x = state.panning.vbX - dx;
+          state.viewBox.y = state.panning.vbY - dy;
+          applyViewBox();
+        });
+        document.addEventListener("mouseup", () => {
+          if (state.panning) {
+            state.panning = null;
+            document.getElementById("canvas").classList.remove("is-panning");
+          }
+        });
+
+        // Touch support — 1 finger pan, 2 finger pinch-zoom
+        let touchState = null;
+        svg.addEventListener(
+          "touchstart",
+          (e) => {
+            if (e.target.closest(".edge-step-badge")) return;
+            if (e.touches.length === 1) {
+              touchState = {
+                mode: "pan",
+                x: e.touches[0].clientX,
+                y: e.touches[0].clientY,
+                vbX: state.viewBox.x,
+                vbY: state.viewBox.y,
+              };
+            } else if (e.touches.length === 2) {
+              const t1 = e.touches[0];
+              const t2 = e.touches[1];
+              touchState = {
+                mode: "pinch",
+                startDist: Math.hypot(
+                  t1.clientX - t2.clientX,
+                  t1.clientY - t2.clientY,
+                ),
+                cx: (t1.clientX + t2.clientX) / 2,
+                cy: (t1.clientY + t2.clientY) / 2,
+                vb: { ...state.viewBox },
+              };
+            }
+          },
+          { passive: true },
+        );
+        svg.addEventListener(
+          "touchmove",
+          (e) => {
+            if (!touchState) return;
+            if (touchState.mode === "pan" && e.touches.length === 1) {
+              e.preventDefault();
+              const rect = svg.getBoundingClientRect();
+              const dx =
+                ((e.touches[0].clientX - touchState.x) / rect.width) *
+                state.viewBox.w;
+              const dy =
+                ((e.touches[0].clientY - touchState.y) / rect.height) *
+                state.viewBox.h;
+              state.viewBox.x = touchState.vbX - dx;
+              state.viewBox.y = touchState.vbY - dy;
+              applyViewBox();
+            } else if (touchState.mode === "pinch" && e.touches.length === 2) {
+              e.preventDefault();
+              const t1 = e.touches[0];
+              const t2 = e.touches[1];
+              const dist = Math.hypot(
+                t1.clientX - t2.clientX,
+                t1.clientY - t2.clientY,
+              );
+              const factor = touchState.startDist / Math.max(dist, 1);
+              const rect = svg.getBoundingClientRect();
+              const cx = (touchState.cx - rect.left) / rect.width;
+              const cy = (touchState.cy - rect.top) / rect.height;
+              const v = touchState.vb;
+              const newW = Math.max(200, Math.min(8000, v.w * factor));
+              const newH = Math.max(150, Math.min(5500, v.h * factor));
+              state.viewBox = {
+                x: v.x + (v.w - newW) * cx,
+                y: v.y + (v.h - newH) * cy,
+                w: newW,
+                h: newH,
+              };
+              applyViewBox();
+            }
+          },
+          { passive: false },
+        );
+        svg.addEventListener(
+          "touchend",
+          (e) => {
+            if (e.touches.length === 0) touchState = null;
+          },
+          { passive: true },
+        );
+        svg.addEventListener(
+          "touchcancel",
+          () => {
+            touchState = null;
+          },
+          { passive: true },
+        );
+
+        document.addEventListener("keydown", (e) => {
+          if (e.target.matches("input, textarea")) return;
+          const num = "1234567890".indexOf(e.key);
+          if (num !== -1 && num < state.data.flows.length) {
+            selectFlow(state.data.flows[num].id);
+            return;
+          }
+          if (e.key === "f" || e.key === "F") {
+            selectFlow(null);
+            return;
+          }
+          if (e.key === "+" || e.key === "=") {
+            zoomAt(0.5, 0.5, 1 / 1.18);
+            return;
+          }
+          if (e.key === "-" || e.key === "_") {
+            zoomAt(0.5, 0.5, 1.18);
+            return;
+          }
+          if (e.key === "Escape") {
+            if (state.focusedStep) {
+              state.focusedStep = null;
+              document
+                .querySelectorAll(".edge")
+                .forEach((el) => el.classList.remove("focused-edge"));
+              document
+                .querySelectorAll(".node")
+                .forEach((el) => el.classList.remove("endpoint"));
+              document
+                .querySelectorAll(".edge-step-badge")
+                .forEach((el) => el.classList.remove("focused"));
+              document
+                .querySelectorAll("#annotations ol li")
+                .forEach((el) => el.classList.remove("focused"));
+            } else if (state.activeFlowId) {
+              selectFlow(null);
+            }
+            hideTooltip();
+          }
+        });
+
+        // Resizer drag
+        const resizer = document.getElementById("resizer");
+        let resizing = false;
+        resizer.addEventListener("mousedown", (e) => {
+          resizing = true;
+          e.preventDefault();
+          document.body.style.cursor = "row-resize";
+        });
+        document.addEventListener("mousemove", (e) => {
+          if (!resizing) return;
+          const vh = window.innerHeight;
+          const minH = 120;
+          const maxH = vh - 200;
+          const newH = Math.min(maxH, Math.max(minH, vh - e.clientY - 3));
+          document.documentElement.style.setProperty("--anno-h", newH + "px");
+        });
+        document.addEventListener("mouseup", () => {
+          if (resizing) {
+            resizing = false;
+            document.body.style.cursor = "";
+            try {
+              localStorage.setItem(
+                "todaysme.flows.annoH",
+                document.documentElement.style.getPropertyValue("--anno-h"),
+              );
+            } catch (_) {}
+          }
+        });
+
+        // tooltip follow
+        document.addEventListener("mousemove", (e) => {
+          if (tooltip.classList.contains("visible")) positionTooltip(e);
+        });
+      }
+
+      function zoomAt(cx, cy, factor) {
+        const v = state.viewBox;
+        const newW = Math.max(200, Math.min(8000, v.w * factor));
+        const newH = Math.max(150, Math.min(5500, v.h * factor));
+        state.viewBox = {
+          x: v.x + (v.w - newW) * cx,
+          y: v.y + (v.h - newH) * cy,
+          w: newW,
+          h: newH,
+        };
+        applyViewBox();
+      }
+
+      // ---------- Helpers ----------
+      function svgEl(name, attrs) {
+        const el = document.createElementNS(SVG_NS, name);
+        if (attrs) {
+          for (const k in attrs) el.setAttribute(k, String(attrs[k]));
+        }
+        return el;
+      }
+
+      function makeArrowMarker(defs, id, color, scale) {
+        const m = svgEl("marker", {
+          id,
+          viewBox: "0 0 10 10",
+          refX: 9,
+          refY: 5,
+          markerWidth: 6 * (scale || 1),
+          markerHeight: 6 * (scale || 1),
+          orient: "auto-start-reverse",
+        });
+        const p = svgEl("path", {
+          d: "M 0 0 L 10 5 L 0 10 Z",
+          fill: color,
+        });
+        m.append(p);
+        defs.append(m);
+        return id;
+      }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function cssEscape(s) {
+        if (window.CSS && CSS.escape) return CSS.escape(s);
+        return String(s).replace(/[^a-zA-Z0-9_-]/g, (c) => "\\" + c);
+      }
+
+      // ---------- Boot ----------
+      (async function () {
+        try {
+          // restore anno height
+          try {
+            const saved = localStorage.getItem("todaysme.flows.annoH");
+            if (saved)
+              document.documentElement.style.setProperty("--anno-h", saved);
+          } catch (_) {}
+
+          const data = await loadData();
+          renderAll(data);
+        } catch (err) {
+          console.error(err);
+          const banner = document.createElement("div");
+          banner.className = "err-banner";
+          banner.textContent = "読み込みエラー: " + err.message;
+          document.body.append(banner);
+        }
+      })();
+    </script>
+  </body>
+</html>
