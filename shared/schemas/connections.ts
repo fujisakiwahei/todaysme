@@ -114,16 +114,25 @@ export const googleAccountsResponseSchema = z.object({
 });
 
 // -----------------------------------------------------------------------------
-// Google calendar 除外設定 (Issue #108)
+// Google calendar 除外設定 (Issue #108 / Issue #131 Phase 5 で接続単位へ)
 //
-//   - `GET /api/connections/google/calendars`
-//       現在 Google から見えているカレンダー一覧 + ユーザーの除外設定を返す。
+//   - `GET /api/connections/google/calendars?connection_id=<uuid>`
+//       指定接続が Google から見ているカレンダー一覧 + その接続単位の除外
+//       設定を返す。
 //   - `PUT /api/connections/google/excluded-calendars`
-//       除外する calendarId の配列を保存する。
+//       接続単位で、除外する calendarId の配列を「置換」保存する。
 //
 // 除外されたカレンダーのイベントは Timeline には表示するが、稼働時間集計から
-// 外す。実装側は users.excluded_google_calendar_ids に永続化する。
+// 外す。実装側は `google_excluded_calendars` テーブル (connection_id 単位) に
+// 永続化する。Phase 5 移行後の正規ストレージはこのテーブル。
+// `users.excluded_google_calendar_ids` 配列カラムはロールバック用に残るが
+// アプリ経路は読み書きしない。
 // -----------------------------------------------------------------------------
+
+// Issue #131 Phase 5: クエリで接続を指定するためのスキーマ。
+export const googleCalendarsRequestSchema = z.object({
+  connection_id: z.uuid(),
+});
 
 export const googleCalendarItemSchema = z.object({
   id: z.string().min(1),
@@ -133,14 +142,19 @@ export const googleCalendarItemSchema = z.object({
 });
 
 export const googleCalendarsResponseSchema = z.object({
+  // どの接続のカレンダーを返したかを response にも乗せる (UI 側で取り違え検出)。
+  connection_id: z.uuid(),
   calendars: z.array(googleCalendarItemSchema),
 });
 
 export const googleExcludedCalendarsUpdateRequestSchema = z.object({
+  // Issue #131 Phase 5: 接続単位で除外設定を保存する。
+  connection_id: z.uuid(),
   excluded_calendar_ids: z.array(z.string().min(1)).max(200),
 });
 
 export const googleExcludedCalendarsUpdateResponseSchema = z.object({
+  connection_id: z.uuid(),
   excluded_calendar_ids: z.array(z.string().min(1)),
 });
 
@@ -161,6 +175,7 @@ export type ConnectionsRequiredResponse = z.infer<
 >;
 export type GoogleAccount = z.infer<typeof googleAccountSchema>;
 export type GoogleAccountsResponse = z.infer<typeof googleAccountsResponseSchema>;
+export type GoogleCalendarsRequest = z.infer<typeof googleCalendarsRequestSchema>;
 export type GoogleCalendarItem = z.infer<typeof googleCalendarItemSchema>;
 export type GoogleCalendarsResponse = z.infer<
   typeof googleCalendarsResponseSchema

@@ -37,27 +37,55 @@ const googleAccountsLoading = ref(false);
 // /api/connections の submitting (provider 単位) と独立。
 const googleSubmittingId = ref<string | null>(null);
 
-// -- Google カレンダー除外設定 (Issue #108) ------------------------------------
-// Google 接続済みのときだけロード。チェック状態はクライアントで反転させ、
-// 保存ボタン押下時に PUT する。チェックされたカレンダーは稼働時間集計から外れる。
-const googleCalendars = ref<GoogleCalendarItem[]>([]);
-const googleCalendarsLoading = ref(false);
-const googleCalendarsLoaded = ref(false);
-const googleCalendarsError = ref<string | null>(null);
-const excludedDraft = ref<Set<string>>(new Set());
-const savingExcluded = ref(false);
+// -- Google カレンダー除外設定 (Issue #108 / Issue #131 Phase 5) --------------
+// 接続単位で「カレンダー一覧 + 除外設定」を持つ。Map のキーは
+// connection_id。各値は { calendars, excludedDraft, loaded, loading,
+// saving, error } を持つ。Vue 3 で `ref<Map>` を reactive に扱うため、
+// 代入時には新しい Map をセットして参照を差し替える。
+interface CalendarPaneState {
+  calendars: GoogleCalendarItem[];
+  excludedDraft: Set<string>;
+  loaded: boolean;
+  loading: boolean;
+  saving: boolean;
+  error: string | null;
+}
+const calendarPanes = ref<Map<string, CalendarPaneState>>(new Map());
 
-// チェック状態が初期値と差分があるか (= 保存ボタンを enable するか)
-const excludedDirty = computed(() => {
+function emptyPane(): CalendarPaneState {
+  return {
+    calendars: [],
+    excludedDraft: new Set<string>(),
+    loaded: false,
+    loading: false,
+    saving: false,
+    error: null,
+  };
+}
+
+function setPane(connectionId: string, next: CalendarPaneState) {
+  const map = new Map(calendarPanes.value);
+  map.set(connectionId, next);
+  calendarPanes.value = map;
+}
+
+function getPane(connectionId: string): CalendarPaneState {
+  return calendarPanes.value.get(connectionId) ?? emptyPane();
+}
+
+// 接続単位の dirty 判定 (= 保存ボタンを enable するか)。
+function paneDirty(connectionId: string): boolean {
+  const pane = calendarPanes.value.get(connectionId);
+  if (!pane) return false;
   const initial = new Set(
-    googleCalendars.value.filter((c) => c.excluded).map((c) => c.id),
+    pane.calendars.filter((c) => c.excluded).map((c) => c.id),
   );
-  if (initial.size !== excludedDraft.value.size) return true;
-  for (const id of excludedDraft.value) {
+  if (initial.size !== pane.excludedDraft.size) return true;
+  for (const id of pane.excludedDraft) {
     if (!initial.has(id)) return true;
   }
   return false;
-});
+}
 
 async function bearerHeaders(): Promise<HeadersInit> {
   const { data } = await supabase.auth.getSession();
@@ -81,19 +109,21 @@ async function loadConnections() {
     connections.value = conn.connections;
     googleAccounts.value = accounts.accounts;
 
-    // Issue #131: 除外カレンダー UI は Phase 5 で接続単位に分割するまで、
-    // 接続済み Google アカウントがある場合のみ「先頭の接続」相手にロードする
-    // 暫定運用 (Phase 5 でこの分岐は撤去予定)。
-    const usableAccount = accounts.accounts.find(
+    // Issue #131 Phase 5: 接続済み Google アカウントごとに、カレンダー一覧 +
+    // 除外設定をパラレルにロードする。再認可待ち / 切断済みアカウントは
+    // (calendars.get.ts が 409 を返すので) ロードしない。
+    const usable = accounts.accounts.filter(
       (a) => a.has_token && a.status === "connected",
     );
-    if (usableAccount) {
-      loadGoogleCalendars();
-    } else {
-      googleCalendars.value = [];
-      googleCalendarsLoaded.value = false;
-      excludedDraft.value = new Set();
+    const usableIds = new Set(usable.map((a) => a.connection_id));
+    // 既に消えたアカウントの pane は破棄する。
+    const nextPanes = new Map<string, CalendarPaneState>();
+    for (const [id, pane] of calendarPanes.value) {
+      if (usableIds.has(id)) nextPanes.set(id, pane);
     }
+    calendarPanes.value = nextPanes;
+
+    await Promise.all(usable.map((a) => loadGoogleCalendars(a.connection_id)));
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed to load";
     errorMessage.value = `連携状況の取得に失敗しました: ${msg}`;
@@ -103,41 +133,49 @@ async function loadConnections() {
   }
 }
 
-async function loadGoogleCalendars() {
-  googleCalendarsLoading.value = true;
-  googleCalendarsError.value = null;
+async function loadGoogleCalendars(connectionId: string) {
+  const base = getPane(connectionId);
+  setPane(connectionId, { ...base, loading: true, error: null });
   try {
     const headers = await bearerHeaders();
     const res = await $fetch<GoogleCalendarsResponse>(
       "/api/connections/google/calendars",
-      { headers },
+      { headers, query: { connection_id: connectionId } },
     );
-    googleCalendars.value = res.calendars;
-    excludedDraft.value = new Set(
-      res.calendars.filter((c) => c.excluded).map((c) => c.id),
-    );
-    googleCalendarsLoaded.value = true;
+    setPane(connectionId, {
+      ...getPane(connectionId),
+      calendars: res.calendars,
+      excludedDraft: new Set(
+        res.calendars.filter((c) => c.excluded).map((c) => c.id),
+      ),
+      loaded: true,
+      loading: false,
+      error: null,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed to load calendars";
-    googleCalendarsError.value = `カレンダー一覧の取得に失敗しました: ${msg}`;
-  } finally {
-    googleCalendarsLoading.value = false;
+    setPane(connectionId, {
+      ...getPane(connectionId),
+      loading: false,
+      error: `カレンダー一覧の取得に失敗しました: ${msg}`,
+    });
   }
 }
 
-function toggleExcluded(calendarId: string) {
-  const next = new Set(excludedDraft.value);
+function toggleExcluded(connectionId: string, calendarId: string) {
+  const pane = getPane(connectionId);
+  const next = new Set(pane.excludedDraft);
   if (next.has(calendarId)) {
     next.delete(calendarId);
   } else {
     next.add(calendarId);
   }
-  excludedDraft.value = next;
+  setPane(connectionId, { ...pane, excludedDraft: next });
 }
 
-async function saveExcludedCalendars() {
-  savingExcluded.value = true;
-  googleCalendarsError.value = null;
+async function saveExcludedCalendars(connectionId: string) {
+  const pane = getPane(connectionId);
+  setPane(connectionId, { ...pane, saving: true, error: null });
   successMessage.value = null;
   try {
     const headers = await bearerHeaders();
@@ -146,22 +184,31 @@ async function saveExcludedCalendars() {
       {
         method: "PUT",
         headers,
-        body: { excluded_calendar_ids: Array.from(excludedDraft.value) },
+        body: {
+          connection_id: connectionId,
+          excluded_calendar_ids: Array.from(pane.excludedDraft),
+        },
       },
     );
     // サーバが正規化した結果で UI も更新する。
     const newSet = new Set(res.excluded_calendar_ids);
-    googleCalendars.value = googleCalendars.value.map((c) => ({
-      ...c,
-      excluded: newSet.has(c.id),
-    }));
-    excludedDraft.value = newSet;
+    setPane(connectionId, {
+      ...getPane(connectionId),
+      calendars: pane.calendars.map((c) => ({
+        ...c,
+        excluded: newSet.has(c.id),
+      })),
+      excludedDraft: newSet,
+      saving: false,
+    });
     successMessage.value = "除外カレンダーの設定を保存しました。";
   } catch (e) {
     const msg = e instanceof Error ? e.message : "failed to save";
-    googleCalendarsError.value = `除外設定の保存に失敗しました: ${msg}`;
-  } finally {
-    savingExcluded.value = false;
+    setPane(connectionId, {
+      ...getPane(connectionId),
+      saving: false,
+      error: `除外設定の保存に失敗しました: ${msg}`,
+    });
   }
 }
 
@@ -282,12 +329,6 @@ type ProviderMeta = {
 // /api/connections の単一行 (= Oura / Toggl 用) と切り離してループ対象から除外する。
 const nonGoogleConnections = computed(() =>
   connections.value.filter((c) => c.provider !== "google"),
-);
-// 除外カレンダー UI が紐づく "primary" な接続 (最初に繋いだ接続済みアカウント)。
-// Phase 5 でこの分岐は不要になる (除外カレンダーが接続単位になる)。
-const primaryGoogleAccount = computed(() =>
-  googleAccounts.value.find((a) => a.has_token && a.status === "connected") ??
-    null,
 );
 // Google の status バッジ用にサマリ風オブジェクトを返す。表示専用。
 // 複数アカウントある場合、いずれかが connected なら "接続中"、全て needs_reauth
@@ -614,6 +655,111 @@ onMounted(() => {
                       連携解除
                     </button>
                   </div>
+
+                  <!-- Issue #108 + Issue #131 Phase 5: アカウント単位の
+                       「稼働時間集計から除外するカレンダー」設定。connected
+                       かつ has_token のアカウントのみで表示する (再認可待ち /
+                       エラー時はカレンダー API を叩けないため非表示)。 -->
+                  <div
+                    v-if="acc.has_token && acc.status === 'connected'"
+                    class="conn__exclude"
+                  >
+                    <div class="conn__exclude-head">
+                      <span class="conn__exclude-title">
+                        稼働時間集計から除外するカレンダー
+                      </span>
+                      <span class="conn__exclude-hint">
+                        チェックしたカレンダーのイベントは Timeline
+                        には残りますが、稼働時間には数えられず薄く表示されます。
+                      </span>
+                    </div>
+
+                    <p
+                      v-if="getPane(acc.connection_id).error"
+                      class="conn__exclude-error"
+                      role="alert"
+                    >
+                      {{ getPane(acc.connection_id).error }}
+                    </p>
+
+                    <p
+                      v-if="
+                        getPane(acc.connection_id).loading &&
+                        !getPane(acc.connection_id).loaded
+                      "
+                      class="conn__exclude-loading"
+                    >
+                      カレンダー一覧を取得中...
+                    </p>
+
+                    <ul
+                      v-else-if="getPane(acc.connection_id).calendars.length > 0"
+                      class="conn__exclude-list"
+                    >
+                      <li
+                        v-for="cal in getPane(acc.connection_id).calendars"
+                        :key="cal.id"
+                        class="conn__exclude-item"
+                      >
+                        <label class="conn__exclude-label">
+                          <input
+                            type="checkbox"
+                            :checked="
+                              getPane(acc.connection_id).excludedDraft.has(
+                                cal.id,
+                              )
+                            "
+                            :disabled="getPane(acc.connection_id).saving"
+                            @change="toggleExcluded(acc.connection_id, cal.id)"
+                          />
+                          <span class="conn__exclude-name">
+                            {{ cal.name || "（無題のカレンダー）" }}
+                          </span>
+                          <span
+                            v-if="cal.primary"
+                            class="conn__exclude-badge"
+                          >
+                            Primary
+                          </span>
+                        </label>
+                      </li>
+                    </ul>
+                    <p
+                      v-else-if="getPane(acc.connection_id).loaded"
+                      class="conn__exclude-loading"
+                    >
+                      カレンダーが見つかりませんでした。
+                    </p>
+
+                    <div
+                      v-if="getPane(acc.connection_id).calendars.length > 0"
+                      class="conn__exclude-foot"
+                    >
+                      <button
+                        type="button"
+                        class="btn btn--primary"
+                        :disabled="
+                          !paneDirty(acc.connection_id) ||
+                          getPane(acc.connection_id).saving
+                        "
+                        @click="saveExcludedCalendars(acc.connection_id)"
+                      >
+                        {{
+                          getPane(acc.connection_id).saving
+                            ? "保存中..."
+                            : "除外設定を保存"
+                        }}
+                      </button>
+                      <button
+                        type="button"
+                        class="btn btn--ghost"
+                        :disabled="getPane(acc.connection_id).loading"
+                        @click="loadGoogleCalendars(acc.connection_id)"
+                      >
+                        再読み込み
+                      </button>
+                    </div>
+                  </div>
                 </li>
               </ul>
 
@@ -637,92 +783,6 @@ onMounted(() => {
                 </button>
               </div>
 
-              <!-- Issue #108: 稼働時間集計から除外するカレンダーの選択
-                   Phase 5 で接続単位に分割するまでは「最初に繋いだ接続済み
-                   アカウント」相手にのみ表示する。 -->
-              <div
-                v-if="primaryGoogleAccount"
-                class="conn__exclude"
-              >
-                <div class="conn__exclude-head">
-                  <span class="conn__exclude-title">
-                    稼働時間集計から除外するカレンダー
-                  </span>
-                  <span class="conn__exclude-hint">
-                    チェックしたカレンダーのイベントは Timeline
-                    には残りますが、稼働時間には数えられず薄く表示されます。
-                  </span>
-                </div>
-
-                <p
-                  v-if="googleCalendarsError"
-                  class="conn__exclude-error"
-                  role="alert"
-                >
-                  {{ googleCalendarsError }}
-                </p>
-
-                <p
-                  v-if="googleCalendarsLoading && !googleCalendarsLoaded"
-                  class="conn__exclude-loading"
-                >
-                  カレンダー一覧を取得中...
-                </p>
-
-                <ul
-                  v-else-if="googleCalendars.length > 0"
-                  class="conn__exclude-list"
-                >
-                  <li
-                    v-for="cal in googleCalendars"
-                    :key="cal.id"
-                    class="conn__exclude-item"
-                  >
-                    <label class="conn__exclude-label">
-                      <input
-                        type="checkbox"
-                        :checked="excludedDraft.has(cal.id)"
-                        :disabled="savingExcluded"
-                        @change="toggleExcluded(cal.id)"
-                      />
-                      <span class="conn__exclude-name">
-                        {{ cal.name || "（無題のカレンダー）" }}
-                      </span>
-                      <span v-if="cal.primary" class="conn__exclude-badge">
-                        Primary
-                      </span>
-                    </label>
-                  </li>
-                </ul>
-                <p
-                  v-else-if="googleCalendarsLoaded"
-                  class="conn__exclude-loading"
-                >
-                  カレンダーが見つかりませんでした。
-                </p>
-
-                <div
-                  v-if="googleCalendars.length > 0"
-                  class="conn__exclude-foot"
-                >
-                  <button
-                    type="button"
-                    class="btn btn--primary"
-                    :disabled="!excludedDirty || savingExcluded"
-                    @click="saveExcludedCalendars"
-                  >
-                    {{ savingExcluded ? "保存中..." : "除外設定を保存" }}
-                  </button>
-                  <button
-                    type="button"
-                    class="btn btn--ghost"
-                    :disabled="googleCalendarsLoading"
-                    @click="loadGoogleCalendars"
-                  >
-                    再読み込み
-                  </button>
-                </div>
-              </div>
             </li>
           </template>
         </ul>
