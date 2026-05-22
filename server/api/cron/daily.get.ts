@@ -20,6 +20,11 @@ import { createError, getRequestHeader } from "h3";
 
 import type { ServiceProvider } from "../../../shared/schemas";
 import {
+  PURGE_TARGETS,
+  purgeSoftDeleted,
+  type PurgeResult,
+} from "../../utils/purgeSoftDeleted";
+import {
   loadConnectedProviders,
   refreshUserDate,
 } from "../../utils/runRefresh";
@@ -157,11 +162,40 @@ export default defineEventHandler(async (event) => {
     usersProcessed += 1;
   }
 
+  // 全 user の sync が一通り終わってから soft-delete purge を回す (Issue #150)。
+  // sync 中に新規に立った is_deleted=true は updated_at が直近なので拾われない。
+  // テーブル単位の失敗は purgeSoftDeleted 側で握り潰すので sync 結果は壊さない。
+  let purgeResults: PurgeResult[] = [];
+  let purgeErrorCount = 0;
+  try {
+    purgeResults = await purgeSoftDeleted(startedAt);
+    purgeErrorCount = purgeResults.filter((r) => r.error !== null).length;
+  } catch (e) {
+    // purgeSoftDeleted は通常自身で吸収するが、想定外 throw 時はすべてのテーブルが
+    // 実行されていないので、全件 fail 扱いで error_count に計上する。0 のままだと
+    // 運用上の失敗が cron レスポンスから検知できなくなる。
+    const message = e instanceof Error ? e.message : String(e);
+    console.error(
+      `[cron/daily] purgeSoftDeleted threw unexpectedly: ${message}`,
+    );
+    purgeResults = [];
+    purgeErrorCount = PURGE_TARGETS.length;
+  }
+
   return {
     processed_at: startedAt.toISOString(),
     users_processed: usersProcessed,
     dates_processed: datesProcessed,
     days_per_user: REFRESH_DAYS,
     error_count: errorCount,
+    purge: {
+      // 個別エラー詳細はレスポンスに乗せない (cron 既存方針: ログ流出回避)。
+      // 詳細は Vercel ログ側で console.error を確認する。
+      results: purgeResults.map((r) => ({
+        table: r.table,
+        deleted: r.deleted,
+      })),
+      error_count: purgeErrorCount,
+    },
   };
 });
