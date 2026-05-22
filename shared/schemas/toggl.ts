@@ -1,9 +1,13 @@
 // =============================================================================
 // Toggl Track API v9 レスポンススキーマ
-// SPEC §3 / Issue #11 / #54
+// SPEC §3 / Issue #11 / #54 / #112
 //
 // `GET /me/time_entries` の最低限のフィールドだけを抜き出す。
 // 進行中エントリは stop が null、duration が負値。
+//
+// `GET /me/projects` は time entry に紐づく project の名前を解決するため
+// (Issue #112) に使う。`name` が空のレコードや `active=false` のレコードも
+// 返るが、ID から name を引くだけのマップ用途なので素直に取り込む。
 // =============================================================================
 import { z } from "zod";
 
@@ -29,7 +33,21 @@ export const togglTimeEntrySchema = z.object({
 // /me/time_entries は配列レスポンス
 export const togglTimeEntriesResponseSchema = z.array(togglTimeEntrySchema);
 
+// /me/projects は workspace を跨いで自分が参加する project 一覧を返す。
+// 最低限 id / name があれば time entry の project_id から名前を引ける。
+// アーカイブ済み / 削除済みも返るがフィルタはしない (entry が参照していたら
+// 表示はしたいため)。
+export const togglProjectSchema = z.object({
+  id: z.number().int(),
+  name: z.string().nullable().optional(),
+  workspace_id: z.number().int().optional(),
+});
+
+export const togglProjectsResponseSchema = z.array(togglProjectSchema);
+
 export type TogglTimeEntry = z.infer<typeof togglTimeEntrySchema>;
 export type TogglTimeEntriesResponse = z.infer<
   typeof togglTimeEntriesResponseSchema
 >;
+export type TogglProject = z.infer<typeof togglProjectSchema>;
+export type TogglProjectsResponse = z.infer<typeof togglProjectsResponseSchema>;

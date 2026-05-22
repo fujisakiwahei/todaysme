@@ -17,7 +17,12 @@
 //     出さない (SPEC §12.1)。Toggl は API token 方式なので refresh は無いが、
 //     一貫性のため withFreshAccessToken を使う。
 // =============================================================================
-import { getTogglData } from "./getTogglData";
+import {
+  buildProjectNameMap,
+  enrichWithProjectNames,
+  getTogglData,
+  getTogglProjects,
+} from "./getTogglData";
 import {
   ServiceNotConnectedError,
   withFreshAccessToken,
@@ -46,14 +51,24 @@ export async function syncTogglForDate(
 
   let fetched;
   try {
-    fetched = await withFreshAccessToken(userId, "toggl", (apiToken) =>
-      getTogglData({
-        apiToken,
-        timezone,
-        startDate,
-        endDate,
-      }),
-    );
+    fetched = await withFreshAccessToken(userId, "toggl", async (apiToken) => {
+      // time entries と projects を並列取得し、project_id → name を解決する
+      // (Issue #112)。projects 取得が失敗した場合でも、entry 自体は表示できる
+      // ようにしたいが、ここでは「整合性の取れた状態」を優先してハードエラーに
+      // する (entry 同期は成功 / project 名だけ NULL より、全体 retry の方が
+      // 単純で予測可能)。MVP の規模では projects API はほぼ常に成功する想定。
+      const [entries, projects] = await Promise.all([
+        getTogglData({
+          apiToken,
+          timezone,
+          startDate,
+          endDate,
+        }),
+        getTogglProjects(apiToken),
+      ]);
+      const projectNameById = buildProjectNameMap(projects);
+      return enrichWithProjectNames(entries, projectNameById);
+    });
   } catch (e) {
     // ServiceNotConnectedError はそのまま伝搬させる (呼び出し側で failed と記録)。
     if (e instanceof ServiceNotConnectedError) throw e;
@@ -73,6 +88,10 @@ export async function syncTogglForDate(
       title: e.title,
       start_at: e.start_at,
       end_at: e.end_at,
+      // Issue #112: project_id / project_name は nullable。Toggl 側で project
+      // 未割当のエントリは null のまま。
+      project_id: e.project_id,
+      project_name: e.project_name,
       is_deleted: e.server_deleted_at !== null,
       updated_at: nowIso,
     }));

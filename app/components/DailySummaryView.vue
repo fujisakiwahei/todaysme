@@ -703,9 +703,14 @@ onBeforeUnmount(() => {
               <dl class="metric__sub">
                 <div
                   v-for="item in summary.todays_me.toggl.by_title"
-                  :key="item.title"
+                  :key="`${item.title}|${item.project_name ?? ''}`"
                 >
-                  <dt>{{ item.title || "（タイトル無し）" }}</dt>
+                  <dt>
+                    {{ item.title || "（タイトル無し）" }}
+                    <span v-if="item.project_name" class="metric__sub-project">
+                      {{ item.project_name }}
+                    </span>
+                  </dt>
                   <dd>
                     {{ formatMinutes(item.minutes)?.hours }}h
                     {{
@@ -1059,7 +1064,7 @@ onBeforeUnmount(() => {
                     'tl-bar--active': activeTooltipId === `work-${t.id}`,
                   }"
                   :style="barStyle(t.start_at, t.end_at)"
-                  :aria-label="`${t.title || '(タイトル無し)'} ${formatHourMinute(t.start_at, timezone)} - ${t.end_at ? formatHourMinute(t.end_at, timezone) : '進行中'}`"
+                  :aria-label="`${t.title || '(タイトル無し)'}${t.project_name ? ` (${t.project_name})` : ''} ${formatHourMinute(t.start_at, timezone)} - ${t.end_at ? formatHourMinute(t.end_at, timezone) : '進行中'}`"
                   @click="toggleTooltip(`work-${t.id}`, $event)"
                 >
                   <span class="tl-bar__text">
@@ -1073,6 +1078,9 @@ onBeforeUnmount(() => {
                   >
                     <span class="tl-bar__tooltip-title">
                       {{ t.title || "(タイトル無し)" }}
+                    </span>
+                    <span v-if="t.project_name" class="tl-bar__tooltip-project">
+                      {{ t.project_name }}
                     </span>
                     <span class="tl-bar__tooltip-time">
                       {{ formatHourMinute(t.start_at, timezone) }} –
@@ -1232,6 +1240,9 @@ onBeforeUnmount(() => {
                   </span>
                   <span class="entry__title">
                     {{ t.title || "(タイトル無し)" }}
+                    <span v-if="t.project_name" class="entry__tag">
+                      {{ t.project_name }}
+                    </span>
                   </span>
                   <span class="entry__dur">
                     {{ formatDuration(t.start_at, t.end_at) }}
@@ -1707,6 +1718,23 @@ $font-en:
   }
 }
 
+// Issue #112: Today's ME の Work `by_title` 内に紐づくプロジェクト名を
+// 小さなピル風で表示する。タイトルが省略される場合でも見えるよう
+// inline-block 扱いでタイトルの右に並べる。
+.metric__sub-project {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: $color-text-muted;
+  background: $color-surface;
+  border: 1px solid $color-border;
+  border-radius: 999px;
+  vertical-align: 1px;
+}
+
 .metric__placeholder {
   margin-top: auto;
   font-size: 13px;
@@ -2013,6 +2041,19 @@ $font-en:
   font-size: 11px;
   color: rgba(255, 255, 255, 0.78);
   font-variant-numeric: tabular-nums;
+}
+
+// Issue #112: Toggl の Work バーのツールチップ内に表示するプロジェクト名。
+// タイトル直下に小さなピル風で出す。
+.tl-bar__tooltip-project {
+  align-self: flex-start;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
 }
 
 // -----------------------------------------------------------

@@ -63,6 +63,9 @@ export const togglTimelineEntrySchema = z.object({
   id: uuidSchema,
   toggl_entry_id: z.string(),
   title: z.string().nullable(),
+  // Issue #112: time entry に紐づく Toggl プロジェクト。未割当 / 解決失敗時は null。
+  project_id: z.number().int().nullable(),
+  project_name: z.string().nullable(),
   start_at: isoDateTimeSchema,
   // 進行中エントリは null
   end_at: isoDateTimeSchema.nullable(),
@@ -96,9 +99,12 @@ export const todaysMeGoogleSchema = z.object({
 
 export const todaysMeTogglSchema = z.object({
   total_minutes: z.number().int(),
+  // Issue #112: 同じタイトルでも別プロジェクトに紐付くものは別エントリに分け、
+  // 各エントリにプロジェクト名 (未割当は null) を持たせる。
   by_title: z.array(
     z.object({
       title: z.string(),
+      project_name: z.string().nullable(),
       minutes: z.number().int(),
     }),
   ),

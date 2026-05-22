@@ -59,6 +59,9 @@ interface TogglRow {
   id: string;
   toggl_entry_id: string;
   title: string | null;
+  // Issue #112: Toggl project の id / 名前。デモテーブルにもカラムを追加した。
+  project_id: number | null;
+  project_name: string | null;
   start_at: string;
   end_at: string | null;
 }
@@ -137,7 +140,9 @@ export default defineEventHandler(async (event) => {
       // end_at >= fromIso のものだけを DB 側で絞り込み、JS の overlaps() で最終判定する。
       admin
         .from("demo_toggl_time_entries")
-        .select("id, toggl_entry_id, title, start_at, end_at")
+        .select(
+          "id, toggl_entry_id, title, project_id, project_name, start_at, end_at",
+        )
         .eq("is_deleted", false)
         .lte("start_at", toIso)
         .or(`end_at.gte.${fromIso},end_at.is.null`)
@@ -190,6 +195,8 @@ export default defineEventHandler(async (event) => {
       id: r.id,
       toggl_entry_id: r.toggl_entry_id,
       title: r.title,
+      project_id: r.project_id,
+      project_name: r.project_name,
       start_at: r.start_at,
       end_at: r.end_at,
     })),
@@ -249,10 +256,14 @@ export default defineEventHandler(async (event) => {
     };
   }
 
-  // Toggl: wake range と重なる時間でタイトル別集計。
+  // Toggl: wake range と重なる時間で (タイトル, プロジェクト) 別に集計
+  // (Issue #112)。本番 /api/summary と同じバケット方式。
   let toggl: TodaysMe["toggl"];
   {
-    const byTitleMs = new Map<string, number>();
+    const byKey = new Map<
+      string,
+      { title: string; project_name: string | null; ms: number }
+    >();
     let totalMs = 0;
     if (internalRange) {
       for (const t of togglRows) {
@@ -260,14 +271,22 @@ export default defineEventHandler(async (event) => {
         if (ms <= 0) continue;
         totalMs += ms;
         const title = t.title ?? "";
-        byTitleMs.set(title, (byTitleMs.get(title) ?? 0) + ms);
+        const projectName = t.project_name ?? null;
+        const key = `${title} ${projectName ?? ""}`;
+        const cur = byKey.get(key);
+        if (cur) {
+          cur.ms += ms;
+        } else {
+          byKey.set(key, { title, project_name: projectName, ms });
+        }
       }
     }
     toggl = {
       total_minutes: msToMinutes(totalMs),
-      by_title: Array.from(byTitleMs.entries()).map(([title, ms]) => ({
-        title,
-        minutes: msToMinutes(ms),
+      by_title: Array.from(byKey.values()).map((v) => ({
+        title: v.title,
+        project_name: v.project_name,
+        minutes: msToMinutes(v.ms),
       })),
     };
   }
