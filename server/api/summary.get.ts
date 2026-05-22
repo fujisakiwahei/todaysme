@@ -94,13 +94,29 @@ export default defineEventHandler(async (event) => {
 
   const admin = getSupabaseAdmin();
 
+  // -- 前段クエリ (Issue #143) ---------------------------------------------
+  // 以下 4 つは userId / date だけに依存し相互に独立しているので並列で叩く。
+  // wakeRangeOf は timezone を必要とするためここでは並行させず、結果を受けてから呼ぶ。
+  //   1. users.timezone
+  //   2. google_excluded_calendars
+  //   3. listServiceConnections (todays_me の null 判定用)
+  //   4. daily_sync_statuses (Timeline 構築後に消費するが date 既知なので前出し)
+  const [userRes, excludedRes, connections, syncRes] = await Promise.all([
+    admin.from("users").select("timezone").eq("id", userId).maybeSingle(),
+    admin
+      .from("google_excluded_calendars")
+      .select("connection_id, calendar_id")
+      .eq("user_id", userId),
+    listServiceConnections(userId),
+    admin
+      .from("daily_sync_statuses")
+      .select("source, status, last_synced_at, error_message")
+      .eq("user_id", userId)
+      .eq("target_date", date),
+  ]);
+
   // -- user (timezone) -----------------------------------------------------
-  const { data: userRow, error: userErr } = await admin
-    .from("users")
-    .select("timezone")
-    .eq("id", userId)
-    .maybeSingle();
-  if (userErr) {
+  if (userRes.error) {
     throw createError({
       statusCode: 500,
       statusMessage: "failed to load user",
@@ -108,30 +124,26 @@ export default defineEventHandler(async (event) => {
   }
   // users 行は signup 時の trigger で作成される前提。欠落時に Asia/Tokyo に
   // fallback するとデータ整合性問題を黙って隠してしまうので、明示的に 500 を返す。
-  if (!userRow) {
+  if (!userRes.data) {
     throw createError({
       statusCode: 500,
       statusMessage: "user profile is missing",
     });
   }
-  const timezone = userRow.timezone;
+  const timezone = userRes.data.timezone;
 
   // -- 除外カレンダー (Issue #131 Phase 5: 接続単位) -----------------------
   // Phase 5 で `google_excluded_calendars` テーブル (connection_id 単位) に
   // 移行した。同じ calendar_id がアカウント間で別物を指すケースに備えて、
   // 除外判定キーは `${connection_id}|${calendar_id}` の合成文字列にする。
-  const { data: excludedRows, error: excludedErr } = await admin
-    .from("google_excluded_calendars")
-    .select("connection_id, calendar_id")
-    .eq("user_id", userId);
-  if (excludedErr) {
+  if (excludedRes.error) {
     throw createError({
       statusCode: 500,
-      statusMessage: `failed to load excluded calendars: ${excludedErr.message}`,
+      statusMessage: `failed to load excluded calendars: ${excludedRes.error.message}`,
     });
   }
   const excludedKeys = new Set<string>(
-    (excludedRows ?? []).map((r) => {
+    (excludedRes.data ?? []).map((r) => {
       const row = r as { connection_id: string; calendar_id: string };
       return `${row.connection_id}|${row.calendar_id}`;
     }),
@@ -140,17 +152,16 @@ export default defineEventHandler(async (event) => {
     return excludedKeys.has(`${connectionId}|${calendarId}`);
   }
 
-  // -- wake range -----------------------------------------------------------
+  // -- service connection 状況 (todays_me の null 判定に使う) ---------------
+  const connected = new Set(
+    connections.filter((c) => c.status === "connected").map((c) => c.provider),
+  );
+
+  // -- wake range (timezone に依存するため前段の Promise.all 後に実行) ----
   const internalRange = await wakeRangeOf(date, userId, {
     client: admin,
     timezone,
   });
-
-  // -- service connection 状況 (todays_me の null 判定に使う) ---------------
-  const connections = await listServiceConnections(userId);
-  const connected = new Set(
-    connections.filter((c) => c.status === "connected").map((c) => c.provider),
-  );
 
   // -- records (wake range と重なるもの) -----------------------------------
   let sleepRows: SleepRow[] = [];
@@ -221,16 +232,11 @@ export default defineEventHandler(async (event) => {
     );
   }
 
-  // -- sync statuses --------------------------------------------------------
-  const { data: syncRows, error: syncErr } = await admin
-    .from("daily_sync_statuses")
-    .select("source, status, last_synced_at, error_message")
-    .eq("user_id", userId)
-    .eq("target_date", date);
-  if (syncErr) throw syncErr;
+  // -- sync statuses (Issue #143 で前段 Promise.all に移動済み) -----------
+  if (syncRes.error) throw syncRes.error;
 
   const sync_statuses: SyncStatusEntry[] = (
-    (syncRows ?? []) as SyncStatusRow[]
+    (syncRes.data ?? []) as SyncStatusRow[]
   ).map((r) => ({
     source: r.source,
     status: r.status,
