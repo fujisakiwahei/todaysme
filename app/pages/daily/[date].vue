@@ -40,10 +40,12 @@ function summaryFetchHeaders() {
   return useRequestHeaders(["cookie"]);
 }
 
-// 日付遷移時の再フェッチは下の watch(dateParam) から refreshSummary() を呼ぶ
-// (= useAsyncData の watch オプションを使わない)。
-// 理由: 日付が変わった直後に stale なら backgroundRefreshIfStale を続けて
-// 走らせたいので、再フェッチ完了を await できる経路が要る。
+// key を日付別 (関数形のリアクティブキー) にし、watch オプションで dateParam
+// 変更時の再フェッチを Nuxt 公式の経路に任せる (Issue #154)。
+//   - 固定 key だと payload キャッシュが日付間で衝突し、SSR ハイドレーション
+//     後に dateParam が変わってもハンドラが再実行されないケースがあった。
+//   - 自前の watch + refresh() 経路は `_asyncDataPromise` の内部ガードと噛み合
+//     わないため捨て、stale チェックは summary 自体の変化を watch する形に変更。
 //
 // default オプションで初期値を null にして、useAsyncData が型に混ぜてくる
 // undefined を消す (DailySummaryView の props は SummaryResponse | null)。
@@ -53,13 +55,13 @@ const {
   refresh: refreshSummary,
   error: summaryError,
 } = await useAsyncData<SummaryResponse, Error, SummaryResponse | null>(
-  "daily-summary",
+  () => `daily-summary-${dateParam.value}`,
   () =>
     $fetch<SummaryResponse>("/api/summary", {
       query: { date: dateParam.value },
       headers: summaryFetchHeaders(),
     }),
-  { default: () => null },
+  { default: () => null, watch: [dateParam] },
 );
 
 const refreshing = ref(false);
@@ -134,6 +136,9 @@ function isStale(s: SummaryResponse): boolean {
 async function backgroundRefreshIfStale() {
   const current = summary.value;
   if (!current) return;
+  // 再フェッチ中で summary がまだ前日のままのタイミングを排除する保険。
+  // (current の中身が現在表示中の日付と一致しなければ何もしない)
+  if (current.target_date !== dateParam.value) return;
   if (!isStale(current)) return;
   // user-initiated refresh と区別するため、エラーは UI に出さず黙って終わる。
   try {
@@ -151,22 +156,30 @@ async function backgroundRefreshIfStale() {
 // =============================================================================
 // Lifecycle
 // =============================================================================
-// 初回データは useAsyncData が SSR で確保するため、onMounted では
-// 「stale なら裏で refresh する」だけ走らせる。日付遷移時の再フェッチは
-// useAsyncData の watch オプションが拾う ので、別途 watcher は要らない。
-// stale 判定は hydration 後 (= client) のみ意味があるため、watch でも拾う。
+// 日付遷移時の再フェッチは useAsyncData の watch オプションが担う。
+// stale チェックは「日付ごとに 1 回だけ」走らせる。summary 自体を watch すると
+// backgroundRefreshIfStale() → refreshSummary() → summary 更新 → watcher 再発火
+// のループになり、refresh しても依然 stale なまま (例: sync 完了が遅延、
+// last_synced_at がまだ書き込まれていない) のときに POST /api/summary/refresh を
+// 連打してしまう。それを避けるため、フェッチが落ち着いた (loading=false) タイミ
+// ングで dateParam 単位の再入ガードを通して 1 回だけ発火させる。
+// SSR で /api/summary/refresh を叩かないよう onMounted 内で watch を貼る。
 onMounted(() => {
-  void backgroundRefreshIfStale();
-});
-
-watch(dateParam, () => {
-  // useAsyncData が新しい dateParam で取得し直すので、こちらは
-  // 完了を待ってから stale チェックする。nextTick だと先に走り得るため、
-  // refresh promise を経由する。
-  void (async () => {
-    await refreshSummary();
-    await backgroundRefreshIfStale();
-  })();
+  const checkedDates = new Set<string>();
+  watch(
+    [loading, dateParam],
+    ([isLoading, date]) => {
+      if (isLoading) return;
+      if (checkedDates.has(date)) return;
+      const current = summary.value;
+      // 日付遷移直後で summary がまだ前日のままのタイミングでは発火しない。
+      // 新しい日付の取得完了で loading が false に戻ったタイミングに再評価される。
+      if (!current || current.target_date !== date) return;
+      checkedDates.add(date);
+      void backgroundRefreshIfStale();
+    },
+    { immediate: true },
+  );
 });
 </script>
 
