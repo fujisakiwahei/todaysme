@@ -65,9 +65,85 @@ function packEncrypted(payload: EncryptedPayload): string {
   return JSON.stringify(payload);
 }
 
+// PostgreSQL の unique_violation エラーコード。partial unique index に
+// 並走 INSERT が衝突した場合に「2nd INSERT を SELECT → UPDATE リトライ」する
+// 判定に使う。
+const PG_UNIQUE_VIOLATION = "23505";
+
+interface ExistingConnectionRow {
+  id: string;
+  refresh_token_encrypted: string | null;
+  provider_user_id: string | null;
+  account_email: string | null;
+  scopes: string | null;
+  connected_at: string;
+}
+
+async function selectExistingConnection(
+  userId: string,
+  provider: ServiceProvider,
+  providerUserId: string | undefined,
+): Promise<ExistingConnectionRow | null> {
+  const admin = getSupabaseAdmin();
+  let query = admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select(
+      "id, refresh_token_encrypted, provider_user_id, account_email, scopes, connected_at",
+    )
+    .eq("user_id", userId)
+    .eq("provider", provider);
+
+  // Issue #131 Phase 1b: Google で providerUserId が確定している場合は
+  // (user_id, provider, provider_user_id) の partial unique と整合するよう、
+  // sub も一致条件に含める。これにより「アカウント A の再認可コールバックが
+  // アカウント B の行を誤って UPDATE してしまう」事故を防ぐ。
+  if (provider === "google" && typeof providerUserId === "string") {
+    query = query.eq("provider_user_id", providerUserId);
+  }
+
+  const { data, error } = await query.maybeSingle();
+  if (error) {
+    throw new Error(
+      `failed to read existing service_connection: ${error.message}`,
+    );
+  }
+  return (data ?? null) as ExistingConnectionRow | null;
+}
+
+// Issue #131 Phase 1b: PostgREST の upsert({onConflict}) は partial unique
+// index に推論マッチしないため (`42P10`)、explicit な「SELECT → UPDATE or INSERT」
+// に書き換える。partial unique index は並走書き込み時の整合性ガードとしてのみ
+// 機能させ、アプリ側からは ON CONFLICT 推論に依存しない。
+//
+// 並走 INSERT 衝突 (2 ブラウザタブ等で再認可コールバックが同時に走ったケース) は
+// PostgreSQL の `23505 (unique_violation)` を 1 度だけ拾い、SELECT → UPDATE 経路を
+// 再試行する。
 export async function upsertServiceConnection(
   input: UpsertServiceConnectionInput,
 ): Promise<void> {
+  const providerUserIdHint =
+    typeof input.providerUserId === "string" ? input.providerUserId : undefined;
+
+  // 1 回目: SELECT → UPDATE or INSERT
+  if (await tryUpsertOnce(input, providerUserIdHint)) {
+    return;
+  }
+  // 2 回目: 並走 INSERT に負けた直後を想定し、SELECT を再実行して UPDATE を狙う。
+  // ここでも勝てなかった (= 想定外の状態) なら最後の error を throw する。
+  if (await tryUpsertOnce(input, providerUserIdHint)) {
+    return;
+  }
+  throw new Error(
+    "failed to upsert service_connections after retry on unique_violation",
+  );
+}
+
+// 戻り値: true なら成功 (= 完了)。false なら unique_violation に当たって
+// リトライ可能と判断した場合。それ以外のエラーは throw する。
+async function tryUpsertOnce(
+  input: UpsertServiceConnectionInput,
+  providerUserIdHint: string | undefined,
+): Promise<boolean> {
   const admin = getSupabaseAdmin();
   const now = new Date();
 
@@ -75,19 +151,11 @@ export async function upsertServiceConnection(
   // account_email を undefined 保持仕様で扱うのに加え、connected_at は
   // 「初回接続時刻」を保持するため (refresh のたびに上書きされると
   // /api/connections の表示が常に「今接続した」になってしまう)。
-  const { data: existing, error: existingErr } = await admin
-    .from(SERVICE_CONNECTIONS_TABLE)
-    .select(
-      "refresh_token_encrypted, provider_user_id, account_email, scopes, connected_at",
-    )
-    .eq("user_id", input.userId)
-    .eq("provider", input.provider)
-    .maybeSingle();
-  if (existingErr) {
-    throw new Error(
-      `failed to read existing service_connection: ${existingErr.message}`,
-    );
-  }
+  const existing = await selectExistingConnection(
+    input.userId,
+    input.provider,
+    providerUserIdHint,
+  );
 
   const accessEnc = packEncrypted(encrypt(input.accessToken));
 
@@ -126,10 +194,35 @@ export async function upsertServiceConnection(
       ? (existing?.account_email ?? null)
       : input.accountEmail;
 
-  const connectedAt = existing?.connected_at ?? now.toISOString();
+  if (existing) {
+    // UPDATE 経路: 既存行を id で特定して書き換える。WHERE id を使うことで
+    // 並走する別アカウントの行を巻き込まない。
+    const { error: updateErr } = await admin
+      .from(SERVICE_CONNECTIONS_TABLE)
+      .update({
+        status: "connected",
+        provider_user_id: providerUserId,
+        account_email: accountEmail,
+        access_token_encrypted: accessEnc,
+        refresh_token_encrypted: refreshEnc,
+        token_expires_at: tokenExpiresAt,
+        scopes,
+        updated_at: now.toISOString(),
+      })
+      .eq("id", existing.id);
 
-  const { error } = await admin.from(SERVICE_CONNECTIONS_TABLE).upsert(
-    {
+    if (updateErr) {
+      throw new Error(
+        `failed to update service_connections: ${updateErr.message}`,
+      );
+    }
+    return true;
+  }
+
+  // INSERT 経路: 新規行を作成。connected_at は now で初期化。
+  const { error: insertErr } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .insert({
       user_id: input.userId,
       provider: input.provider,
       status: "connected",
@@ -139,15 +232,21 @@ export async function upsertServiceConnection(
       refresh_token_encrypted: refreshEnc,
       token_expires_at: tokenExpiresAt,
       scopes,
-      connected_at: connectedAt,
+      connected_at: now.toISOString(),
       updated_at: now.toISOString(),
-    },
-    { onConflict: "user_id,provider" },
-  );
+    });
 
-  if (error) {
-    throw new Error(`failed to upsert service_connections: ${error.message}`);
+  if (insertErr) {
+    // 並走 INSERT で partial unique に当たった場合は 23505。リトライ可能。
+    const code = (insertErr as { code?: string }).code;
+    if (code === PG_UNIQUE_VIOLATION) {
+      return false;
+    }
+    throw new Error(
+      `failed to insert service_connections: ${insertErr.message}`,
+    );
   }
+  return true;
 }
 
 export async function listServiceConnections(
