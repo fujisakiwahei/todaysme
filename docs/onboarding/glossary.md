@@ -33,6 +33,9 @@
 ### Sync status
 `daily_sync_statuses` テーブルで管理される (user × target_date × source) ごとの同期状態。`idle` / `in_progress` / `success` / `failed`。
 
+### `needs_reauth`
+`service_connections.status` の 4 値目（Issue #131 Phase 2）。複数 Google アカウント連携を導入するにあたって、旧 Google 接続行（`provider_user_id` 未取得）に貼られる過渡状態。`/settings` バナーから再認可を踏むと callback が `id_token.sub` / `email` を backfill して `connected` に戻る。
+
 ### Sync lock
 `daily_sync_statuses` の `unique(user_id, target_date, source)` 行を条件付き UPDATE して `status = in_progress` に切り替えることで多重実行を防ぐ仕組み。`server/utils/syncLock.ts`。
 
@@ -63,7 +66,16 @@ Supabase Auth が JWT から取り出した user id。RLS ポリシー内で参�
 - `public.users`: アプリ固有のプロファイル（`timezone` 等）。**両者は 1:1**。`handle_new_user()` トリガが auto INSERT する。
 
 ### Bearer 認証
-`Authorization: Bearer <jwt>` ヘッダで認証する方式。このアプリでは Server API の認証の基本。CSRF 対策として cookie 認証フォールバックは（read-only 例外を除いて）使わない。
+`Authorization: Bearer <jwt>` ヘッダで認証する方式。このアプリでは Server API の認証の基本。CSRF 対策として cookie 認証フォールバックは限定的（`/api/internal/connections-required` と SSR 経由の `/api/summary` 系のみ / `requireUserIdAllowCookie`）。
+
+### `provider_user_id`
+`service_connections` の列。Google は `id_token.sub` を JWKS 検証して保存する（Issue #131 Phase 2）。複数アカウント連携の識別キーで、`(user_id, provider, provider_user_id)` の partial unique で別行を区別する。Oura / Toggl は使わない。
+
+### `account_email`
+`service_connections` の列。Google `id_token.email` を保存する。`/settings` で「どのアカウントか」を識別表示する用途と、同名カレンダーの集計衝突解決（`"<name> (<email>)"` 接尾辞）に使う。
+
+### `connection_id`（Google）
+`service_connections.id` を `google_calendar_events` / `google_excluded_calendars` に貼り付けたもの（Issue #131 Phase 4 / Phase 5）。複数 Google アカウント連携でイベント / 除外設定を接続単位にスコープするためのキー。同期 sweep もすべてこのキーで絞る。
 
 ### OAuth2
 外部サービス（Oura / Google）の認可フロー。`authorize → callback → token exchange → refresh` の 4 段階。
@@ -102,7 +114,10 @@ RLS を bypass する admin client（`getSupabaseAdmin()`）。`SUPABASE_SECRET_
 同期ロックの実装（`tryAcquireSyncLock` / `markSyncSuccess` / `markSyncFailed`）。
 
 ### `serviceConnection.ts`
-`service_connections` テーブルへの upsert / トークン取得 / 401 retry / refresh エラー処理を担う中核。
+`service_connections` テーブルへの upsert / トークン取得 / 401 retry / refresh エラー処理を担う中核。Google 用ヘルパとして `listConnectedGoogleConnections` / `withFreshAccessTokenByConnection` / `disconnectGoogleConnectionById` / `deleteGoogleConnectionPermanently` がある（Issue #131）。
+
+### `idTokenVerify.ts`
+`server/utils/oauth/idTokenVerify.ts`。Google `id_token` の JWKS 検証（`jose` の `createRemoteJWKSet`）。callback で `sub` / `email` を取り出して `service_connections.provider_user_id` / `account_email` を埋めるために使う（Issue #131 Phase 2）。
 
 ### `crypto.ts`
 AES-256-GCM の `encrypt` / `decrypt`。`server/utils/crypto.ts`。

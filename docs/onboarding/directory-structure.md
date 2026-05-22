@@ -55,7 +55,8 @@
 | `server/utils/getGoogleData.ts` | Google Calendar API クライアント（差分同期 + calendarList）|
 | `server/utils/getTogglData.ts` | Toggl Track API クライアント |
 | `server/utils/oauth/oura.ts` | Oura の authorize / token / refresh |
-| `server/utils/oauth/google.ts` | Google の authorize / token / refresh |
+| `server/utils/oauth/google.ts` | Google の authorize / token / refresh（`selectAccount` フラグでピッカー強制）|
+| `server/utils/oauth/idTokenVerify.ts` | Google `id_token` の JWKS 検証（`jose`）。`sub` / `email` を取り出す（Issue #131）|
 | `server/utils/oauth/redirectUri.ts` | redirect_uri を request origin から組み立てる（Issue #100）|
 
 **理由**: 「外部 API を叩く部分」を **必ず内部モジュール** にして、HTTP エンドポイントとして公開しない（SPEC §9.1 注釈）。これで認証 / 暗号化 / Zod 検証 / レート制御の責務が散らばらない。

@@ -223,12 +223,13 @@ DB クエリ時:
 
 | テーブル | 責務 |
 | --- | --- |
-| `public.users` | アプリ固有のユーザープロファイル。`auth.users` と 1:1（INSERT トリガで自動生成）。`timezone` / `excluded_google_calendar_ids` を持つ |
-| `service_connections` | 外部サービストークンと連携状態。`access_token` / `refresh_token` は AES-256-GCM 暗号化保存 |
+| `public.users` | アプリ固有のユーザープロファイル。`auth.users` と 1:1（INSERT トリガで自動生成）。`timezone` を持つ（旧 `excluded_google_calendar_ids` は Phase 5 で `google_excluded_calendars` 表へ移行、列は廃止予定） |
+| `service_connections` | 外部サービストークンと連携状態。`access_token` / `refresh_token` は AES-256-GCM 暗号化保存。Google は `(user_id, provider, provider_user_id)` の partial unique で複数アカウント連携を許容（Issue #131）|
 | `daily_sync_statuses` | (user_id, target_date, source) 単位の同期状態。`unique` を使って同期ロックを実装 |
 | `oura_sleep_records` | Oura 睡眠データ。`target_date = wake_at の日付` (Issue #24) |
-| `google_calendar_events` | Google Calendar 予定。(user_id, calendar_id, google_event_id) で unique |
-| `toggl_time_entries` | Toggl Track 作業ログ |
+| `google_calendar_events` | Google Calendar 予定。`connection_id` を持ち (user_id, connection_id, calendar_id, google_event_id) で unique（Issue #131 Phase 4）|
+| `google_excluded_calendars` | Google カレンダー除外設定（接続単位 / Issue #131 Phase 5）|
+| `toggl_time_entries` | Toggl Track 作業ログ。`project_id` / `project_name` を含む（Issue #112）|
 | `demo_*` テーブル群 | 公開デモ用。本番テーブルと完全分離 |
 
 詳細は [database.md](./database.md) を参照。
@@ -275,11 +276,14 @@ POST /api/summary/refresh または GET /api/cron/daily
   ↓
 runRefresh.ts:refreshUserDate(userId, date)
   ↓
-[oura, google, toggl] each:
+Promise.allSettled([oura, google, toggl])  // Issue #140 で 3 provider を並列実行
+  ├─ oura / toggl: 単一接続行で sync
+  └─ google: listConnectedGoogleConnections() を回し connection_id 単位で sync
+  各 provider 内:
   - tryAcquireSyncLock()
-  - withFreshAccessToken(provider, async (token) => {
+  - withFreshAccessToken(...) {
       get<Provider>Data(...)  // 外部 API を叩いて Zod で検証
-    })
+    }
   - sync<Provider>ForDate()   // upsert + ソフトデリート
   - markSyncSuccess() or markSyncFailed()
 ```

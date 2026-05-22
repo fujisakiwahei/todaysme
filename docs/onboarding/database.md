@@ -25,7 +25,7 @@ erDiagram
   users {
     uuid id PK "auth.users.id と 1:1"
     text timezone "IANA, default Asia/Tokyo"
-    text[] excluded_google_calendar_ids "Issue #108"
+    text[] excluded_google_calendar_ids "(廃止予定: 行は残すが Phase 5 以降アプリは読み書きしない / Issue #131)"
     timestamptz created_at
   }
 
@@ -33,14 +33,22 @@ erDiagram
     uuid id PK
     uuid user_id FK
     text provider "oura/google/toggl"
-    text status "connected/disconnected/error"
-    text provider_user_id
+    text status "connected/disconnected/error/needs_reauth"
+    text provider_user_id "Google は id_token.sub。複数アカウント連携の識別キー (Issue #131)"
+    text account_email "Google のみ。settings 表示用 / 同名カレンダー衝突解決 (Issue #131)"
     text access_token_encrypted "JSON of {iv,authTag,ciphertext}"
     text refresh_token_encrypted
     timestamptz token_expires_at
     text scopes
     timestamptz connected_at "初回接続時刻 (refresh では上書きしない)"
     timestamptz updated_at
+  }
+
+  google_excluded_calendars {
+    uuid user_id FK
+    uuid connection_id FK "service_connections.id"
+    text calendar_id PK "(connection_id, calendar_id) 主キー"
+    timestamptz created_at
   }
 
   daily_sync_statuses {
@@ -69,9 +77,10 @@ erDiagram
   google_calendar_events {
     uuid id PK
     uuid user_id FK
+    uuid connection_id FK "service_connections.id (Issue #131 Phase 4 / ON DELETE CASCADE)"
     date target_date
     text google_event_id "calendar 内ユニーク"
-    text calendar_id "(user_id, calendar_id, google_event_id) で unique"
+    text calendar_id "(user_id, connection_id, calendar_id, google_event_id) で unique"
     text calendar_name
     text title
     timestamptz start_at
@@ -85,6 +94,8 @@ erDiagram
     date target_date
     text toggl_entry_id "external id"
     text title
+    bigint project_id "Issue #112 / 未割当は NULL"
+    text project_name "Issue #112 / 未解決は NULL"
     timestamptz start_at
     timestamptz end_at "進行中エントリは NULL"
     boolean is_deleted
@@ -102,7 +113,7 @@ erDiagram
 - `id` は `auth.users.id` と 1:1（`on delete cascade`）。
 - `auth.users` への INSERT を `public.handle_new_user()` トリガで捕捉して自動生成（`security definer`）。
 - `timezone` … ユーザーの IANA タイムゾーン。`target_date` 算出 / wake range 計算で使う。
-- `excluded_google_calendar_ids` … Google calendarId の配列（Issue #108）。「予定ブロック」用カレンダーを稼働時間集計から外す。
+- `excluded_google_calendar_ids` …（**廃止予定 / Issue #131 Phase 5**）旧来の除外カレンダー保管先（配列）。Phase 5 で `google_excluded_calendars` テーブル（接続単位）に移行したため、**アプリ経路は読み書きしない**。ロールバック / 監査用に列だけ残してある。
 - RLS: `select` / `update` を `auth.uid() = id` で自分自身に限定。
 
 **なぜトリガで自動生成するのか**: ユーザーが初めて `/daily/today` を開いた時に「`public.users` 行が無くて 500 エラー」になるのを防ぐ。サインアップ時点で確実に行を作る。
@@ -111,13 +122,20 @@ erDiagram
 
 **役割**: 外部サービストークン + 連携状態。
 
-- `unique(user_id, provider)` … 同一ユーザーで同一プロバイダは 1 行。
+- **unique 制約は provider 別の partial unique index 2 本**（Issue #131 Phase 1b）:
+  - Google: `(user_id, provider, provider_user_id) where provider='google'` — 同一ユーザーが複数 Google アカウント（= `provider_user_id` 別の複数行）を持てる。
+  - Oura / Toggl: `(user_id, provider) where provider in ('oura','toggl')` — 1 ユーザー × 1 行に限定（旧仕様を維持）。
+- `provider_user_id` …（**Issue #131 Phase 2**）Google は OAuth callback で取得した `id_token.sub` を JWKS 検証して入れる。アカウント識別の主キー。Oura / Toggl は使わない。
+- `account_email` …（**Issue #131 Phase 2**）Google `id_token.email`。`/settings` で「どのアカウントか」を識別表示するため。集計時に同名カレンダーが衝突したら `"<name> (<email>)"` の接尾辞にも使う（Phase 7）。
+- `status` … `connected` / `disconnected` / `error` / **`needs_reauth`**（Issue #131 Phase 2: `provider_user_id` 未取得の旧 Google 行に貼られる過渡状態。settings からの再認可で `connected` に戻る）。
 - `access_token_encrypted` / `refresh_token_encrypted` は **AES-256-GCM** で暗号化した JSON 文字列（`{iv, authTag, ciphertext}`）。
 - `connected_at` は **初回接続時刻** を保持。refresh のたびに上書きしてはいけない（`/api/connections` の「いつ繋いだか」表示が常に「今」になるため）。
 - `updated_at` は **楽観ロック** にも使う（`markConnectionError` が「読み取り時点から行が動いていない」場合のみ status を error に落とす）。
 - RLS は **`force row level security`** で **policy 0 個**。つまり authenticated client からは絶対に読めない。サーバが `getSupabaseAdmin()` で bypass する経路のみが読み出し手段。
 
 **なぜ完全に隠すのか**: トークン暗号化は AES-256-GCM だが、`ciphertext` をブラウザに渡してしまうと「クライアントに鍵があれば復号できる」ことになり責務が崩れる。`has_token: boolean` のような派生情報だけ `/api/connections` 経由で返す。
+
+**なぜ partial unique にしているのか**: Google は複数アカウント連携を許容する一方で、Oura / Toggl は MVP 単一行運用を維持したい。`(user_id, provider, provider_user_id)` の 3 列 unique では Oura / Toggl の `provider_user_id IS NULL` で NULL 重複が発生してしまうため、provider 別に index を分けて非対称な制約を表現している（設計: `docs/designs/multi-google-account.md` §4.1）。
 
 ### `daily_sync_statuses`
 
@@ -148,10 +166,11 @@ erDiagram
 
 **役割**: Google Calendar のイベント。
 
-- `unique(user_id, calendar_id, google_event_id)` … **calendar_id を含める** 理由は、Google `event.id` がカレンダー内ユニークでしかないため。複数カレンダーから同期するとカレンダー跨ぎで衝突するため。
+- `unique(user_id, connection_id, calendar_id, google_event_id)` …（**Issue #131 Phase 4**）`connection_id` を含めることで、別アカウント（= 別接続）が同じ `calendar_id` / `event.id` を返してきても別行として扱える。
+- `connection_id` … `service_connections.id` への FK（`ON DELETE CASCADE`）。同期経路はすべてこの列を埋め、ソフトデリート sweep / 除外設定の照合もこのキーでスコープする。
 - `target_date` … ユーザータイムゾーンでのイベント日。タイムライン取得は wake range overlap で読む。
 - `calendar_name` … `summaryOverride > summary` で決まる Google の表示名。
-- index: `(user_id, target_date)` と `(user_id, start_at, end_at)`。
+- index: `(user_id, target_date)` と `(user_id, start_at, end_at)` と `(user_id, connection_id, target_date)`。
 - RLS: 4 ポリシー。
 
 ### `toggl_time_entries`
@@ -160,7 +179,19 @@ erDiagram
 
 - `unique(user_id, toggl_entry_id)`。
 - `end_at` は **NULL を許容**（進行中エントリ）。read 側は `end_at IS NULL OR end_at >= fromIso` の or 条件で絞る。
+- `project_id` / `project_name` …（**Issue #112**）Toggl の `/me/time_entries` には `project_id` しか載らないので、同期時に `/me/projects` で名前を解決して time entry 行に貼る。名前は Toggl 側で変わると次回 sync で上書きされる。未割当 / 未解決は NULL。
 - RLS: 4 ポリシー。
+
+### `google_excluded_calendars`
+
+**役割**: 稼働時間集計から除外する Google カレンダーを **接続単位** で持つ（Issue #131 Phase 5）。
+
+- 主キー: `(connection_id, calendar_id)`。同一接続内で同 `calendar_id` が重複しないことを保証。
+- `connection_id` は `service_connections.id` への FK（`ON DELETE CASCADE`）。接続が物理削除されたら除外設定も巻き取って消える。
+- `user_id` は RLS と user 単位の bulk read 用に冗長保持。
+- RLS: 4 ポリシー（`auth.uid() = user_id`）。
+
+**旧仕様との関係**: 旧来は `users.excluded_google_calendar_ids text[]` で持っていたが、複数 Google アカウント連携で「同じ calendar_id がアカウント間で別物を指す」可能性が出たため、`(connection_id, calendar_id)` で識別するテーブルへ移行した。旧列はロールバック / 監査用に残してあるが、アプリ経路は本テーブルだけを参照する。
 
 ### `demo_*` テーブル群
 

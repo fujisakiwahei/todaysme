@@ -5,6 +5,8 @@
 
 ---
 
+> **初回 fetch の方針（Issue #141）**: `/daily/[date]` は `useAsyncData<SummaryResponse>(...)` で **SSR 中に `/api/summary` を叩く**。ブラウザに HTML が届く時点で初回のサマリーが入っているので、hydration 後の `onMounted` で改めて再フェッチしない。SSR からの fetch は Bearer JWT が間に合わないため、`/api/summary` / `/api/summary/refresh` は cookie 認証フォールバック（`requireUserIdAllowCookie`）を許容している。
+
 ## 全体像（`/daily/today` を開いた時）
 
 ```mermaid
@@ -80,15 +82,17 @@ sequenceDiagram
 
 サーバ側（`server/api/summary.get.ts`）:
 
-1. `requireUserId(event)` … `Authorization: Bearer <jwt>` を Supabase Admin で検証 → `user_id` を得る。失敗 401。
+1. `requireUserIdAllowCookie(event)` … Bearer JWT を優先、無ければ cookie session にフォールバック（Issue #141: `daily/[date]` を SSR 化したため）。失敗 401。
 2. `parseOrThrow(summaryRequestSchema, query)` … `date` を Zod で検証。失敗 400。
-3. `users` から `timezone` / `excluded_google_calendar_ids` を読む。なければ 500（黙って Asia/Tokyo に fallback しない）。
-4. `wakeRangeOf(date, userId)` … 起床範囲を組み立てる（前後 ±2 日の sleep を読む）。
-5. `listServiceConnections(userId)` … 連携済みプロバイダを判定。
-6. wake range と重なる `oura_sleep_records` / `google_calendar_events` / `toggl_time_entries` を **並列で** 読む。
-7. `daily_sync_statuses` を読む。
-8. Today's ME と Timeline を組み立てる（**外部 API は叩かない**）。
-9. `parseOrThrow(summaryResponseSchema, response)` で返す前にも Zod 検証。
+3. **前段クエリを並列化**（Issue #143）— userId / date だけに依存して相互独立な以下 4 つを `Promise.all` で同時実行:
+   - `users.timezone`（無ければ 500）。
+   - `google_excluded_calendars`（接続単位の除外設定）。
+   - `listServiceConnections(userId)`（todays_me の null 判定）。
+   - `daily_sync_statuses`（UI 表示用）。
+4. `wakeRangeOf(date, userId, { timezone })` … 起床範囲を組み立てる（timezone 依存のため前段の後に直列）。
+5. wake range と重なる `oura_sleep_records` / `google_calendar_events` / `toggl_time_entries` を **並列で** 読む。`google_calendar_events` は `connection_id` も SELECT する（除外判定と同名カレンダー衝突解決に使う）。
+6. Today's ME と Timeline を組み立てる（**外部 API は叩かない**）。複数 Google アカウントで同名カレンダーが衝突したら `"<name> (<email>)"` の接尾辞を付ける（Phase 7）。
+7. `parseOrThrow(summaryResponseSchema, response)` で返す前にも Zod 検証。
 
 **ポイント**: `target_date` 完全一致では取りこぼすので、各サービスの read は `start_at / end_at` を wake range と重ねる。Sleep だけ「main sleep が wake_at == range.start で常に成立する」ため、判定基準を strict ではなく inclusive にしている。
 
@@ -114,16 +118,19 @@ function isStale(s: SummaryResponse): boolean {
 
 ### 5. Refresh の編成
 
-`/api/summary/refresh` は `runRefresh.ts:refreshUserDate(userId, date)` を呼ぶだけの薄いラッパ。
+`/api/summary/refresh` は `runRefresh.ts:refreshUserDate(userId, date)` を呼ぶだけの薄いラッパ。**3 provider は `Promise.allSettled` で並列実行**（Issue #140）。各 provider 内で例外を捕まえて outcome に詰めて正常 resolve するので、`allSettled` の `rejected` は想定外バグのみ。
 
 ```mermaid
 flowchart TD
-  start[refreshUserDate] --> tz[users.timezone を取得]
-  start --> conn[service_connections の connected を取得]
-  tz & conn --> loop[oura, google, toggl をループ]
-  loop -->|connected| lock[tryAcquireSyncLock]
-  lock -->|acquired=false| skip[skip = 現在 status を返す]
-  lock -->|acquired=true| run[withFreshAccessToken + sync<Provider>ForDate]
+  start[refreshUserDate] --> pre[Promise.all: timezone + connected を並列で取得]
+  pre --> par["Promise.allSettled (oura, google, toggl 並列)"]
+  par --> ouraLock[oura: tryAcquireSyncLock]
+  par --> googleLoop[google: listConnectedGoogleConnections]
+  par --> togglLock[toggl: tryAcquireSyncLock]
+  googleLoop --> googleLock[各 connection_id で tryAcquireSyncLock + sync]
+  ouraLock --> run[withFreshAccessToken + sync*ForDate]
+  togglLock --> run
+  googleLock --> run
   run --> ok[markSyncSuccess]
   run -->|error| fail[markSyncFailed]
   ok --> push[sync_statuses に push]
@@ -132,16 +139,18 @@ flowchart TD
 
 #### 各 sync の中身（Google を例に）
 
-1. `withFreshAccessToken("google", async (token) => { ... })`
+Google は **接続単位** でループする（Issue #131 Phase 4）。`listConnectedGoogleConnections(userId)` で `status='connected'` な接続行を 0..N 件取得し、各 `connection_id` に対して以下を実行する。
+
+1. `withFreshAccessTokenByConnection(connectionId, async (token) => { ... })`
    - 内部で `getValidAccessToken()` を呼ぶ。token_expires_at が 5 分以内に切れる場合は事前 refresh。
    - 401 を受けたら強制 refresh + 1 回だけ retry。
 2. `getGoogleData({ token, timeMin, timeMax, ... })`
    - `events.list` を pagination + 必要に応じて `nextSyncToken` 差分同期で叩く。
    - 410 Gone が返ったら syncToken を破棄して timeMin/timeMax で全件再取得。
    - レスポンスを **`parseExternal()` で Zod 検証**（失敗 502 / `InvalidExternalResponse:google`）。
-3. `google_calendar_events` に upsert（`onConflict: user_id,calendar_id,google_event_id`）。
-4. 「今回の結果に含まれない既存行」を **calendar_id ごとに** ソフトデリート。
-5. 「今回 calendarList に登場しないカレンダー」由来の既存行も対象日ぶんソフトデリート（購読解除されたケース）。
+3. `google_calendar_events` に upsert（`onConflict: user_id,connection_id,calendar_id,google_event_id`）。`connection_id` 列を必ず埋める。
+4. 「今回の結果に含まれない既存行」を **`connection_id` × `calendar_id` ごとに** ソフトデリート。
+5. 「今回 calendarList に登場しないカレンダー」由来の既存行も **その接続のスコープ内で** 対象日ぶんソフトデリート（購読解除されたケース）。別アカウントのイベントを誤って巻き込まないよう、すべての sweep を `connection_id` でスコープする。
 
 ### 6. トークンライフサイクル
 

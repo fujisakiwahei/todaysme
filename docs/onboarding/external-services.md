@@ -72,10 +72,14 @@ Oura の `day` をそのまま使わず、**`wake_at` をユーザータイム�
 ### スコープ
 
 最小権限:
+- `openid` … `id_token` を token endpoint レスポンスに含めるために必須。
+- `email` … `id_token` に `email` / `email_verified` claim を入れるため。
 - `https://www.googleapis.com/auth/calendar.events.readonly` … イベント取得
 - `https://www.googleapis.com/auth/calendar.calendarlist.readonly` … カレンダー一覧
 
 **なぜ calendarList も**: SPEC §3 の分類ルールに必要な `calendar_name` を引くために `calendarList.list` が必要。`events.readonly` 単体では 403 になる。
+
+**なぜ openid / email も**: 複数 Google アカウント連携を扱うために、callback で `id_token` を JWKS 検証して `sub`（= `provider_user_id`）と `email`（= `account_email`）を取り出して保存する必要があるため（Issue #131 Phase 2 / `server/utils/oauth/idTokenVerify.ts`）。
 
 ### 認可フロー
 
@@ -108,11 +112,12 @@ exchangeGoogleCode(code, redirectUri)
 
 ### upsert と削除戦略（最も複雑）
 
-`syncGoogleForDate` の責務:
-- `onConflict: user_id,calendar_id,google_event_id` で upsert。
-- 差分同期で `cancelled` イベント（`deletedEventIds`）は `is_deleted = true` に。
-- **calendar_id ごとに** 「今回取得結果に含まれない既存行」をソフトデリート（`event_id` だけで判定すると別カレンダーの同名 id を巻き込むため）。
-- **`activeCalendarIds` に含まれない calendar_id の既存行** も対象日ぶんソフトデリート（購読解除されたカレンダーのイベント残骸を消す）。
+`syncGoogleForDate` は **接続単位** で呼ばれる（Issue #131 Phase 4）。`runRefresh.ts` で `listConnectedGoogleConnections(userId)` を回し、各 `connection_id` に対して以下を実行:
+
+- `onConflict: user_id,connection_id,calendar_id,google_event_id` で upsert。`connection_id` を必ず埋める。
+- 差分同期で `cancelled` イベント（`deletedEventIds`）は `connection_id` × `calendar_id` でスコープして `is_deleted = true` に。
+- **`connection_id` × `calendar_id` ごとに** 「今回取得結果に含まれない既存行」をソフトデリート（`event_id` だけで判定すると別カレンダーの同名 id を、`connection_id` を省くと別アカウントのイベントを巻き込むため）。
+- **`activeCalendarIds` に含まれない calendar_id の既存行** も対象日ぶんソフトデリート（購読解除されたカレンダーのイベント残骸を消す）。これも `connection_id` でスコープする。
 
 ### MVP の差分同期方針
 
@@ -124,11 +129,13 @@ exchangeGoogleCode(code, redirectUri)
 `refreshGoogleToken(refreshToken)` で access_token を再発行。
 - **Google は通常 refresh レスポンスで `refresh_token` を返さない**。`upsertServiceConnection` に `undefined` で渡すと既存値を保持する（3 状態仕様）。
 
-### Calendar 除外設定（Issue #108）
+### Calendar 除外設定（Issue #108 → Issue #131 Phase 5）
 
-`users.excluded_google_calendar_ids` 配列に Google calendarId を保存。
+**現行**: `google_excluded_calendars` テーブル（`(connection_id, calendar_id)` 主キー）に保存。複数 Google アカウント連携で「同じ calendar_id がアカウント間で別物を指す」可能性があるため、`connection_id` でスコープする。
 - 除外イベントは Timeline には出すが（`is_excluded: true` でマーキング）、稼働時間集計から外す。
-- `/settings` でチェックボックス UI、`PUT /api/connections/google/excluded-calendars` で保存。
+- `/settings` で接続カードごとのチェックボックス UI、`PUT /api/connections/google/excluded-calendars`（body に `connection_id` + `excluded_calendar_ids`）で保存。
+
+**旧仕様**: `users.excluded_google_calendar_ids text[]` 配列（Issue #108 当時）。Phase 5 でテーブル化したが、列はロールバック用に残してある（アプリ経路は読み書きしない）。
 
 ---
 
@@ -146,12 +153,14 @@ Authorization: Basic base64(<api_token>:api_token)
 ### 取得対象
 
 - `/me/time_entries` … 作業ログ（time entry）。
+- `/me/projects` … プロジェクト一覧。`project_id` → `project_name` の解決マップ（Issue #112）。
 - 取得期間: `target_date ± 1 日` を `since` watermark で投げる。
 
 ### 同期
 
 - `unique(user_id, toggl_entry_id)` で upsert。
 - `end_at` が **NULL を許容**（進行中エントリ）。
+- `project_id` / `project_name` を埋める。`/me/projects` で名前を解決した結果を time entry 行にデノーマライズして保存（Toggl 側でリネームされても次回 sync で上書き / 別テーブル化は MVP では避ける）。
 - 対象日に紐づく既存行のうち取得結果に含まれないものはソフトデリート。
 
 ### Refresh の概念がない

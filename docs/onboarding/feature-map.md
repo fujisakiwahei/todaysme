@@ -21,10 +21,12 @@
 | [バックグラウンド自動更新（30 分 stale）](#バックグラウンド自動更新30-分-stale) | `app/pages/daily/[date].vue` |
 | [毎朝 5 時の自動同期](#毎朝-5-時の自動同期) | `vercel.json` / `server/api/cron/daily.get.ts` |
 | [Oura 連携](#oura-連携) | `server/utils/oauth/oura.ts` / `getOuraData.ts` / `syncOura.ts` / `connections/oura/` |
-| [Google Calendar 連携](#google-calendar-連携) | `server/utils/oauth/google.ts` / `getGoogleData.ts` / `syncGoogle.ts` / `connections/google/` |
+| [Google Calendar 連携](#google-calendar-連携) | `server/utils/oauth/google.ts` / `oauth/idTokenVerify.ts` / `getGoogleData.ts` / `syncGoogle.ts` / `connections/google/` |
+| [複数 Google アカウント連携](#複数-google-アカウント連携) | `server/api/connections/google/accounts.get.ts` / `start.get.ts (intent=add)` / `[connectionId].delete.ts` / `serviceConnection.ts:listConnectedGoogleConnections` |
 | [Toggl Track 連携](#toggl-track-連携) | `server/api/connections/toggl.post.ts` / `getTogglData.ts` / `syncToggl.ts` |
-| [連携の切断](#連携の切断) | `server/api/connections/[provider].delete.ts` / `serviceConnection.ts` |
-| [Google カレンダー除外設定](#google-カレンダー除外設定) | `app/pages/settings.vue` / `server/api/connections/google/excluded-calendars.put.ts` / `summary.get.ts` |
+| [連携の切断](#連携の切断) | `server/api/connections/[provider].delete.ts` / `connections/google/[connectionId].delete.ts` / `serviceConnection.ts` |
+| [Google アカウントのハード削除](#google-アカウントのハード削除) | `server/api/connections/google/[connectionId]/account.delete.ts` / `serviceConnection.ts:deleteGoogleConnectionPermanently` |
+| [Google カレンダー除外設定（接続単位）](#google-カレンダー除外設定接続単位) | `app/pages/settings.vue` / `server/api/connections/google/excluded-calendars.put.ts` / `calendars.get.ts` / `summary.get.ts` / `google_excluded_calendars` テーブル |
 | [タイムゾーン設定](#タイムゾーン設定) | `app/pages/settings.vue` / `users.timezone` |
 | [トークン暗号化保存](#トークン暗号化保存) | `server/utils/crypto.ts` / `serviceConnection.ts` |
 | [401 リトライ](#401-リトライ) | `server/utils/serviceConnection.ts:withFreshAccessToken` |
@@ -85,7 +87,8 @@
   2. `summary.get.ts` で集計。
   3. `shared/schemas/summary.ts` の `todaysMeOuraSchema` 等にフィールド追加。
   4. `DailySummaryView.vue` に描画追加。
-- 集計ルール変更（例: meeting 判定）は `summary.get.ts` の `MEETING_CALENDAR_NAMES`。
+- Google 集計: 除外カレンダーは `google_excluded_calendars` テーブル（`(connection_id, calendar_id)`）を参照。複数アカウントで同名カレンダーが衝突したら `"<name> (<email>)"` の接尾辞でラベルを分ける（Phase 7）。
+- **`meeting_minutes` は廃止された**（Issue #151）。カレンダー名で会議を機械的に分類するのが本番運用に合わなかったため。`MEETING_CALENDAR_NAMES` 定数も削除済み。
 
 ---
 
@@ -134,6 +137,8 @@
 **変更影響**:
 - 一度押したら他のページ遷移をブロックしたい等 UX 変更はページ側。
 - 同期そのものの挙動変更は `runRefresh.ts` または `sync<Provider>ForDate`。
+- **3 provider は `Promise.allSettled` で並列実行**（Issue #140）。新しい provider を足す時は `RUNNERS` テーブルに追加するだけで並列化に乗る。
+- Google は `connection_id` 単位のループで sync する（Issue #131 Phase 4）。`listConnectedGoogleConnections` の結果を順に回す。
 
 ---
 
@@ -184,19 +189,42 @@
 ## Google Calendar 連携
 
 **関係箇所**:
-- `server/utils/oauth/google.ts`
+- `server/utils/oauth/google.ts`（authorize / token / refresh + `selectAccount` フラグ）
+- `server/utils/oauth/idTokenVerify.ts`（`id_token` の JWKS 検証 / `jose`）
 - `server/utils/oauth/redirectUri.ts`（origin から組み立て）
 - `server/utils/getGoogleData.ts`
-- `server/utils/syncGoogle.ts`
-- `server/api/connections/google/start.get.ts` / `callback.get.ts` / `calendars.get.ts`
-- `shared/schemas/google.ts`
+- `server/utils/syncGoogle.ts`（接続単位で upsert + soft-delete）
+- `server/api/connections/google/start.get.ts` / `callback.get.ts` / `calendars.get.ts` / `accounts.get.ts`
+- `server/api/connections/google/[connectionId].delete.ts` / `[connectionId]/account.delete.ts`
+- `shared/schemas/google.ts` / `shared/schemas/connections.ts`
 
-**依存**: `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`、`google_calendar_events` テーブル、`users.excluded_google_calendar_ids`。
+**依存**: `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`、`google_calendar_events`（`connection_id` を持つ）、`google_excluded_calendars` テーブル。
 
 **変更影響**:
-- スコープ追加 → `GOOGLE_SCOPES` + Google Cloud Console。
+- スコープ追加 → `GOOGLE_SCOPES` + Google Cloud Console。**`openid` / `email` は `id_token` の `sub` / `email` を得るために必須**（Phase 2）。
 - `redirect_uri_mismatch` → Google Cloud Console の登録 URI を確認（Preview ドメイン）。
 - 差分同期（`syncToken`）を本気で導入する場合は永続化先（`service_connections.scopes` ではない別カラム / 別テーブル）を新設する必要あり。
+- 同期コード（`syncGoogleForDate`）は **必ず `connection_id` を引数に取り、すべての sweep を `connection_id` でスコープ** する。これを破ると別アカウントのイベントを巻き込んで誤削除する。
+
+---
+
+## 複数 Google アカウント連携
+
+**関係箇所**:
+- `server/api/connections/google/accounts.get.ts`（接続行一覧）
+- `server/api/connections/google/start.get.ts`（`?intent=add` でアカウントピッカーを強制）
+- `server/api/connections/google/callback.get.ts`（`id_token.sub` で既存行を引いて UPDATE or INSERT）
+- `server/utils/serviceConnection.ts:listConnectedGoogleConnections` / `upsertServiceConnection`
+- `server/utils/oauth/idTokenVerify.ts`
+- `app/pages/settings.vue` の Google セクション
+- 設計メモ: `docs/designs/multi-google-account.md`
+
+**依存**: `service_connections`（`provider_user_id` / `account_email` / `status='needs_reauth'` / partial unique 2 本）、`google_calendar_events.connection_id`、`google_excluded_calendars`。
+
+**変更影響**:
+- アカウント識別キーは `provider_user_id`（= `id_token.sub`）。`account_email` は表示用のみで識別には使わない。
+- `provider_user_id` 未取得の旧 Google 行は `status='needs_reauth'`。`/settings` のバナーから再認可で `connected` に戻る（Phase 2）。
+- アカウントを追加する UI は `GET /api/connections/google/start?intent=add` を叩く。同じ `sub` を再認可した場合は UPDATE 経路に倒れる（重複行を作らない）。
 
 ---
 
@@ -208,35 +236,52 @@
 - `server/utils/syncToggl.ts`
 - `shared/schemas/toggl.ts`
 
-**依存**: ユーザーが Toggl Profile で発行した API token、`toggl_time_entries` テーブル。
+**依存**: ユーザーが Toggl Profile で発行した API token、`toggl_time_entries` テーブル（`project_id` / `project_name` を含む）。
 
 **変更影響**:
 - OAuth へ移行する場合は `server/utils/oauth/toggl.ts` を新設。`withFreshAccessToken` の Toggl 分岐も変更。
+- **プロジェクト名の解決**（Issue #112）: `/me/time_entries` には `project_id` しか載らないので `syncToggl.ts` で `/me/projects` を別途叩いて id→name のマップを作り、time entry 行に貼り付ける。Toggl 側でリネームされても次回 sync で上書き。
 
 ---
 
 ## 連携の切断
 
 **関係箇所**:
-- `server/api/connections/[provider].delete.ts`
-- `server/utils/serviceConnection.ts:disconnectServiceConnection`
+- `server/api/connections/[provider].delete.ts`（Oura / Toggl 用）
+- `server/api/connections/google/[connectionId].delete.ts`（Google: 接続 ID 単位 / Issue #131 Phase 6）
+- `server/utils/serviceConnection.ts:disconnectServiceConnection` / `disconnectGoogleConnectionById`
 
 **変更影響**:
-- 切断時に過去データも soft-delete したい等は要件次第。現状 status のみ変更。
+- Oura / Toggl は provider 単位、Google は connection_id 単位。同じ「ソフト切断」でも経路が違う。
+- Google の soft disconnect は `google_calendar_events` を `is_deleted=true` にも倒すが、`google_excluded_calendars` は残す（再認可で同じ `provider_user_id` に紐づき直ったときに設定を引き継ぐため）。
 
 ---
 
-## Google カレンダー除外設定
+## Google アカウントのハード削除
 
 **関係箇所**:
-- `app/pages/settings.vue`（チェックボックス UI / 保存ボタン）
-- `server/api/connections/google/calendars.get.ts`（カレンダー一覧取得）
-- `server/api/connections/google/excluded-calendars.put.ts`（保存）
-- `server/api/summary.get.ts`（集計除外 / `is_excluded` フラグ付与）
-- `users.excluded_google_calendar_ids`
+- `server/api/connections/google/[connectionId]/account.delete.ts`
+- `server/utils/serviceConnection.ts:deleteGoogleConnectionPermanently`
+- `app/pages/settings.vue`（disconnected な接続カードに「完全に削除」ボタン）
 
 **変更影響**:
-- 除外 + 集計 + UI の 3 箇所に手を入れる必要がある。Issue #108 のコミットを辿ると差分が掴みやすい。
+- 接続行を物理削除する。`google_calendar_events` / `google_excluded_calendars` は FK の `ON DELETE CASCADE` で巻き取られる。
+- UI 側は soft disconnect を踏んでから本エンドポイントを叩く運用（disconnected な行に対してのみ「完全に削除」を出す）。
+
+---
+
+## Google カレンダー除外設定（接続単位）
+
+**関係箇所**:
+- `app/pages/settings.vue`（接続カードごとのチェックボックス UI / 保存ボタン）
+- `server/api/connections/google/calendars.get.ts`（`?connection_id=...` でカレンダー一覧取得）
+- `server/api/connections/google/excluded-calendars.put.ts`（保存）
+- `server/api/summary.get.ts`（集計除外 / `is_excluded` フラグ付与）
+- `google_excluded_calendars` テーブル（`(connection_id, calendar_id)` 主キー / Issue #131 Phase 5）
+
+**変更影響**:
+- 旧仕様の `users.excluded_google_calendar_ids` 配列は **使わない**（列はロールバック用に残る）。除外判定キーは `${connection_id}|${calendar_id}` の合成文字列。
+- 除外 + 集計 + UI の 3 箇所に手を入れる必要がある。Issue #131 Phase 5 のコミットを辿ると差分が掴みやすい。
 
 ---
 
