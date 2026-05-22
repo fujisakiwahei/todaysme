@@ -100,16 +100,31 @@ service_connections (改修)
   id                       uuid PK
   user_id                  uuid FK
   provider                 text       -- 'oura' | 'google' | 'toggl'
-  provider_user_id         text       -- Google: id_token.sub。NOT NULL に近づける
+  provider_user_id         text NULL  -- Google: id_token.sub (運用上 NOT NULL)。Oura/Toggl は当面 NULL のまま
   account_label            text NULL  -- ユーザーが付ける任意ラベル ("work", "personal" 等)
   account_email            text NULL  -- 表示用。userinfo.email から取得
   status / tokens / scopes / connected_at / updated_at  -- 既存
-  unique (user_id, provider, provider_user_id)          -- ★ 新 unique 制約
+```
+
+**unique 制約は「provider ごとに分けた部分インデックス」で表現する。**単一 unique で全 provider を縛ろうとすると、NULL 重複問題（PostgreSQL の合成 unique は NULL を distinct と見なす）が必ず発生し、`loadConnectionForToken(...).maybeSingle()` のような「provider 単位で 1 行」前提を壊してしまうため（Codex review #127 P1 — Oura / Toggl の `upsertServiceConnection` も `providerUserId` を渡さない作りなので、単純な 3 列 unique 化は不可）。
+
+```sql
+-- Google は (user, provider, sub) で 1 行（複数アカウントを許容）
+create unique index service_connections_google_unique
+  on service_connections (user_id, provider, provider_user_id)
+  where provider = 'google';
+
+-- Oura / Toggl は (user, provider) で 1 行のまま（単一接続を強制）
+create unique index service_connections_single_provider_unique
+  on service_connections (user_id, provider)
+  where provider in ('oura', 'toggl');
 ```
 
 ポイント：
-- 既存の `unique(user_id, provider)` は **drop**。`(user_id, provider, provider_user_id)` で再定義する。
-- `provider_user_id` は Oura / Toggl では従来通り optional（単一接続）。Google だけ必須運用に寄せる。
+- 既存の `unique(user_id, provider)` constraint は **drop**。代わりに上記 **partial unique index 2 本** に置き換える。
+- Oura / Toggl は `provider_user_id` 不在のまま「1 ユーザー × 1 行」を物理的に強制できる（NULL 重複が起きない）。`loadConnectionForToken` の `.maybeSingle()` 前提が崩れない。
+- Google は `provider_user_id IS NULL` の状態を許容するが、その NULL 状態でも複数行は作れない（後述の Phase 1a で「Google 行は最大 1 件」のレガシー前提を維持する別 partial index を併用する。§6 Phase 1a 参照）。
+- 既存の Google 接続が backfill 前に 2 件以上できないよう、Phase 1a の `provider_user_id` NULL 期間は **`unique(user_id, provider)` を維持** することでさらに安全側に倒す。
 - `account_email` / `account_label` は表示用。ラベルが無ければ email、それも無ければ "Google (...sub末尾4桁)" 等にフォールバック。
 
 ```
@@ -152,16 +167,25 @@ google_excluded_calendars (新規 / 既存 users 配列の置換)
    - JWKS は短期キャッシュ（5–15 分）して連続呼び出しを避ける。`jose` 等のライブラリを使う想定。
    - **token endpoint は HTTPS 直通だが、`id_token` の中身は OAuth 仕様上「クライアントが検証する責務」を持つ**。Codex review #127 で「未検証 claim を `provider_user_id` に使うと、トークンが malformed / 想定外の発行元を指していた場合にアカウント mis-link 〜 不正な行紐付けに繋がる」と指摘済み（P1）。
    - 検証後、既存 `service_connections` に `(user_id, provider='google', provider_user_id=sub)` の行があれば update（**=「再認可」**として扱う）、無ければ insert（**=「新規アカウント追加」**）。
-   - `upsertServiceConnection` の onConflict を `(user_id, provider, provider_user_id)` に変える。
+   - `upsertServiceConnection` の onConflict は **Google のみ** `(user_id, provider, provider_user_id)`、Oura / Toggl は従来通り `(user_id, provider)`。`server/utils/serviceConnection.ts` の `upsert(..., { onConflict })` 呼び出しを provider 分岐させる（Phase 1b の制約張替と同時に修正する）。
 3. **既存 1 接続のマイグレーション（必須 backfill）**
-   - **重要**: PostgreSQL の unique constraint は **NULL 値を distinct に扱う**ため、`unique(user_id, provider, provider_user_id)` を張った状態で既存行の `provider_user_id` を NULL のまま放置すると、**「NULL 持ちレガシー行」と「sub を持つ新規行」が同じ user / 同じ provider で共存できてしまう**（= 同期処理が両方の行に対して走り、Google Calendar イベントが重複 / 整合性破壊）。Codex review #127 で P1 指摘あり。
-   - 取りうる対処（採用候補は (a)）：
-     - **(a) Phase 1 のマイグレーションで「既存 Google 行の `provider_user_id` を埋めるまでは unique 制約を張らない」フェーズ分割**。
-       - Phase 1a: `provider_user_id` カラムを追加（NULL 許容のまま）／`unique(user_id, provider)` は維持。
-       - Phase 1b: 既存 Google 行を一律 `status = 'needs_reauth'` などに落とし、ユーザーに再認可を促す UI を出す。
-       - Phase 1c: ユーザーが再認可を完了 → callback で id_token から `sub` を埋める。
-       - Phase 1d: バッチ（or 移行スクリプト）で `provider_user_id IS NULL AND provider = 'google'` な行が 0 件であることを確認した上で、`unique(user_id, provider)` を drop して `unique(user_id, provider, provider_user_id)` を張る。**この時点までは「アカウント追加」UI は無効化**しておく。
-     - (b) NULL を含めて distinct にしたくない場合は **partial unique index** で代替: `create unique index ... on service_connections (user_id, provider) where provider_user_id is null;` を経過措置として張り、レガシー行が 1 件だけになるよう物理的に強制する。ただしロジックが分散するため (a) より複雑度が高い。
+   - **重要**: PostgreSQL の unique constraint / unique index は **NULL を distinct と見なす**ため、`unique(user_id, provider, provider_user_id)` を張った状態で既存行の `provider_user_id` を NULL のまま放置すると、**「NULL 持ちレガシー行」と「sub を持つ新規行」が同じ user / 同じ provider で共存できてしまう**（= 同期処理が両方の行に対して走り、Google Calendar イベントが重複 / 整合性破壊）。Codex review #127 で P1 指摘あり。
+   - 採用案: **Phase 分割 + provider 別 partial unique index** の組み合わせ（§4.1 参照）。
+     - Phase 1a: `provider_user_id` カラムを追加（NULL 許容のまま）／`unique(user_id, provider)` は **維持**。既存の Oura/Google/Toggl 行は全てこの制約下で動き続ける。
+     - Phase 1a': さらに念のため `create unique index ... on service_connections (user_id, provider) where provider = 'google' and provider_user_id is null;` の **過渡期用 partial index** を張り、「sub 未取得の Google 行」が複数できないよう保険をかける（再認可フローと並行運用するため）。
+     - Phase 2: 既存 Google 行を `status = 'needs_reauth'` に落とし、settings に再認可バナー → ユーザーが再認可 → callback で `id_token` 検証 → `provider_user_id = sub` を埋める。
+     - Phase 1b: 「`provider_user_id IS NULL AND provider = 'google'` な行が 0 件」を移行スクリプトで検査確認したうえで、以下を 1 トランザクションで実行：
+       1. 既存の `unique(user_id, provider)` constraint を drop。
+       2. Phase 1a' で張った過渡期用 partial index を drop。
+       3. §4.1 の 2 本（Google 用 `where provider = 'google'` / Oura・Toggl 用 `where provider in ('oura','toggl')`）を新たに張る。
+     - **Phase 1b 完了までは「アカウント追加」UI は無効化**。
+   - 検査スクリプト例:
+     ```sql
+     select count(*) as legacy_null_rows
+     from service_connections
+     where provider = 'google' and provider_user_id is null;
+     -- = 0 であることを確認してから unique 張替を行う。
+     ```
    - 個人運用とはいえ、Phase 2（OAuth callback）と Phase 3（アカウント追加 UI）の間に **必ず backfill 完了の検査ステップ** を挟む。
 4. **切断フロー**
    - `DELETE /api/connections/google/:connectionId` 形式へ拡張する（or クエリで `?connection_id=...`）。`[provider].delete.ts` の API 形を変える必要があるため、Oura / Toggl も含めた API 互換性は別途検討。
@@ -213,7 +237,7 @@ google_excluded_calendars (新規 / 既存 users 配列の置換)
 4. **切断 API のシェイプ変更**
    - `/api/connections/google` を `/api/connections/google/:connectionId` 化するか、`?connection_id=` クエリで凌ぐか。
 5. **マイグレーション順序**
-   - §4.2 の「既存 1 接続のマイグレーション」で詳述したとおり、**unique 制約の張り替えは backfill 完了を確認したあと**にする。順序は: ①`provider_user_id` カラム追加（NULL 許容）→ ②再認可で `sub` 埋め → ③ NULL 残存ゼロを確認 → ④ unique を `(user_id, provider, provider_user_id)` に張り替え → ⑤「アカウント追加」UI 有効化。Vercel preview で段階的に検証する。
+   - §4.1 / §4.2 のとおり、**unique 制約は provider 別の partial unique index に置き換える**（Google のみ 3 列 / Oura・Toggl は従来の 2 列）、**かつ張り替えは backfill 完了後**。順序は: ①`provider_user_id` カラム追加（NULL 許容、既存 `unique(user_id, provider)` 維持、過渡期用 partial index も追加）→ ②再認可で Google 行の `sub` 埋め → ③ NULL 残存ゼロを SQL 検査 → ④ 旧 `unique(user_id, provider)` と過渡期 index を drop → §4.1 の 2 本の partial unique index を新規作成 → ⑤「アカウント追加」UI 有効化。Vercel preview で段階的に検証する。
 6. **デモデータへの波及**
    - `demo_*` テーブル / `demo/summary` は今回触らない方針で良いか（デモはあくまで「1 アカウント分のショーケース」）。
 
@@ -224,9 +248,9 @@ google_excluded_calendars (新規 / 既存 users 配列の置換)
 | 段階 | 概要 | 主な変更先 |
 | --- | --- | --- |
 | Phase 0（本 PR） | この設計ドラフト Doc | `docs/designs/multi-google-account.md` |
-| Phase 1a | DB マイグレーション 第1段: `service_connections` に `provider_user_id` カラム追加（NULL 許容）。**この時点では `unique(user_id, provider)` は維持**し、レガシー行を残せる状態にする。 | `supabase/migrations/` |
+| Phase 1a | DB マイグレーション 第1段: `service_connections` に `provider_user_id` カラム追加（NULL 許容）。`unique(user_id, provider)` は **そのまま維持**し、追加で「Google かつ provider_user_id IS NULL の行は 1 件まで」の過渡期用 partial unique index を張る（再認可フローと並行運用するための保険）。 | `supabase/migrations/` |
 | Phase 2 | OAuth callback で `id_token` を **JWKS で検証**（iss / aud / exp / 署名）した上で `sub` / `email` を取り、`provider_user_id` を埋める。`shared/schemas/google.ts` に `id_token` を含むトークンレスポンス検証を追加。Google 接続行に `status='needs_reauth'` のセマンティクスを追加し、settings に再認可バナーを出す。 | `oauth/google.ts`, `connections/google/callback.get.ts`, `shared/schemas/google.ts`, `serviceConnection.ts`, `app/pages/settings.vue` |
-| Phase 1b | Backfill 完了の検査スクリプト（`provider_user_id IS NULL AND provider='google'` が 0 件であること）を回したうえで、`unique(user_id, provider)` を drop して `unique(user_id, provider, provider_user_id)` に張り替えるマイグレーション。**ここを通過するまで「アカウント追加」UI は出さない**。 | `supabase/migrations/`, `serviceConnection.ts`（onConflict 更新） |
+| Phase 1b | Backfill 完了の検査スクリプト（`provider_user_id IS NULL AND provider='google'` が 0 件）を回したうえで、1 トランザクションで: ①旧 `unique(user_id, provider)` constraint を drop ②過渡期用 partial index を drop ③§4.1 の 2 本の partial unique index（Google = 3 列 / Oura・Toggl = 2 列）を作成 ④`upsertServiceConnection` の `onConflict` を provider 別に分岐。**ここを通過するまで「アカウント追加」UI は出さない**。 | `supabase/migrations/`, `serviceConnection.ts` |
 | Phase 3 | settings UI に「別のアカウントを追加」導線 / `intent=add` フローと `prompt=select_account` 対応 | `app/pages/settings.vue`, `connections/google/start.get.ts` |
 | Phase 4 | `google_calendar_events.connection_id` 追加 / sync ロジックを接続単位ループに変更 / `softDeleteEventsForRemovedCalendars` の絞り込み | `supabase/migrations/`, `syncGoogle.ts`, `getGoogleData.ts` |
 | Phase 5 | 除外カレンダー設定を `google_excluded_calendars` テーブルへ移行（接続単位） | `supabase/migrations/`, `connections/google/calendars.get.ts`, `excluded-calendars.put.ts`, `settings.vue` |
