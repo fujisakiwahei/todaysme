@@ -64,6 +64,7 @@ const {
 
 const refreshing = ref(false);
 const manualErrorMessage = ref<string | null>(null);
+const { begin: beginAppLoading, end: endAppLoading } = useAppLoading();
 
 // useAsyncData が拾ったエラー (= 初回 / 日付遷移時の取得失敗) と、
 // 手動更新ボタン由来のエラーを 1 つのバナーに集約する。手動 refresh のメッセージを
@@ -82,6 +83,8 @@ async function manualRefresh() {
   if (refreshing.value) return;
   refreshing.value = true;
   manualErrorMessage.value = null;
+  // Issue #153 follow-up: 「更新」中も画面遷移時と同じ全画面アニメーションを出す。
+  beginAppLoading();
   try {
     await $fetch("/api/summary/refresh", {
       method: "POST",
@@ -94,6 +97,7 @@ async function manualRefresh() {
     manualErrorMessage.value = `更新に失敗しました: ${msg}`;
   } finally {
     refreshing.value = false;
+    endAppLoading();
   }
 }
 

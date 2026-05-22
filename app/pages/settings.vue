@@ -20,6 +20,7 @@ definePageMeta({
 
 const supabase = useSupabaseClient();
 const route = useRoute();
+const { begin: beginAppLoading, end: endAppLoading } = useAppLoading();
 
 const connections = ref<ConnectionSummary[]>([]);
 const loading = ref(true);
@@ -97,6 +98,9 @@ async function loadConnections() {
   loading.value = true;
   googleAccountsLoading.value = true;
   errorMessage.value = null;
+  // Issue #153 follow-up: 設定画面の初期ロード / 再ロード中は全画面オーバーレイを
+  // 出して、画面遷移時と同じアニメーションに統一する。
+  beginAppLoading();
   try {
     const headers = await bearerHeaders();
     const [conn, accounts] = await Promise.all([
@@ -130,6 +134,7 @@ async function loadConnections() {
   } finally {
     loading.value = false;
     googleAccountsLoading.value = false;
+    endAppLoading();
   }
 }
 
@@ -488,9 +493,9 @@ onMounted(() => {
       <section class="settings__section">
         <h2 class="settings__section-title">連携サービス</h2>
 
-        <p v-if="loading" class="settings__loading">読み込み中...</p>
-
-        <ul v-else class="conn-list">
+        <!-- 読み込み中は AppLoadingOverlay が画面を覆うのでここではプレースホルダ
+             を出さない。連携データ取得が終わり次第、下の conn-list が描画される。-->
+        <ul v-if="!loading" class="conn-list">
           <template v-for="conn in nonGoogleConnections" :key="conn.provider">
             <li
               class="conn"
@@ -955,12 +960,6 @@ $font-en:
   color: #6a4d00;
   background: #fff7e0;
   border: 1px solid #f0d27a;
-}
-
-.settings__loading {
-  padding: 32px;
-  text-align: center;
-  color: $color-text-muted;
 }
 
 .settings__section {
