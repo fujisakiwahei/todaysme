@@ -289,6 +289,80 @@ export async function disconnectServiceConnection(
   }
 }
 
+// Issue #131 Phase 6: 接続行 id 単位でソフト切断する。複数 Google アカウント
+// 連携において「アカウント A だけ解除」を実現するための入口。
+//
+//   - 当該行が user_id + provider='google' に一致しないと 404 を返す
+//     (= 他人の接続 id を当てられても情報漏洩しない)。
+//   - 行自体は履歴として残し、status='disconnected'、暗号化トークン
+//     ペイロードを null 化する。
+//   - 同接続に紐づく google_calendar_events をすべてソフトデリート
+//     (`is_deleted = true`)。これをやらないと、disconnect 後も summary
+//     画面に過去の予定が残り続けて UX 上ノイズになる。FK ON DELETE CASCADE
+//     は「行を物理 delete した場合」しか発火しないため、soft disconnect 経路
+//     では明示的に events を畳む。
+//   - google_excluded_calendars の行は残す。再認可 (= 同じ provider_user_id
+//     による update) で同じ connection_id に紐づき直ったとき、ユーザーが
+//     以前選んだ除外設定をそのまま復活させる挙動が期待される。
+//
+// 戻り値は「切断対象の接続が見つかったか」。見つからなければ呼び出し元
+// (HTTP route) が 404 を返す責務。
+export interface DisconnectByIdResult {
+  found: boolean;
+}
+
+export async function disconnectGoogleConnectionById(
+  userId: string,
+  connectionId: string,
+): Promise<DisconnectByIdResult> {
+  const admin = getSupabaseAdmin();
+
+  // 1. 接続行が当該 user の Google 行であることを確認する。RLS バイパス経路
+  //    なので明示的にフィルタする。
+  const { data: row, error: readErr } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select("id")
+    .eq("id", connectionId)
+    .eq("user_id", userId)
+    .eq("provider", "google")
+    .maybeSingle();
+  if (readErr) {
+    throw new Error(`failed to read connection: ${readErr.message}`);
+  }
+  if (!row) {
+    return { found: false };
+  }
+
+  // 2. service_connections を soft disconnect。
+  const nowIso = new Date().toISOString();
+  const { error: updErr } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .update({
+      status: "disconnected",
+      access_token_encrypted: null,
+      refresh_token_encrypted: null,
+      token_expires_at: null,
+      updated_at: nowIso,
+    })
+    .eq("id", connectionId);
+  if (updErr) {
+    throw new Error(`failed to disconnect connection: ${updErr.message}`);
+  }
+
+  // 3. 関連 events を soft delete (summary 表示から消す)。
+  const { error: evErr } = await admin
+    .from("google_calendar_events")
+    .update({ is_deleted: true, updated_at: nowIso })
+    .eq("user_id", userId)
+    .eq("connection_id", connectionId)
+    .eq("is_deleted", false);
+  if (evErr) {
+    throw new Error(`failed to soft-delete events: ${evErr.message}`);
+  }
+
+  return { found: true };
+}
+
 // =============================================================================
 // Issue #75: 遅延型 access_token 再発行
 //
