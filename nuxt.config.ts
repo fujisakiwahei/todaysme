@@ -31,10 +31,18 @@ export default defineNuxtConfig({
   app: {
     head: {
       link: [
+        // Google Fonts への接続を事前確立し、CSS 取得とフォント取得のレイテンシを削減 (Issue #142)
+        { rel: "preconnect", href: "https://fonts.googleapis.com" },
+        {
+          rel: "preconnect",
+          href: "https://fonts.gstatic.com",
+          crossorigin: "",
+        },
         // Material Symbols Outlined (refresh / chevron などのアイコン用)
+        // display=swap で FOIT を避け、フォント読み込み中もテキストを表示する
         {
           rel: "stylesheet",
-          href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0,0",
+          href: "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,400,0,0&display=swap",
         },
       ],
     },
