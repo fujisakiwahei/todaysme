@@ -216,8 +216,18 @@ export default defineEventHandler(async (event) => {
         if (bm !== am) return bm - am;
         return new Date(b.wake_at).getTime() - new Date(a.wake_at).getTime();
       })[0];
+    // sleep_minutes が「実際に寝た時間」、time_in_bed_minutes が
+    // wake_at − sleep_start_at の「ベッドにいた時間」(dashboard Oura)。
+    const timeInBedMinutes = todayWake
+      ? Math.round(
+          (new Date(todayWake.wake_at).getTime() -
+            new Date(todayWake.sleep_start_at).getTime()) /
+            60000,
+        )
+      : null;
     oura = {
       sleep_minutes: todayWake?.sleep_minutes ?? null,
+      time_in_bed_minutes: timeInBedMinutes,
       wake_at: todayWake?.wake_at ?? null,
     };
   }
