@@ -153,14 +153,26 @@ async function backgroundRefreshIfStale() {
 // Lifecycle
 // =============================================================================
 // 日付遷移時の再フェッチは useAsyncData の watch オプションが担う。
-// stale チェックは summary が新しい参照になるたびに 1 度走らせれば足りるので、
-// summary 自身を watch して初回ハイドレーションと日付遷移後の両方を拾う。
+// stale チェックは「日付ごとに 1 回だけ」走らせる。summary 自体を watch すると
+// backgroundRefreshIfStale() → refreshSummary() → summary 更新 → watcher 再発火
+// のループになり、refresh しても依然 stale なまま (例: sync 完了が遅延、
+// last_synced_at がまだ書き込まれていない) のときに POST /api/summary/refresh を
+// 連打してしまう。それを避けるため、フェッチが落ち着いた (loading=false) タイミ
+// ングで dateParam 単位の再入ガードを通して 1 回だけ発火させる。
 // SSR で /api/summary/refresh を叩かないよう onMounted 内で watch を貼る。
 onMounted(() => {
+  const checkedDates = new Set<string>();
   watch(
-    summary,
-    (next) => {
-      if (next) void backgroundRefreshIfStale();
+    [loading, dateParam],
+    ([isLoading, date]) => {
+      if (isLoading) return;
+      if (checkedDates.has(date)) return;
+      const current = summary.value;
+      // 日付遷移直後で summary がまだ前日のままのタイミングでは発火しない。
+      // 新しい日付の取得完了で loading が false に戻ったタイミングに再評価される。
+      if (!current || current.target_date !== date) return;
+      checkedDates.add(date);
+      void backgroundRefreshIfStale();
     },
     { immediate: true },
   );
