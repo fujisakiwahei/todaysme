@@ -1,18 +1,21 @@
 // =============================================================================
-// GET /api/connections/google/calendars
-// Issue #108
+// GET /api/connections/google/calendars?connection_id=<uuid>
+// Issue #108 / Issue #131 Phase 5
 //
-//   ユーザーが Google 側で持っている calendarList を返し、各カレンダーが
-//   稼働時間集計から除外されているか (users.excluded_google_calendar_ids)
-//   を付与する。
+//   指定された接続行 (= 個別 Google アカウント) が見ているカレンダー一覧を
+//   返す。各カレンダーが稼働時間集計から除外されているか
+//   (`google_excluded_calendars` テーブル at connection_id 単位) を付与する。
 //
 //   除外設定 UI (settings.vue) のチェックボックス描画に使う。
-//   - Google 接続が無い場合は 409 (要再認可) を返す。
-//   - access_token は withFreshAccessToken 経由で取り、401 を 1 回だけ refresh
-//     してリトライする (Issue #75 と同じ方針)。
+//   - `connection_id` クエリは必須。指定された接続が当該 user のものでない /
+//     既に切断済みの場合は 404 を返す (情報漏洩を避けるため `409 not connected`
+//     とは別扱いにする)。
+//   - access_token は withFreshAccessTokenByConnectionId 経由で取り、401 を
+//     1 回だけ refresh してリトライする (Issue #75 / Phase 4 と同方針)。
 // =============================================================================
 import {
   googleCalendarListResponseSchema,
+  googleCalendarsRequestSchema,
   googleCalendarsResponseSchema,
   type GoogleCalendarItem,
 } from "../../../../shared/schemas";
@@ -20,7 +23,7 @@ import { requireUserId } from "../../../utils/auth";
 import {
   OauthUnauthorizedError,
   ServiceNotConnectedError,
-  withFreshAccessToken,
+  withFreshAccessTokenByConnectionId,
 } from "../../../utils/serviceConnection";
 import { getSupabaseAdmin } from "../../../utils/supabaseAdmin";
 import { parseExternal, parseOrThrow } from "../../../utils/validation";
@@ -79,30 +82,55 @@ async function fetchCalendarList(accessToken: string): Promise<RawCalendar[]> {
 
 export default defineEventHandler(async (event) => {
   const userId = await requireUserId(event);
+  const { connection_id: connectionId } = parseOrThrow(
+    googleCalendarsRequestSchema,
+    getQuery(event),
+  );
   const admin = getSupabaseAdmin();
 
-  const { data: userRow, error: userErr } = await admin
-    .from("users")
-    .select("excluded_google_calendar_ids")
-    .eq("id", userId)
+  // 接続行が「当該 user 所有 / google プロバイダ」であることを admin client
+  // で確認する (RLS バイパス経路なので明示チェック)。見つからなければ 404。
+  const { data: connRow, error: connErr } = await admin
+    .from("service_connections")
+    .select("id")
+    .eq("id", connectionId)
+    .eq("user_id", userId)
+    .eq("provider", "google")
     .maybeSingle();
-  if (userErr) {
-    // Supabase 側の生メッセージを返さないと、column 未マイグレーション /
-    // RLS / 環境ミスマッチ等を切り分けられない (Issue #108 PR レビュー)。
-    console.error("[calendars.get] failed to load user", userErr);
+  if (connErr) {
     throw createError({
       statusCode: 500,
-      statusMessage: `failed to load user: ${userErr.message}`,
+      statusMessage: `failed to load connection: ${connErr.message}`,
     });
   }
-  const excludedIds: string[] = (userRow?.excluded_google_calendar_ids ??
-    []) as string[];
-  const excludedSet = new Set(excludedIds);
+  if (!connRow) {
+    throw createError({
+      statusCode: 404,
+      statusMessage: "google connection not found",
+    });
+  }
+
+  // 接続単位の除外設定を読む (Issue #131 Phase 5)。
+  const { data: excludedRows, error: excludedErr } = await admin
+    .from("google_excluded_calendars")
+    .select("calendar_id")
+    .eq("user_id", userId)
+    .eq("connection_id", connectionId);
+  if (excludedErr) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: `failed to load excluded calendars: ${excludedErr.message}`,
+    });
+  }
+  const excludedSet = new Set<string>(
+    (excludedRows ?? []).map((r) => (r as { calendar_id: string }).calendar_id),
+  );
 
   let calendars: RawCalendar[];
   try {
-    calendars = await withFreshAccessToken(userId, "google", (accessToken) =>
-      fetchCalendarList(accessToken),
+    calendars = await withFreshAccessTokenByConnectionId(
+      connectionId,
+      (accessToken) => fetchCalendarList(accessToken),
     );
   } catch (e) {
     if (e instanceof ServiceNotConnectedError) {
@@ -121,5 +149,8 @@ export default defineEventHandler(async (event) => {
     excluded: excludedSet.has(c.id),
   }));
 
-  return parseOrThrow(googleCalendarsResponseSchema, { calendars: items });
+  return parseOrThrow(googleCalendarsResponseSchema, {
+    connection_id: connectionId,
+    calendars: items,
+  });
 });

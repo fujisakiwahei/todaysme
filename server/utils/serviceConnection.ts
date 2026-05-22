@@ -27,8 +27,13 @@ export interface ServiceConnectionRow {
   id: string;
   user_id: string;
   provider: ServiceProvider;
-  status: "connected" | "disconnected" | "error";
+  // Issue #131 Phase 2: 'needs_reauth' を追加。Phase 2 migration で sub 未取得の
+  // 既存 Google 行を一旦この状態に落とし、ユーザーに再認可を促す。
+  status: "connected" | "disconnected" | "error" | "needs_reauth";
   provider_user_id: string | null;
+  // Issue #131 Phase 2: id_token の email claim から取った表示用メアド。
+  // 設定 UI に「どのアカウントか」を見せる用途のみ。
+  account_email: string | null;
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   token_expires_at: string | null;
@@ -41,7 +46,7 @@ export interface UpsertServiceConnectionInput {
   userId: string;
   provider: ServiceProvider;
   accessToken: string;
-  // refresh_token / scopes / providerUserId は共通で 3 状態を区別する:
+  // refresh_token / scopes / providerUserId / accountEmail は共通で 3 状態を区別する:
   //   - undefined → 既存の DB 値を保持する
   //                 (Google は再認可時に refresh_token を返さない / refresh
   //                 レスポンスに scope が含まれないことがあり、null で
@@ -52,33 +57,147 @@ export interface UpsertServiceConnectionInput {
   expiresInSeconds?: number | null;
   scopes?: readonly string[] | string | null;
   providerUserId?: string | null;
+  // Issue #131 Phase 2: id_token の email claim から取った表示用メアド。
+  accountEmail?: string | null;
 }
 
 function packEncrypted(payload: EncryptedPayload): string {
   return JSON.stringify(payload);
 }
 
+// PostgreSQL の unique_violation エラーコード。partial unique index に
+// 並走 INSERT が衝突した場合に「2nd INSERT を SELECT → UPDATE リトライ」する
+// 判定に使う。
+const PG_UNIQUE_VIOLATION = "23505";
+
+interface ExistingConnectionRow {
+  id: string;
+  refresh_token_encrypted: string | null;
+  provider_user_id: string | null;
+  account_email: string | null;
+  scopes: string | null;
+  connected_at: string;
+}
+
+async function selectExistingConnection(
+  userId: string,
+  provider: ServiceProvider,
+  providerUserId: string | undefined,
+): Promise<ExistingConnectionRow | null> {
+  const admin = getSupabaseAdmin();
+  const baseColumns =
+    "id, refresh_token_encrypted, provider_user_id, account_email, scopes, connected_at";
+
+  // Issue #131 Phase 1b: Google で providerUserId が確定している場合は
+  // (user_id, provider, provider_user_id) の partial unique と整合するよう、
+  // sub も一致条件に含める。これにより「アカウント A の再認可コールバックが
+  // アカウント B の行を誤って UPDATE してしまう」事故を防ぐ。
+  if (provider === "google" && typeof providerUserId === "string") {
+    const { data, error } = await admin
+      .from(SERVICE_CONNECTIONS_TABLE)
+      .select(baseColumns)
+      .eq("user_id", userId)
+      .eq("provider", provider)
+      .eq("provider_user_id", providerUserId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(
+        `failed to read existing service_connection: ${error.message}`,
+      );
+    }
+    if (data) {
+      return data as ExistingConnectionRow;
+    }
+
+    // Issue #131 Phase 2 過渡期 (Codex review #136 P1):
+    // Phase 2 migration までは適用済みだが Phase 1b が未適用の状態では、
+    // 旧 Google 接続行は provider_user_id IS NULL のまま status='needs_reauth'
+    // で残り、旧 unique(user_id, provider) 制約も生きている。この時 sub 一致
+    // で SELECT すると 0 件になり INSERT 経路へ落ちるが、INSERT は旧制約の
+    // 23505 を踏んで上に伝播してしまう (= /settings からの再認可で backfill
+    // ができず、Phase 1b の前提条件をいつまでも満たせない)。
+    //
+    // sub 一致行が無い場合に限り、同 user × Google × provider_user_id IS NULL
+    // で active 状態 (connected / needs_reauth) の旧行をフォールバックで拾い、
+    // UPDATE 経路で sub と account_email を backfill する。disconnected / error
+    // 行は意図的に切断 / 失敗した履歴なので触らない (= ここに混ぜると後段の
+    // UPDATE で disconnected 行を connected に蘇生させてしまう)。
+    const { data: legacy, error: legacyErr } = await admin
+      .from(SERVICE_CONNECTIONS_TABLE)
+      .select(baseColumns)
+      .eq("user_id", userId)
+      .eq("provider", provider)
+      .is("provider_user_id", null)
+      .in("status", ["connected", "needs_reauth"])
+      .maybeSingle();
+    if (legacyErr) {
+      throw new Error(
+        `failed to read legacy service_connection: ${legacyErr.message}`,
+      );
+    }
+    return (legacy ?? null) as ExistingConnectionRow | null;
+  }
+
+  const { data, error } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select(baseColumns)
+    .eq("user_id", userId)
+    .eq("provider", provider)
+    .maybeSingle();
+  if (error) {
+    throw new Error(
+      `failed to read existing service_connection: ${error.message}`,
+    );
+  }
+  return (data ?? null) as ExistingConnectionRow | null;
+}
+
+// Issue #131 Phase 1b: PostgREST の upsert({onConflict}) は partial unique
+// index に推論マッチしないため (`42P10`)、explicit な「SELECT → UPDATE or INSERT」
+// に書き換える。partial unique index は並走書き込み時の整合性ガードとしてのみ
+// 機能させ、アプリ側からは ON CONFLICT 推論に依存しない。
+//
+// 並走 INSERT 衝突 (2 ブラウザタブ等で再認可コールバックが同時に走ったケース) は
+// PostgreSQL の `23505 (unique_violation)` を 1 度だけ拾い、SELECT → UPDATE 経路を
+// 再試行する。
 export async function upsertServiceConnection(
   input: UpsertServiceConnectionInput,
 ): Promise<void> {
+  const providerUserIdHint =
+    typeof input.providerUserId === "string" ? input.providerUserId : undefined;
+
+  // 1 回目: SELECT → UPDATE or INSERT
+  if (await tryUpsertOnce(input, providerUserIdHint)) {
+    return;
+  }
+  // 2 回目: 並走 INSERT に負けた直後を想定し、SELECT を再実行して UPDATE を狙う。
+  // ここでも勝てなかった (= 想定外の状態) なら最後の error を throw する。
+  if (await tryUpsertOnce(input, providerUserIdHint)) {
+    return;
+  }
+  throw new Error(
+    "failed to upsert service_connections after retry on unique_violation",
+  );
+}
+
+// 戻り値: true なら成功 (= 完了)。false なら unique_violation に当たって
+// リトライ可能と判断した場合。それ以外のエラーは throw する。
+async function tryUpsertOnce(
+  input: UpsertServiceConnectionInput,
+  providerUserIdHint: string | undefined,
+): Promise<boolean> {
   const admin = getSupabaseAdmin();
   const now = new Date();
 
-  // 既存行は 1 回だけ読む。refresh_token / scopes / provider_user_id を
-  // undefined 保持仕様で扱うのに加え、connected_at は「初回接続時刻」を
-  // 保持するため (refresh のたびに上書きされると /api/connections の
-  // 表示が常に「今接続した」になってしまう)。
-  const { data: existing, error: existingErr } = await admin
-    .from(SERVICE_CONNECTIONS_TABLE)
-    .select("refresh_token_encrypted, provider_user_id, scopes, connected_at")
-    .eq("user_id", input.userId)
-    .eq("provider", input.provider)
-    .maybeSingle();
-  if (existingErr) {
-    throw new Error(
-      `failed to read existing service_connection: ${existingErr.message}`,
-    );
-  }
+  // 既存行は 1 回だけ読む。refresh_token / scopes / provider_user_id /
+  // account_email を undefined 保持仕様で扱うのに加え、connected_at は
+  // 「初回接続時刻」を保持するため (refresh のたびに上書きされると
+  // /api/connections の表示が常に「今接続した」になってしまう)。
+  const existing = await selectExistingConnection(
+    input.userId,
+    input.provider,
+    providerUserIdHint,
+  );
 
   const accessEnc = packEncrypted(encrypt(input.accessToken));
 
@@ -112,27 +231,110 @@ export async function upsertServiceConnection(
       ? (existing?.provider_user_id ?? null)
       : input.providerUserId;
 
-  const connectedAt = existing?.connected_at ?? now.toISOString();
+  const accountEmail =
+    input.accountEmail === undefined
+      ? (existing?.account_email ?? null)
+      : input.accountEmail;
 
-  const { error } = await admin.from(SERVICE_CONNECTIONS_TABLE).upsert(
-    {
+  if (existing) {
+    // UPDATE 経路: 既存行を id で特定して書き換える。WHERE id を使うことで
+    // 並走する別アカウントの行を巻き込まない。
+    const { error: updateErr } = await admin
+      .from(SERVICE_CONNECTIONS_TABLE)
+      .update({
+        status: "connected",
+        provider_user_id: providerUserId,
+        account_email: accountEmail,
+        access_token_encrypted: accessEnc,
+        refresh_token_encrypted: refreshEnc,
+        token_expires_at: tokenExpiresAt,
+        scopes,
+        updated_at: now.toISOString(),
+      })
+      .eq("id", existing.id);
+
+    if (updateErr) {
+      throw new Error(
+        `failed to update service_connections: ${updateErr.message}`,
+      );
+    }
+    return true;
+  }
+
+  // INSERT 経路: 新規行を作成。connected_at は now で初期化。
+  const { error: insertErr } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .insert({
       user_id: input.userId,
       provider: input.provider,
       status: "connected",
       provider_user_id: providerUserId,
+      account_email: accountEmail,
       access_token_encrypted: accessEnc,
       refresh_token_encrypted: refreshEnc,
       token_expires_at: tokenExpiresAt,
       scopes,
-      connected_at: connectedAt,
+      connected_at: now.toISOString(),
       updated_at: now.toISOString(),
-    },
-    { onConflict: "user_id,provider" },
-  );
+    });
 
-  if (error) {
-    throw new Error(`failed to upsert service_connections: ${error.message}`);
+  if (insertErr) {
+    // 並走 INSERT で partial unique に当たった場合は 23505。リトライ可能。
+    const code = (insertErr as { code?: string }).code;
+    if (code === PG_UNIQUE_VIOLATION) {
+      return false;
+    }
+    throw new Error(
+      `failed to insert service_connections: ${insertErr.message}`,
+    );
   }
+  return true;
+}
+
+// Issue #131 Phase 4+: 同一ユーザー × 同一 provider に複数行ありうる
+// (現状は Google のみ) ケースで、provider サマリ用に「代表となる 1 行」を
+// 決定的に選ぶ。優先順位:
+//   1. status: connected > needs_reauth > error > disconnected
+//      (= 1 行でも connected があれば「接続済み」を見せる)
+//   2. 同 status 内: connected_at 昇順 (古いほど優先)
+//      → /api/connections/google/accounts の並びと一致し、UI 上の表示が
+//        ふらつかない
+//
+// /api/connections や /api/internal/connections-required のような
+// 「provider あたり 1 行」を返す経路は必ず本関数を通すこと。
+// Map にそのまま投げると挿入順 (= 上流 query の並び依存) で結果が
+// 非決定的になる (Codex review #136 P2)。
+const CONNECTION_STATUS_PRIORITY: Record<
+  ServiceConnectionRow["status"],
+  number
+> = {
+  connected: 0,
+  needs_reauth: 1,
+  error: 2,
+  disconnected: 3,
+};
+
+export function pickPrimaryConnectionRow(
+  rows: readonly ServiceConnectionRow[],
+  provider: ServiceProvider,
+): ServiceConnectionRow | undefined {
+  let best: ServiceConnectionRow | undefined;
+  for (const r of rows) {
+    if (r.provider !== provider) continue;
+    if (!best) {
+      best = r;
+      continue;
+    }
+    const sp =
+      CONNECTION_STATUS_PRIORITY[r.status] -
+      CONNECTION_STATUS_PRIORITY[best.status];
+    if (sp < 0) {
+      best = r;
+    } else if (sp === 0 && r.connected_at < best.connected_at) {
+      best = r;
+    }
+  }
+  return best;
 }
 
 export async function listServiceConnections(
@@ -142,7 +344,7 @@ export async function listServiceConnections(
   const { data, error } = await admin
     .from(SERVICE_CONNECTIONS_TABLE)
     .select(
-      "id, user_id, provider, status, provider_user_id, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, connected_at, updated_at",
+      "id, user_id, provider, status, provider_user_id, account_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, connected_at, updated_at",
     )
     .eq("user_id", userId);
 
@@ -173,6 +375,80 @@ export async function disconnectServiceConnection(
   if (error) {
     throw new Error(`failed to disconnect ${provider}: ${error.message}`);
   }
+}
+
+// Issue #131 Phase 6: 接続行 id 単位でソフト切断する。複数 Google アカウント
+// 連携において「アカウント A だけ解除」を実現するための入口。
+//
+//   - 当該行が user_id + provider='google' に一致しないと 404 を返す
+//     (= 他人の接続 id を当てられても情報漏洩しない)。
+//   - 行自体は履歴として残し、status='disconnected'、暗号化トークン
+//     ペイロードを null 化する。
+//   - 同接続に紐づく google_calendar_events をすべてソフトデリート
+//     (`is_deleted = true`)。これをやらないと、disconnect 後も summary
+//     画面に過去の予定が残り続けて UX 上ノイズになる。FK ON DELETE CASCADE
+//     は「行を物理 delete した場合」しか発火しないため、soft disconnect 経路
+//     では明示的に events を畳む。
+//   - google_excluded_calendars の行は残す。再認可 (= 同じ provider_user_id
+//     による update) で同じ connection_id に紐づき直ったとき、ユーザーが
+//     以前選んだ除外設定をそのまま復活させる挙動が期待される。
+//
+// 戻り値は「切断対象の接続が見つかったか」。見つからなければ呼び出し元
+// (HTTP route) が 404 を返す責務。
+export interface DisconnectByIdResult {
+  found: boolean;
+}
+
+export async function disconnectGoogleConnectionById(
+  userId: string,
+  connectionId: string,
+): Promise<DisconnectByIdResult> {
+  const admin = getSupabaseAdmin();
+
+  // 1. 接続行が当該 user の Google 行であることを確認する。RLS バイパス経路
+  //    なので明示的にフィルタする。
+  const { data: row, error: readErr } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select("id")
+    .eq("id", connectionId)
+    .eq("user_id", userId)
+    .eq("provider", "google")
+    .maybeSingle();
+  if (readErr) {
+    throw new Error(`failed to read connection: ${readErr.message}`);
+  }
+  if (!row) {
+    return { found: false };
+  }
+
+  // 2. service_connections を soft disconnect。
+  const nowIso = new Date().toISOString();
+  const { error: updErr } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .update({
+      status: "disconnected",
+      access_token_encrypted: null,
+      refresh_token_encrypted: null,
+      token_expires_at: null,
+      updated_at: nowIso,
+    })
+    .eq("id", connectionId);
+  if (updErr) {
+    throw new Error(`failed to disconnect connection: ${updErr.message}`);
+  }
+
+  // 3. 関連 events を soft delete (summary 表示から消す)。
+  const { error: evErr } = await admin
+    .from("google_calendar_events")
+    .update({ is_deleted: true, updated_at: nowIso })
+    .eq("user_id", userId)
+    .eq("connection_id", connectionId)
+    .eq("is_deleted", false);
+  if (evErr) {
+    throw new Error(`failed to soft-delete events: ${evErr.message}`);
+  }
+
+  return { found: true };
 }
 
 // =============================================================================
@@ -217,7 +493,9 @@ export class OauthUnauthorizedError extends Error {
 }
 
 interface ServiceConnectionTokenRow {
-  status: "connected" | "disconnected" | "error";
+  id: string;
+  provider: ServiceProvider;
+  status: "connected" | "disconnected" | "error" | "needs_reauth";
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   token_expires_at: string | null;
@@ -226,6 +504,11 @@ interface ServiceConnectionTokenRow {
   updated_at: string;
 }
 
+// 既存の (user_id, provider) で接続行を 1 件特定する経路。Oura / Toggl
+// (= partial unique で 1 行に絞られる) で引き続き使う。
+// Google は Phase 4 以降、複数行になりうるため
+// loadConnectionForTokenById を使う (本関数を Google で呼ぶと
+// `.maybeSingle()` の「多重行」エラーになる)。
 async function loadConnectionForToken(
   userId: string,
   provider: ServiceProvider,
@@ -234,7 +517,7 @@ async function loadConnectionForToken(
   const { data, error } = await admin
     .from(SERVICE_CONNECTIONS_TABLE)
     .select(
-      "status, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at",
+      "id, provider, status, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at",
     )
     .eq("user_id", userId)
     .eq("provider", provider)
@@ -249,6 +532,62 @@ async function loadConnectionForToken(
   return data as ServiceConnectionTokenRow;
 }
 
+// Issue #131 Phase 4: 接続行 id で 1 件特定する経路。Google 複数アカウント
+// 対応の sync ループ (syncGoogleForDate) や接続単位の calendarList 取得
+// (Phase 5 の calendars.get) から使う。
+async function loadConnectionForTokenById(
+  connectionId: string,
+): Promise<ServiceConnectionTokenRow> {
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select(
+      "id, provider, status, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at",
+    )
+    .eq("id", connectionId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`failed to read service_connections: ${error.message}`);
+  }
+  if (!data || data.status !== "connected" || !data.access_token_encrypted) {
+    // 行が引けない / status が不適合 → 未接続扱い。provider が分からなく
+    // ても呼び出し側 (Phase 4 の sync ループ) は接続行 list を持ったうえで
+    // ループに入るので、provider は data?.provider にフォールバックで載せる。
+    const provider =
+      (data?.provider as ServiceProvider | undefined) ?? "google";
+    throw new ServiceNotConnectedError(provider);
+  }
+  return data as ServiceConnectionTokenRow;
+}
+
+// Issue #131 Phase 4: ある user の Google 接続行を「sync 対象になりうる」
+// もの (status='connected') のみ取得する。複数アカウント sync ループの
+// 入口で使う。Oura / Toggl は単一行前提で従来通り withFreshAccessToken を
+// (user, provider) で呼ぶため、この helper は Google 専用。
+export interface GoogleConnectionForSync {
+  id: string;
+  provider_user_id: string | null;
+  account_email: string | null;
+}
+
+export async function listConnectedGoogleConnections(
+  userId: string,
+): Promise<GoogleConnectionForSync[]> {
+  const admin = getSupabaseAdmin();
+  const { data, error } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select("id, provider_user_id, account_email")
+    .eq("user_id", userId)
+    .eq("provider", "google")
+    .eq("status", "connected")
+    .order("connected_at", { ascending: true });
+  if (error) {
+    throw new Error(`failed to list google connections: ${error.message}`);
+  }
+  return (data ?? []) as GoogleConnectionForSync[];
+}
+
 function decryptStoredToken(packed: string, label: string): string {
   let payload: EncryptedPayload;
   try {
@@ -260,8 +599,7 @@ function decryptStoredToken(packed: string, label: string): string {
 }
 
 async function markConnectionError(
-  userId: string,
-  provider: ServiceProvider,
+  connectionId: string,
   expectedUpdatedAt: string,
 ): Promise<void> {
   // status="error" にすると次回 loadConnectionForToken が ServiceNotConnectedError を
@@ -271,12 +609,14 @@ async function markConnectionError(
   // しまわないよう、楽観ロックとして「読み取り時点の updated_at と一致する場合のみ」
   // 更新する。並走側が既に新しいトークンを書き込んでいれば updated_at が動くので
   // フィルタが一致せず no-op になる。
+  //
+  // Issue #131 Phase 4: 接続 id で絞ることで、複数 Google アカウントのうち
+  // 片方の refresh 失敗が他方の行を巻き込まないようにする。
   const admin = getSupabaseAdmin();
   await admin
     .from(SERVICE_CONNECTIONS_TABLE)
     .update({ status: "error", updated_at: new Date().toISOString() })
-    .eq("user_id", userId)
-    .eq("provider", provider)
+    .eq("id", connectionId)
     .eq("updated_at", expectedUpdatedAt);
 }
 
@@ -323,14 +663,16 @@ async function callProviderRefresh(
 // expectedUpdatedAt は markConnectionError の楽観ロック条件 (読み取り時点から
 // 行が変わっていないときのみ status=error にする)。並走 refresh が片方成功・
 // 片方失敗するケースで healthy な接続を error 状態に巻き戻さないため。
-async function performRefresh(
-  userId: string,
-  provider: ServiceProvider,
-  refreshTokenEncrypted: string | null,
-  expectedUpdatedAt: string,
-): Promise<string> {
+async function performRefresh(row: ServiceConnectionTokenRow): Promise<string> {
+  const {
+    id: connectionId,
+    provider,
+    refresh_token_encrypted: refreshTokenEncrypted,
+    updated_at: expectedUpdatedAt,
+  } = row;
+
   if (!refreshTokenEncrypted) {
-    await markConnectionError(userId, provider, expectedUpdatedAt);
+    await markConnectionError(connectionId, expectedUpdatedAt);
     throw new OauthRefreshError(provider, "no refresh_token stored");
   }
 
@@ -341,7 +683,7 @@ async function performRefresh(
       `${provider} refresh_token_encrypted`,
     );
   } catch (e) {
-    await markConnectionError(userId, provider, expectedUpdatedAt);
+    await markConnectionError(connectionId, expectedUpdatedAt);
     throw new OauthRefreshError(
       provider,
       e instanceof Error ? e.message : "decrypt failed",
@@ -352,24 +694,70 @@ async function performRefresh(
   try {
     refreshed = await callProviderRefresh(provider, refreshTokenPlain);
   } catch (e) {
-    await markConnectionError(userId, provider, expectedUpdatedAt);
+    await markConnectionError(connectionId, expectedUpdatedAt);
     throw new OauthRefreshError(
       provider,
       e instanceof Error ? e.message : "token endpoint error",
     );
   }
 
-  await upsertServiceConnection({
-    userId,
-    provider,
-    accessToken: refreshed.accessToken,
-    // 既存の 3 状態仕様: undefined のまま渡せば DB 側の refresh_token を保持。
-    refreshToken: refreshed.refreshToken,
-    expiresInSeconds: refreshed.expiresInSeconds,
-    scopes: refreshed.scopes,
-  });
+  // Issue #131 Phase 4: 接続 id を指定して直接 UPDATE する。
+  // upsertServiceConnection を経由しないことで、複数 Google アカウントが
+  // ある状態でも「正しい行」だけを更新できる (upsert は (user_id, provider)
+  // で SELECT してしまうため、Google 複数行で多重マッチが起きる)。
+  await rotateConnectionTokensById(connectionId, refreshed);
 
   return refreshed.accessToken;
+}
+
+// Issue #131 Phase 4: 接続行 id を直接指定してトークン関連カラムを更新する。
+// `upsertServiceConnection` は新規 OAuth (provider_user_id / account_email が
+// 確定するケース) 用、こちらは refresh 専用。
+async function rotateConnectionTokensById(
+  connectionId: string,
+  refreshed: Awaited<ReturnType<typeof callProviderRefresh>>,
+): Promise<void> {
+  const admin = getSupabaseAdmin();
+  const now = new Date();
+  const accessEnc = packEncrypted(encrypt(refreshed.accessToken));
+
+  // 既存の 3 状態仕様: refresh_token / scopes は undefined のとき既存値を保持。
+  const refreshEnc =
+    refreshed.refreshToken === undefined
+      ? undefined
+      : refreshed.refreshToken === null || refreshed.refreshToken === ""
+        ? null
+        : packEncrypted(encrypt(refreshed.refreshToken));
+
+  const tokenExpiresAt =
+    refreshed.expiresInSeconds != null && refreshed.expiresInSeconds > 0
+      ? new Date(
+          now.getTime() + refreshed.expiresInSeconds * 1000,
+        ).toISOString()
+      : null;
+
+  const update: Record<string, unknown> = {
+    status: "connected",
+    access_token_encrypted: accessEnc,
+    token_expires_at: tokenExpiresAt,
+    updated_at: now.toISOString(),
+  };
+  if (refreshEnc !== undefined) {
+    update.refresh_token_encrypted = refreshEnc;
+  }
+  if (refreshed.scopes !== undefined) {
+    update.scopes = refreshed.scopes ?? null;
+  }
+
+  const { error } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .update(update)
+    .eq("id", connectionId);
+  if (error) {
+    throw new Error(
+      `failed to rotate service_connection tokens: ${error.message}`,
+    );
+  }
 }
 
 // 期限が切れる前 (もしくは既に切れている) なら refresh、それ以外は復号した
@@ -383,8 +771,22 @@ export async function getValidAccessToken(
   provider: ServiceProvider,
 ): Promise<string> {
   const row = await loadConnectionForToken(userId, provider);
+  return getValidAccessTokenFromRow(row);
+}
 
-  if (provider === "toggl") {
+// Issue #131 Phase 4: 接続行 id を指定して有効な access_token を取得する。
+// Google の複数アカウント sync ループから呼ぶ。
+export async function getValidAccessTokenByConnectionId(
+  connectionId: string,
+): Promise<string> {
+  const row = await loadConnectionForTokenById(connectionId);
+  return getValidAccessTokenFromRow(row);
+}
+
+async function getValidAccessTokenFromRow(
+  row: ServiceConnectionTokenRow,
+): Promise<string> {
+  if (row.provider === "toggl") {
     return decryptStoredToken(
       row.access_token_encrypted!,
       "toggl access_token_encrypted",
@@ -398,36 +800,24 @@ export async function getValidAccessToken(
     expiresAt !== null && expiresAt - Date.now() < TOKEN_REFRESH_LEEWAY_MS;
 
   if (needsRefresh) {
-    return performRefresh(
-      userId,
-      provider,
-      row.refresh_token_encrypted,
-      row.updated_at,
-    );
+    return performRefresh(row);
   }
 
   return decryptStoredToken(
     row.access_token_encrypted!,
-    `${provider} access_token_encrypted`,
+    `${row.provider} access_token_encrypted`,
   );
 }
 
 // 401 が来た直後など、保存中の expires に関係なく必ず refresh したいときに使う。
 async function forceRefreshAccessToken(
-  userId: string,
-  provider: ServiceProvider,
+  row: ServiceConnectionTokenRow,
 ): Promise<string> {
-  if (provider === "toggl") {
+  if (row.provider === "toggl") {
     // Toggl には refresh が無いので、これ以上できることがない。
-    throw new OauthRefreshError(provider, "refresh is not supported");
+    throw new OauthRefreshError(row.provider, "refresh is not supported");
   }
-  const row = await loadConnectionForToken(userId, provider);
-  return performRefresh(
-    userId,
-    provider,
-    row.refresh_token_encrypted,
-    row.updated_at,
-  );
+  return performRefresh(row);
 }
 
 // 401 リトライラッパ (Issue #75)。
@@ -441,18 +831,40 @@ export async function withFreshAccessToken<T>(
   provider: ServiceProvider,
   fn: (accessToken: string) => Promise<T>,
 ): Promise<T> {
-  const initialToken = await getValidAccessToken(userId, provider);
+  const row = await loadConnectionForToken(userId, provider);
+  return runWithRetry(row, fn);
+}
+
+// Issue #131 Phase 4: 接続行 id を指定して fn を回す版。Google の複数アカウント
+// sync ループ等から使う。withFreshAccessToken と同じ 401 リトライ挙動。
+export async function withFreshAccessTokenByConnectionId<T>(
+  connectionId: string,
+  fn: (accessToken: string) => Promise<T>,
+): Promise<T> {
+  const row = await loadConnectionForTokenById(connectionId);
+  return runWithRetry(row, fn);
+}
+
+async function runWithRetry<T>(
+  row: ServiceConnectionTokenRow,
+  fn: (accessToken: string) => Promise<T>,
+): Promise<T> {
+  const initialToken = await getValidAccessTokenFromRow(row);
   try {
     return await fn(initialToken);
   } catch (err) {
     if (
       !(err instanceof OauthUnauthorizedError) ||
-      err.provider !== provider ||
-      provider === "toggl"
+      err.provider !== row.provider ||
+      row.provider === "toggl"
     ) {
       throw err;
     }
-    const refreshedToken = await forceRefreshAccessToken(userId, provider);
+    // 強制 refresh のためには「現在の」行をもう一度読む (並走する refresh が
+    // 既に更新を入れている可能性があり、その後で再度 refresh するなら
+    // 最新の refresh_token_encrypted / updated_at を使うのが正しい)。
+    const fresh = await loadConnectionForTokenById(row.id);
+    const refreshedToken = await forceRefreshAccessToken(fresh);
     return fn(refreshedToken);
   }
 }

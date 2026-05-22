@@ -67,6 +67,9 @@ export const connectionSummarySchema = z.object({
   has_token: z.boolean(),
   connected_at: isoDateTimeSchema.nullable(),
   token_expires_at: isoDateTimeSchema.nullable(),
+  // Issue #131 Phase 2: 設定 UI に「どの Google アカウントか」を識別表示する
+  // ためだけの表示用フィールド。Oura / Toggl では常に null。
+  account_email: z.string().nullable(),
 });
 
 export const connectionListResponseSchema = z.object({
@@ -84,16 +87,52 @@ export const connectionsRequiredResponseSchema = z.object({
 });
 
 // -----------------------------------------------------------------------------
-// Google calendar 除外設定 (Issue #108)
+// 複数 Google アカウント連携 (Issue #131)
 //
-//   - `GET /api/connections/google/calendars`
-//       現在 Google から見えているカレンダー一覧 + ユーザーの除外設定を返す。
+//   `/api/connections/google/accounts` で接続済み Google アカウント (= 接続行)
+//   を 0..N 件返す。`/api/connections` 側は当面「Google を 1 行に集約した
+//   要約 (= 最初に見つかった接続行)」を返すが、設定 UI の Google セクションは
+//   こちらの accounts エンドポイントを参照する。
+// -----------------------------------------------------------------------------
+
+export const googleAccountSchema = z.object({
+  // service_connections.id (UUID)。disconnect / 再認可 のターゲット指定に使う。
+  connection_id: z.uuid(),
+  // id_token.sub。アカウント識別キー (DB 上は service_connections.provider_user_id)。
+  // backfill 直後 / 再認可待ちの行では null になりうる。
+  provider_user_id: z.string().nullable(),
+  // 表示用メアド (account_email)。同名カレンダーの衝突解決にも使う。
+  account_email: z.string().nullable(),
+  status: connectionStatusSchema,
+  has_token: z.boolean(),
+  connected_at: isoDateTimeSchema.nullable(),
+  token_expires_at: isoDateTimeSchema.nullable(),
+});
+
+export const googleAccountsResponseSchema = z.object({
+  accounts: z.array(googleAccountSchema),
+});
+
+// -----------------------------------------------------------------------------
+// Google calendar 除外設定 (Issue #108 / Issue #131 Phase 5 で接続単位へ)
+//
+//   - `GET /api/connections/google/calendars?connection_id=<uuid>`
+//       指定接続が Google から見ているカレンダー一覧 + その接続単位の除外
+//       設定を返す。
 //   - `PUT /api/connections/google/excluded-calendars`
-//       除外する calendarId の配列を保存する。
+//       接続単位で、除外する calendarId の配列を「置換」保存する。
 //
 // 除外されたカレンダーのイベントは Timeline には表示するが、稼働時間集計から
-// 外す。実装側は users.excluded_google_calendar_ids に永続化する。
+// 外す。実装側は `google_excluded_calendars` テーブル (connection_id 単位) に
+// 永続化する。Phase 5 移行後の正規ストレージはこのテーブル。
+// `users.excluded_google_calendar_ids` 配列カラムはロールバック用に残るが
+// アプリ経路は読み書きしない。
 // -----------------------------------------------------------------------------
+
+// Issue #131 Phase 5: クエリで接続を指定するためのスキーマ。
+export const googleCalendarsRequestSchema = z.object({
+  connection_id: z.uuid(),
+});
 
 export const googleCalendarItemSchema = z.object({
   id: z.string().min(1),
@@ -103,14 +142,19 @@ export const googleCalendarItemSchema = z.object({
 });
 
 export const googleCalendarsResponseSchema = z.object({
+  // どの接続のカレンダーを返したかを response にも乗せる (UI 側で取り違え検出)。
+  connection_id: z.uuid(),
   calendars: z.array(googleCalendarItemSchema),
 });
 
 export const googleExcludedCalendarsUpdateRequestSchema = z.object({
+  // Issue #131 Phase 5: 接続単位で除外設定を保存する。
+  connection_id: z.uuid(),
   excluded_calendar_ids: z.array(z.string().min(1)).max(200),
 });
 
 export const googleExcludedCalendarsUpdateResponseSchema = z.object({
+  connection_id: z.uuid(),
   excluded_calendar_ids: z.array(z.string().min(1)),
 });
 
@@ -129,6 +173,9 @@ export type ConnectionListResponse = z.infer<
 export type ConnectionsRequiredResponse = z.infer<
   typeof connectionsRequiredResponseSchema
 >;
+export type GoogleAccount = z.infer<typeof googleAccountSchema>;
+export type GoogleAccountsResponse = z.infer<typeof googleAccountsResponseSchema>;
+export type GoogleCalendarsRequest = z.infer<typeof googleCalendarsRequestSchema>;
 export type GoogleCalendarItem = z.infer<typeof googleCalendarItemSchema>;
 export type GoogleCalendarsResponse = z.infer<
   typeof googleCalendarsResponseSchema

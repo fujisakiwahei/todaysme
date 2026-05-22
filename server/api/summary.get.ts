@@ -45,6 +45,8 @@ interface SleepRow {
 interface CalendarRow {
   id: string;
   google_event_id: string;
+  // Issue #131 Phase 4: 同期経路は connection_id を埋める。NOT NULL 制約済み。
+  connection_id: string;
   calendar_id: string;
   calendar_name: string | null;
   title: string | null;
@@ -92,10 +94,10 @@ export default defineEventHandler(async (event) => {
 
   const admin = getSupabaseAdmin();
 
-  // -- user (timezone + 除外設定) -------------------------------------------
+  // -- user (timezone) -----------------------------------------------------
   const { data: userRow, error: userErr } = await admin
     .from("users")
-    .select("timezone, excluded_google_calendar_ids")
+    .select("timezone")
     .eq("id", userId)
     .maybeSingle();
   if (userErr) {
@@ -113,9 +115,30 @@ export default defineEventHandler(async (event) => {
     });
   }
   const timezone = userRow.timezone;
-  const excludedCalendarIds = new Set<string>(
-    (userRow.excluded_google_calendar_ids ?? []) as string[],
+
+  // -- 除外カレンダー (Issue #131 Phase 5: 接続単位) -----------------------
+  // Phase 5 で `google_excluded_calendars` テーブル (connection_id 単位) に
+  // 移行した。同じ calendar_id がアカウント間で別物を指すケースに備えて、
+  // 除外判定キーは `${connection_id}|${calendar_id}` の合成文字列にする。
+  const { data: excludedRows, error: excludedErr } = await admin
+    .from("google_excluded_calendars")
+    .select("connection_id, calendar_id")
+    .eq("user_id", userId);
+  if (excludedErr) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: `failed to load excluded calendars: ${excludedErr.message}`,
+    });
+  }
+  const excludedKeys = new Set<string>(
+    (excludedRows ?? []).map((r) => {
+      const row = r as { connection_id: string; calendar_id: string };
+      return `${row.connection_id}|${row.calendar_id}`;
+    }),
   );
+  function isExcluded(connectionId: string, calendarId: string): boolean {
+    return excludedKeys.has(`${connectionId}|${calendarId}`);
+  }
 
   // -- wake range -----------------------------------------------------------
   const internalRange = await wakeRangeOf(date, userId, {
@@ -151,7 +174,7 @@ export default defineEventHandler(async (event) => {
       admin
         .from("google_calendar_events")
         .select(
-          "id, google_event_id, calendar_id, calendar_name, title, start_at, end_at",
+          "id, google_event_id, connection_id, calendar_id, calendar_name, title, start_at, end_at",
         )
         .eq("user_id", userId)
         .eq("is_deleted", false)
@@ -231,7 +254,7 @@ export default defineEventHandler(async (event) => {
       title: r.title,
       start_at: r.start_at,
       end_at: r.end_at,
-      is_excluded: excludedCalendarIds.has(r.calendar_id),
+      is_excluded: isExcluded(r.connection_id, r.calendar_id),
     })),
     toggl: togglRows.map<TogglTimelineEntry>((r) => ({
       id: r.id,
@@ -268,34 +291,90 @@ export default defineEventHandler(async (event) => {
 
   // Google: wake range と重なる時間で集計。
   // 累積 drift を避けるため ms で足し上げ、最後にまとめて分へ丸める。
-  // 除外対象 (users.excluded_google_calendar_ids) は集計から外す (Issue #108)。
+  // 除外対象 (Issue #131 Phase 5 で google_excluded_calendars テーブルに
+  // 移行) は集計から外す (Issue #108)。
+  //
+  // Issue #131 Phase 7: 複数 Google アカウント連携で同名カレンダー
+  // (例: "プライベート") が衝突するケースに備え、まず (calendar_name,
+  // connection_id) で集計し、衝突したラベルだけ "<name> (<email>)" に
+  // 接尾辞を付ける。1 接続しか登場しない名前は素のままにする。
   let google: TodaysMe["google"] = null;
   if (connected.has("google")) {
-    const byCalendarMs = new Map<string, number>();
+    // connection_id → 表示用 email を引くマップを作る。account_email が無い
+    // 行 (= 旧データ / id_token から email を取れなかった) は provider_user_id
+    // の末尾 4 桁にフォールバックする。
+    const { data: googleConnRows, error: connErr } = await admin
+      .from("service_connections")
+      .select("id, provider_user_id, account_email")
+      .eq("user_id", userId)
+      .eq("provider", "google");
+    if (connErr) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `failed to load google connection labels: ${connErr.message}`,
+      });
+    }
+    const accountLabelByConn = new Map<string, string>();
+    for (const r of googleConnRows ?? []) {
+      const row = r as {
+        id: string;
+        provider_user_id: string | null;
+        account_email: string | null;
+      };
+      const label =
+        row.account_email ??
+        (row.provider_user_id
+          ? `…${row.provider_user_id.slice(-4)}`
+          : "unknown");
+      accountLabelByConn.set(row.id, label);
+    }
+
+    // (calendar_name, connection_id) ペア単位の集計 + name ごとに登場した
+    // connection_id の集合を別途持つ。
+    const byNameConnMs = new Map<string, Map<string, number>>();
     let totalMs = 0;
     let meetingMs = 0;
     if (internalRange) {
       for (const ev of calendarRows) {
-        if (excludedCalendarIds.has(ev.calendar_id)) continue;
+        if (isExcluded(ev.connection_id, ev.calendar_id)) continue;
         const ms = overlappingMs(internalRange, ev.start_at, ev.end_at);
         if (ms <= 0) continue;
         totalMs += ms;
         const name = ev.calendar_name ?? "";
-        byCalendarMs.set(name, (byCalendarMs.get(name) ?? 0) + ms);
+        let inner = byNameConnMs.get(name);
+        if (!inner) {
+          inner = new Map<string, number>();
+          byNameConnMs.set(name, inner);
+        }
+        inner.set(ev.connection_id, (inner.get(ev.connection_id) ?? 0) + ms);
         if (ev.calendar_name && MEETING_CALENDAR_NAMES.has(ev.calendar_name)) {
           meetingMs += ms;
         }
       }
     }
+
+    const byCalendar: { calendar_name: string; minutes: number }[] = [];
+    for (const [name, perConn] of byNameConnMs) {
+      if (perConn.size <= 1) {
+        // 衝突なし → 名前のみで 1 エントリにまとめる。
+        const ms = Array.from(perConn.values()).reduce((a, b) => a + b, 0);
+        byCalendar.push({ calendar_name: name, minutes: msToMinutes(ms) });
+      } else {
+        // 衝突あり → アカウント別に "<name> (<email>)" を出す。
+        for (const [connId, ms] of perConn) {
+          const label = accountLabelByConn.get(connId) ?? "unknown";
+          byCalendar.push({
+            calendar_name: `${name} (${label})`,
+            minutes: msToMinutes(ms),
+          });
+        }
+      }
+    }
+
     google = {
       total_minutes: msToMinutes(totalMs),
       meeting_minutes: msToMinutes(meetingMs),
-      by_calendar: Array.from(byCalendarMs.entries()).map(
-        ([calendar_name, ms]) => ({
-          calendar_name,
-          minutes: msToMinutes(ms),
-        }),
-      ),
+      by_calendar: byCalendar,
     };
   }
 
