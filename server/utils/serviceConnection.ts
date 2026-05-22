@@ -85,23 +85,65 @@ async function selectExistingConnection(
   providerUserId: string | undefined,
 ): Promise<ExistingConnectionRow | null> {
   const admin = getSupabaseAdmin();
-  let query = admin
-    .from(SERVICE_CONNECTIONS_TABLE)
-    .select(
-      "id, refresh_token_encrypted, provider_user_id, account_email, scopes, connected_at",
-    )
-    .eq("user_id", userId)
-    .eq("provider", provider);
+  const baseColumns =
+    "id, refresh_token_encrypted, provider_user_id, account_email, scopes, connected_at";
 
   // Issue #131 Phase 1b: Google で providerUserId が確定している場合は
   // (user_id, provider, provider_user_id) の partial unique と整合するよう、
   // sub も一致条件に含める。これにより「アカウント A の再認可コールバックが
   // アカウント B の行を誤って UPDATE してしまう」事故を防ぐ。
   if (provider === "google" && typeof providerUserId === "string") {
-    query = query.eq("provider_user_id", providerUserId);
+    const { data, error } = await admin
+      .from(SERVICE_CONNECTIONS_TABLE)
+      .select(baseColumns)
+      .eq("user_id", userId)
+      .eq("provider", provider)
+      .eq("provider_user_id", providerUserId)
+      .maybeSingle();
+    if (error) {
+      throw new Error(
+        `failed to read existing service_connection: ${error.message}`,
+      );
+    }
+    if (data) {
+      return data as ExistingConnectionRow;
+    }
+
+    // Issue #131 Phase 2 過渡期 (Codex review #136 P1):
+    // Phase 2 migration までは適用済みだが Phase 1b が未適用の状態では、
+    // 旧 Google 接続行は provider_user_id IS NULL のまま status='needs_reauth'
+    // で残り、旧 unique(user_id, provider) 制約も生きている。この時 sub 一致
+    // で SELECT すると 0 件になり INSERT 経路へ落ちるが、INSERT は旧制約の
+    // 23505 を踏んで上に伝播してしまう (= /settings からの再認可で backfill
+    // ができず、Phase 1b の前提条件をいつまでも満たせない)。
+    //
+    // sub 一致行が無い場合に限り、同 user × Google × provider_user_id IS NULL
+    // で active 状態 (connected / needs_reauth) の旧行をフォールバックで拾い、
+    // UPDATE 経路で sub と account_email を backfill する。disconnected / error
+    // 行は意図的に切断 / 失敗した履歴なので触らない (= ここに混ぜると後段の
+    // UPDATE で disconnected 行を connected に蘇生させてしまう)。
+    const { data: legacy, error: legacyErr } = await admin
+      .from(SERVICE_CONNECTIONS_TABLE)
+      .select(baseColumns)
+      .eq("user_id", userId)
+      .eq("provider", provider)
+      .is("provider_user_id", null)
+      .in("status", ["connected", "needs_reauth"])
+      .maybeSingle();
+    if (legacyErr) {
+      throw new Error(
+        `failed to read legacy service_connection: ${legacyErr.message}`,
+      );
+    }
+    return (legacy ?? null) as ExistingConnectionRow | null;
   }
 
-  const { data, error } = await query.maybeSingle();
+  const { data, error } = await admin
+    .from(SERVICE_CONNECTIONS_TABLE)
+    .select(baseColumns)
+    .eq("user_id", userId)
+    .eq("provider", provider)
+    .maybeSingle();
   if (error) {
     throw new Error(
       `failed to read existing service_connection: ${error.message}`,
