@@ -20,7 +20,7 @@ import {
   type TogglTimelineEntry,
   type WakeRange,
 } from "../../shared/schemas";
-import { requireUserId } from "../utils/auth";
+import { requireUserIdAllowCookie } from "../utils/auth";
 import { listServiceConnections } from "../utils/serviceConnection";
 import { getSupabaseAdmin } from "../utils/supabaseAdmin";
 import { parseOrThrow } from "../utils/validation";
@@ -92,7 +92,7 @@ function msToMinutes(ms: number): number {
 }
 
 export default defineEventHandler(async (event) => {
-  const userId = await requireUserId(event);
+  const userId = await requireUserIdAllowCookie(event);
   const { date } = parseOrThrow(summaryRequestSchema, getQuery(event));
 
   const admin = getSupabaseAdmin();
