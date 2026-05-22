@@ -87,6 +87,33 @@ export const connectionsRequiredResponseSchema = z.object({
 });
 
 // -----------------------------------------------------------------------------
+// 複数 Google アカウント連携 (Issue #131)
+//
+//   `/api/connections/google/accounts` で接続済み Google アカウント (= 接続行)
+//   を 0..N 件返す。`/api/connections` 側は当面「Google を 1 行に集約した
+//   要約 (= 最初に見つかった接続行)」を返すが、設定 UI の Google セクションは
+//   こちらの accounts エンドポイントを参照する。
+// -----------------------------------------------------------------------------
+
+export const googleAccountSchema = z.object({
+  // service_connections.id (UUID)。disconnect / 再認可 のターゲット指定に使う。
+  connection_id: z.uuid(),
+  // id_token.sub。アカウント識別キー (DB 上は service_connections.provider_user_id)。
+  // backfill 直後 / 再認可待ちの行では null になりうる。
+  provider_user_id: z.string().nullable(),
+  // 表示用メアド (account_email)。同名カレンダーの衝突解決にも使う。
+  account_email: z.string().nullable(),
+  status: connectionStatusSchema,
+  has_token: z.boolean(),
+  connected_at: isoDateTimeSchema.nullable(),
+  token_expires_at: isoDateTimeSchema.nullable(),
+});
+
+export const googleAccountsResponseSchema = z.object({
+  accounts: z.array(googleAccountSchema),
+});
+
+// -----------------------------------------------------------------------------
 // Google calendar 除外設定 (Issue #108)
 //
 //   - `GET /api/connections/google/calendars`
@@ -132,6 +159,8 @@ export type ConnectionListResponse = z.infer<
 export type ConnectionsRequiredResponse = z.infer<
   typeof connectionsRequiredResponseSchema
 >;
+export type GoogleAccount = z.infer<typeof googleAccountSchema>;
+export type GoogleAccountsResponse = z.infer<typeof googleAccountsResponseSchema>;
 export type GoogleCalendarItem = z.infer<typeof googleCalendarItemSchema>;
 export type GoogleCalendarsResponse = z.infer<
   typeof googleCalendarsResponseSchema

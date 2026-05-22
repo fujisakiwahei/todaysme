@@ -2,6 +2,8 @@
 import type {
   ConnectionListResponse,
   ConnectionSummary,
+  GoogleAccount,
+  GoogleAccountsResponse,
   GoogleCalendarItem,
   GoogleCalendarsResponse,
   GoogleExcludedCalendarsUpdateResponse,
@@ -25,6 +27,15 @@ const submitting = ref<ServiceProvider | null>(null);
 const togglToken = ref("");
 const errorMessage = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
+
+// -- Issue #131 Phase 3+: 複数 Google アカウント連携 -------------------------
+// /api/connections/google/accounts は接続行を 0..N 件返す。
+// Oura / Toggl は引き続き /api/connections の単一行で扱う。
+const googleAccounts = ref<GoogleAccount[]>([]);
+const googleAccountsLoading = ref(false);
+// 操作中の Google アカウント (connection_id) を追跡する。
+// /api/connections の submitting (provider 単位) と独立。
+const googleSubmittingId = ref<string | null>(null);
 
 // -- Google カレンダー除外設定 (Issue #108) ------------------------------------
 // Google 接続済みのときだけロード。チェック状態はクライアントで反転させ、
@@ -56,17 +67,27 @@ async function bearerHeaders(): Promise<HeadersInit> {
 
 async function loadConnections() {
   loading.value = true;
+  googleAccountsLoading.value = true;
   errorMessage.value = null;
   try {
     const headers = await bearerHeaders();
-    const res = await $fetch<ConnectionListResponse>("/api/connections", {
-      headers,
-    });
-    connections.value = res.connections;
-    // Google が接続済みならカレンダー一覧も追ってロード (UI が即時に
-    // 除外設定を表示できるように)。失敗時は除外 UI 側でだけエラーを出す。
-    const googleConn = res.connections.find((c) => c.provider === "google");
-    if (googleConn && googleConn.has_token) {
+    const [conn, accounts] = await Promise.all([
+      $fetch<ConnectionListResponse>("/api/connections", { headers }),
+      // Issue #131 Phase 3: Google は accounts エンドポイントで N 件を取得。
+      $fetch<GoogleAccountsResponse>("/api/connections/google/accounts", {
+        headers,
+      }),
+    ]);
+    connections.value = conn.connections;
+    googleAccounts.value = accounts.accounts;
+
+    // Issue #131: 除外カレンダー UI は Phase 5 で接続単位に分割するまで、
+    // 接続済み Google アカウントがある場合のみ「先頭の接続」相手にロードする
+    // 暫定運用 (Phase 5 でこの分岐は撤去予定)。
+    const usableAccount = accounts.accounts.find(
+      (a) => a.has_token && a.status === "connected",
+    );
+    if (usableAccount) {
       loadGoogleCalendars();
     } else {
       googleCalendars.value = [];
@@ -78,6 +99,7 @@ async function loadConnections() {
     errorMessage.value = `連携状況の取得に失敗しました: ${msg}`;
   } finally {
     loading.value = false;
+    googleAccountsLoading.value = false;
   }
 }
 
@@ -160,6 +182,26 @@ async function startOAuth(provider: "oura" | "google") {
   }
 }
 
+// Issue #131 Phase 3: 「別のアカウントを追加」用に intent=add を付けて
+// /start を叩く。サーバ側は `prompt=consent select_account` を付けて
+// Google のアカウントピッカーを必ず出す。
+async function startGoogleAddAccount() {
+  submitting.value = "google";
+  errorMessage.value = null;
+  try {
+    const headers = await bearerHeaders();
+    const res = await $fetch<OauthStartResponse>(
+      "/api/connections/google/start?intent=add",
+      { headers },
+    );
+    window.location.href = res.authorize_url;
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "failed to start oauth";
+    errorMessage.value = `Google アカウント追加の開始に失敗しました: ${msg}`;
+    submitting.value = null;
+  }
+}
+
 async function saveTogglToken() {
   if (!togglToken.value.trim()) return;
   submitting.value = "toggl";
@@ -204,12 +246,63 @@ async function disconnect(provider: ServiceProvider) {
   }
 }
 
+// Issue #131 Phase 6: 接続 id 単位の切断。account を指定して呼ぶ。
+// API のシェイプは `DELETE /api/connections/google/[connectionId]` (Phase 6 で
+// 追加)。同一 user × 同一 provider × 同一 sub の行を対象に soft disconnect する。
+async function disconnectGoogleAccount(account: GoogleAccount) {
+  const label = account.account_email ?? account.provider_user_id ?? "Google";
+  if (!confirm(`Google アカウント (${label}) の連携を解除しますか？`)) return;
+  googleSubmittingId.value = account.connection_id;
+  errorMessage.value = null;
+  successMessage.value = null;
+  try {
+    const headers = await bearerHeaders();
+    await $fetch(`/api/connections/google/${account.connection_id}`, {
+      method: "DELETE",
+      headers,
+    });
+    successMessage.value = `Google アカウント (${label}) の連携を解除しました。`;
+    await loadConnections();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "failed to disconnect";
+    errorMessage.value = `Google アカウントの連携解除に失敗しました: ${msg}`;
+  } finally {
+    googleSubmittingId.value = null;
+  }
+}
+
 type ProviderMeta = {
   variant: "sleep" | "calendar" | "work";
   name: string;
   icon: string;
   description: string;
 };
+
+// Issue #131 Phase 3: Google は接続行が 0..N 件あるため、
+// /api/connections の単一行 (= Oura / Toggl 用) と切り離してループ対象から除外する。
+const nonGoogleConnections = computed(() =>
+  connections.value.filter((c) => c.provider !== "google"),
+);
+// 除外カレンダー UI が紐づく "primary" な接続 (最初に繋いだ接続済みアカウント)。
+// Phase 5 でこの分岐は不要になる (除外カレンダーが接続単位になる)。
+const primaryGoogleAccount = computed(() =>
+  googleAccounts.value.find((a) => a.has_token && a.status === "connected") ??
+    null,
+);
+// Google の status バッジ用にサマリ風オブジェクトを返す。表示専用。
+// 複数アカウントある場合、いずれかが connected なら "接続中"、全て needs_reauth
+// なら "再認可が必要"、全て disconnected なら "未接続"、…で表現する。
+const googleAggregateStatus = computed<
+  "connected" | "needs_reauth" | "error" | "disconnected"
+>(() => {
+  const list = googleAccounts.value;
+  if (list.length === 0) return "disconnected";
+  if (list.some((a) => a.has_token && a.status === "connected"))
+    return "connected";
+  if (list.some((a) => a.status === "needs_reauth")) return "needs_reauth";
+  if (list.some((a) => a.status === "error")) return "error";
+  return "disconnected";
+});
 
 const providerMeta: Record<ServiceProvider, ProviderMeta> = {
   oura: {
@@ -324,205 +417,314 @@ onMounted(() => {
         <p v-if="loading" class="settings__loading">読み込み中...</p>
 
         <ul v-else class="conn-list">
-          <li
-            v-for="conn in connections"
+          <template
+            v-for="conn in nonGoogleConnections"
             :key="conn.provider"
-            class="conn"
-            :class="`conn--${providerMeta[conn.provider].variant}`"
-            :data-status="statusInfo(conn).variant"
           >
-            <div class="conn__head">
-              <span class="conn__icon">
-                <img
-                  :src="providerMeta[conn.provider].icon"
-                  :alt="providerMeta[conn.provider].name"
-                />
-              </span>
-              <div class="conn__title-block">
-                <div class="conn__name">
-                  {{ providerMeta[conn.provider].name }}
-                </div>
-                <div class="conn__desc">
-                  {{ providerMeta[conn.provider].description }}
-                </div>
-              </div>
-              <span class="conn__status">
-                <span aria-hidden="true">{{ statusInfo(conn).emoji }}</span>
-                {{ statusInfo(conn).label }}
-              </span>
-            </div>
-
-            <div v-if="conn.provider === 'oura'" class="conn__actions">
-              <button
-                type="button"
-                class="btn btn--primary"
-                :disabled="submitting !== null"
-                @click="startOAuth('oura')"
-              >
-                {{ conn.has_token ? "再認可する" : "Oura と接続する" }}
-              </button>
-              <button
-                v-if="conn.has_token"
-                type="button"
-                class="btn btn--ghost"
-                :disabled="submitting !== null"
-                @click="disconnect('oura')"
-              >
-                連携解除
-              </button>
-            </div>
-
-            <div v-else-if="conn.provider === 'google'" class="conn__actions">
-              <!-- Issue #131 Phase 2: needs_reauth のときは再認可が必須である
-                   ことをバナーで明示する。クリック先は通常の再認可 (start) と
-                   同じ。再認可するとサーバ側で id_token を JWKS 検証して
-                   provider_user_id / account_email を埋め、自動で connected に
-                   戻る。 -->
-              <p
-                v-if="conn.status === 'needs_reauth'"
-                class="conn__reauth-banner"
-                role="alert"
-              >
-                Google アカウント連携の仕様変更があり、再認可が必要です。
-                「再認可する」ボタンを押すと自動で復旧します。
-              </p>
-              <p v-if="conn.account_email" class="conn__account-email">
-                {{ conn.account_email }}
-              </p>
-              <button
-                type="button"
-                class="btn btn--primary"
-                :disabled="submitting !== null"
-                @click="startOAuth('google')"
-              >
-                {{
-                  conn.has_token ? "再認可する" : "Google Calendar と接続する"
-                }}
-              </button>
-              <button
-                v-if="conn.has_token"
-                type="button"
-                class="btn btn--ghost"
-                :disabled="submitting !== null"
-                @click="disconnect('google')"
-              >
-                連携解除
-              </button>
-            </div>
-
-            <!-- Issue #108: 稼働時間集計から除外するカレンダーの選択 -->
-            <div
-              v-if="conn.provider === 'google' && conn.has_token"
-              class="conn__exclude"
+            <li
+              class="conn"
+              :class="`conn--${providerMeta[conn.provider].variant}`"
+              :data-status="statusInfo(conn).variant"
             >
-              <div class="conn__exclude-head">
-                <span class="conn__exclude-title">
-                  稼働時間集計から除外するカレンダー
+              <div class="conn__head">
+                <span class="conn__icon">
+                  <img
+                    :src="providerMeta[conn.provider].icon"
+                    :alt="providerMeta[conn.provider].name"
+                  />
                 </span>
-                <span class="conn__exclude-hint">
-                  チェックしたカレンダーのイベントは Timeline
-                  には残りますが、稼働時間には数えられず薄く表示されます。
+                <div class="conn__title-block">
+                  <div class="conn__name">
+                    {{ providerMeta[conn.provider].name }}
+                  </div>
+                  <div class="conn__desc">
+                    {{ providerMeta[conn.provider].description }}
+                  </div>
+                </div>
+                <span class="conn__status">
+                  <span aria-hidden="true">{{ statusInfo(conn).emoji }}</span>
+                  {{ statusInfo(conn).label }}
                 </span>
               </div>
 
-              <p
-                v-if="googleCalendarsError"
-                class="conn__exclude-error"
-                role="alert"
-              >
-                {{ googleCalendarsError }}
-              </p>
-
-              <p
-                v-if="googleCalendarsLoading && !googleCalendarsLoaded"
-                class="conn__exclude-loading"
-              >
-                カレンダー一覧を取得中...
-              </p>
-
-              <ul
-                v-else-if="googleCalendars.length > 0"
-                class="conn__exclude-list"
-              >
-                <li
-                  v-for="cal in googleCalendars"
-                  :key="cal.id"
-                  class="conn__exclude-item"
-                >
-                  <label class="conn__exclude-label">
-                    <input
-                      type="checkbox"
-                      :checked="excludedDraft.has(cal.id)"
-                      :disabled="savingExcluded"
-                      @change="toggleExcluded(cal.id)"
-                    />
-                    <span class="conn__exclude-name">
-                      {{ cal.name || "（無題のカレンダー）" }}
-                    </span>
-                    <span v-if="cal.primary" class="conn__exclude-badge">
-                      Primary
-                    </span>
-                  </label>
-                </li>
-              </ul>
-              <p
-                v-else-if="googleCalendarsLoaded"
-                class="conn__exclude-loading"
-              >
-                カレンダーが見つかりませんでした。
-              </p>
-
-              <div v-if="googleCalendars.length > 0" class="conn__exclude-foot">
+              <div v-if="conn.provider === 'oura'" class="conn__actions">
                 <button
                   type="button"
                   class="btn btn--primary"
-                  :disabled="!excludedDirty || savingExcluded"
-                  @click="saveExcludedCalendars"
+                  :disabled="submitting !== null"
+                  @click="startOAuth('oura')"
                 >
-                  {{ savingExcluded ? "保存中..." : "除外設定を保存" }}
+                  {{ conn.has_token ? "再認可する" : "Oura と接続する" }}
                 </button>
                 <button
+                  v-if="conn.has_token"
                   type="button"
                   class="btn btn--ghost"
-                  :disabled="googleCalendarsLoading"
-                  @click="loadGoogleCalendars"
+                  :disabled="submitting !== null"
+                  @click="disconnect('oura')"
                 >
-                  再読み込み
+                  連携解除
                 </button>
               </div>
-            </div>
 
-            <div v-else-if="conn.provider === 'toggl'" class="conn__actions">
-              <form class="conn__form" @submit.prevent="saveTogglToken">
-                <label class="conn__field">
-                  <span class="conn__field-label">Toggl Track API token</span>
-                  <input
-                    v-model="togglToken"
-                    type="password"
-                    autocomplete="off"
-                    spellcheck="false"
-                    placeholder="Profile から発行した API token"
-                  />
-                </label>
+              <div v-else-if="conn.provider === 'toggl'" class="conn__actions">
+                <form class="conn__form" @submit.prevent="saveTogglToken">
+                  <label class="conn__field">
+                    <span class="conn__field-label">Toggl Track API token</span>
+                    <input
+                      v-model="togglToken"
+                      type="password"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="Profile から発行した API token"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    class="btn btn--primary"
+                    :disabled="submitting !== null || !togglToken.trim()"
+                  >
+                    {{ conn.has_token ? "更新する" : "保存する" }}
+                  </button>
+                </form>
                 <button
-                  type="submit"
-                  class="btn btn--primary"
-                  :disabled="submitting !== null || !togglToken.trim()"
+                  v-if="conn.has_token"
+                  type="button"
+                  class="btn btn--ghost"
+                  :disabled="submitting !== null"
+                  @click="disconnect('toggl')"
                 >
-                  {{ conn.has_token ? "更新する" : "保存する" }}
+                  連携解除
                 </button>
-              </form>
-              <button
-                v-if="conn.has_token"
-                type="button"
-                class="btn btn--ghost"
-                :disabled="submitting !== null"
-                @click="disconnect('toggl')"
+              </div>
+            </li>
+
+            <!-- Issue #131 Phase 3+: Oura カードの直後に Google
+                 マルチアカウントブロックを差し込んで「Oura → Google → Toggl」
+                 の視覚順を保つ。-->
+            <li
+              v-if="conn.provider === 'oura'"
+              class="conn conn--calendar"
+              :data-status="googleAggregateStatus"
+            >
+              <div class="conn__head">
+                <span class="conn__icon">
+                  <img
+                    :src="providerMeta.google.icon"
+                    :alt="providerMeta.google.name"
+                  />
+                </span>
+                <div class="conn__title-block">
+                  <div class="conn__name">{{ providerMeta.google.name }}</div>
+                  <div class="conn__desc">
+                    {{ providerMeta.google.description }}
+                  </div>
+                </div>
+                <span class="conn__status">
+                  <span aria-hidden="true">
+                    {{
+                      googleAggregateStatus === "connected"
+                        ? "✅"
+                        : googleAggregateStatus === "needs_reauth"
+                          ? "⚠️"
+                          : googleAggregateStatus === "error"
+                            ? "⚠️"
+                            : "⚪"
+                    }}
+                  </span>
+                  {{
+                    googleAggregateStatus === "connected"
+                      ? "接続中"
+                      : googleAggregateStatus === "needs_reauth"
+                        ? "再認可が必要"
+                        : googleAggregateStatus === "error"
+                          ? "エラー"
+                          : "未接続"
+                  }}
+                </span>
+              </div>
+
+              <p
+                v-if="googleAccountsLoading && googleAccounts.length === 0"
+                class="conn__exclude-loading"
               >
-                連携解除
-              </button>
-            </div>
-          </li>
+                Google アカウント情報を読み込み中...
+              </p>
+
+              <!-- 接続済みアカウント (0..N 件) -->
+              <ul
+                v-if="googleAccounts.length > 0"
+                class="g-accounts"
+              >
+                <li
+                  v-for="acc in googleAccounts"
+                  :key="acc.connection_id"
+                  class="g-accounts__item"
+                  :data-status="acc.status"
+                >
+                  <div class="g-accounts__head">
+                    <span class="g-accounts__email">
+                      {{
+                        acc.account_email ||
+                        `Google (...${(acc.provider_user_id ?? "").slice(-4)})`
+                      }}
+                    </span>
+                    <span
+                      class="g-accounts__badge"
+                      :data-status="acc.status"
+                    >
+                      {{
+                        acc.status === "needs_reauth"
+                          ? "再認可が必要"
+                          : acc.status === "error"
+                            ? "エラー"
+                            : acc.status === "disconnected"
+                              ? "未接続"
+                              : "接続中"
+                      }}
+                    </span>
+                  </div>
+                  <p
+                    v-if="acc.status === 'needs_reauth'"
+                    class="conn__reauth-banner"
+                    role="alert"
+                  >
+                    Google アカウント連携の仕様変更があり、再認可が必要です。
+                  </p>
+                  <div class="g-accounts__actions">
+                    <button
+                      type="button"
+                      class="btn btn--primary"
+                      :disabled="
+                        submitting !== null || googleSubmittingId !== null
+                      "
+                      @click="startOAuth('google')"
+                    >
+                      再認可する
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn--ghost"
+                      :disabled="
+                        submitting !== null ||
+                        googleSubmittingId === acc.connection_id
+                      "
+                      @click="disconnectGoogleAccount(acc)"
+                    >
+                      連携解除
+                    </button>
+                  </div>
+                </li>
+              </ul>
+
+              <!-- アカウント追加 / 初回接続ボタン -->
+              <div class="conn__actions">
+                <button
+                  type="button"
+                  class="btn btn--primary"
+                  :disabled="submitting !== null"
+                  @click="
+                    googleAccounts.length === 0
+                      ? startOAuth('google')
+                      : startGoogleAddAccount()
+                  "
+                >
+                  {{
+                    googleAccounts.length === 0
+                      ? "Google Calendar と接続する"
+                      : "別のアカウントを追加"
+                  }}
+                </button>
+              </div>
+
+              <!-- Issue #108: 稼働時間集計から除外するカレンダーの選択
+                   Phase 5 で接続単位に分割するまでは「最初に繋いだ接続済み
+                   アカウント」相手にのみ表示する。 -->
+              <div
+                v-if="primaryGoogleAccount"
+                class="conn__exclude"
+              >
+                <div class="conn__exclude-head">
+                  <span class="conn__exclude-title">
+                    稼働時間集計から除外するカレンダー
+                  </span>
+                  <span class="conn__exclude-hint">
+                    チェックしたカレンダーのイベントは Timeline
+                    には残りますが、稼働時間には数えられず薄く表示されます。
+                  </span>
+                </div>
+
+                <p
+                  v-if="googleCalendarsError"
+                  class="conn__exclude-error"
+                  role="alert"
+                >
+                  {{ googleCalendarsError }}
+                </p>
+
+                <p
+                  v-if="googleCalendarsLoading && !googleCalendarsLoaded"
+                  class="conn__exclude-loading"
+                >
+                  カレンダー一覧を取得中...
+                </p>
+
+                <ul
+                  v-else-if="googleCalendars.length > 0"
+                  class="conn__exclude-list"
+                >
+                  <li
+                    v-for="cal in googleCalendars"
+                    :key="cal.id"
+                    class="conn__exclude-item"
+                  >
+                    <label class="conn__exclude-label">
+                      <input
+                        type="checkbox"
+                        :checked="excludedDraft.has(cal.id)"
+                        :disabled="savingExcluded"
+                        @change="toggleExcluded(cal.id)"
+                      />
+                      <span class="conn__exclude-name">
+                        {{ cal.name || "（無題のカレンダー）" }}
+                      </span>
+                      <span v-if="cal.primary" class="conn__exclude-badge">
+                        Primary
+                      </span>
+                    </label>
+                  </li>
+                </ul>
+                <p
+                  v-else-if="googleCalendarsLoaded"
+                  class="conn__exclude-loading"
+                >
+                  カレンダーが見つかりませんでした。
+                </p>
+
+                <div
+                  v-if="googleCalendars.length > 0"
+                  class="conn__exclude-foot"
+                >
+                  <button
+                    type="button"
+                    class="btn btn--primary"
+                    :disabled="!excludedDirty || savingExcluded"
+                    @click="saveExcludedCalendars"
+                  >
+                    {{ savingExcluded ? "保存中..." : "除外設定を保存" }}
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn--ghost"
+                    :disabled="googleCalendarsLoading"
+                    @click="loadGoogleCalendars"
+                  >
+                    再読み込み
+                  </button>
+                </div>
+              </div>
+            </li>
+          </template>
         </ul>
       </section>
     </div>
@@ -815,6 +1017,101 @@ $font-en:
     background: #fff7e0;
     border: 1px solid rgba(183, 121, 31, 0.35);
   }
+}
+
+// -----------------------------------------------------------
+// Google マルチアカウントリスト (Issue #131 Phase 3+)
+// -----------------------------------------------------------
+.g-accounts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  @media (min-width: 561px) {
+    margin-left: 58px;
+  }
+}
+
+.g-accounts__item {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: $color-surface;
+  border: 1px solid $color-border-2;
+  border-radius: 10px;
+
+  &[data-status="needs_reauth"] {
+    border-color: $color-warning;
+    background: #fff7e0;
+  }
+
+  &[data-status="error"] {
+    border-color: $color-error;
+    background: $color-error-bg;
+  }
+
+  &[data-status="disconnected"] {
+    opacity: 0.7;
+  }
+}
+
+.g-accounts__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.g-accounts__email {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-family: $font-mono;
+  font-size: 12px;
+  color: $color-text;
+  word-break: break-all;
+}
+
+.g-accounts__badge {
+  padding: 2px 8px;
+  flex-shrink: 0;
+  font-family: $font-mono;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: $color-text-muted;
+  background: #fff;
+  border: 1px solid $color-border;
+  border-radius: 999px;
+
+  &[data-status="connected"] {
+    color: $color-success;
+    background: $color-success-bg;
+    border-color: rgba(47, 133, 90, 0.25);
+  }
+
+  &[data-status="needs_reauth"] {
+    color: $color-warning;
+    background: #fff7e0;
+    border-color: rgba(183, 121, 31, 0.35);
+  }
+
+  &[data-status="error"] {
+    color: $color-error;
+    background: $color-error-bg;
+    border-color: rgba(197, 48, 48, 0.25);
+  }
+}
+
+.g-accounts__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .conn__reauth-banner {
