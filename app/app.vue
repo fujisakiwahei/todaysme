@@ -35,4 +35,5 @@ useHead({
   <NuxtLayout>
     <NuxtPage />
   </NuxtLayout>
+  <AppLoadingOverlay />
 </template>
