@@ -20,6 +20,10 @@ import { createError, getRequestHeader } from "h3";
 
 import type { ServiceProvider } from "../../../shared/schemas";
 import {
+  purgeSoftDeleted,
+  type PurgeResult,
+} from "../../utils/purgeSoftDeleted";
+import {
   loadConnectedProviders,
   refreshUserDate,
 } from "../../utils/runRefresh";
@@ -157,11 +161,27 @@ export default defineEventHandler(async (event) => {
     usersProcessed += 1;
   }
 
+  // 全 user の sync が一通り終わってから soft-delete purge を回す (Issue #150)。
+  // sync 中に新規に立った is_deleted=true は updated_at が直近なので拾われない。
+  // テーブル単位の失敗は purgeSoftDeleted 側で握り潰すので sync 結果は壊さない。
+  let purgeResults: PurgeResult[] = [];
+  try {
+    purgeResults = await purgeSoftDeleted(startedAt);
+  } catch {
+    // purgeSoftDeleted は通常自身で吸収するが、想定外で throw した場合に備える。
+    purgeResults = [];
+  }
+  const purgeErrorCount = purgeResults.filter((r) => r.error !== null).length;
+
   return {
     processed_at: startedAt.toISOString(),
     users_processed: usersProcessed,
     dates_processed: datesProcessed,
     days_per_user: REFRESH_DAYS,
     error_count: errorCount,
+    purge: {
+      results: purgeResults,
+      error_count: purgeErrorCount,
+    },
   };
 });
