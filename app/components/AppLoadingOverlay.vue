@@ -7,12 +7,18 @@
 // 不透明なオーバーレイ + 緑のアニメーションを表示する。
 // app.vue から global にマウントされる。
 //
-// 注: useLoadingIndicator() の wrapper である page:loading:start /
-// page:loading:end の hook を直接購読する。SSR では発火しないので、
-// onMounted で hook 登録する (server 側で hook を貼っても無害だが、
-// teardown を簡単にするため client 限定にしている)。
+// 注1: useLoadingIndicator() の wrapper である page:loading:start /
+//   page:loading:end の hook を直接購読する。SSR では発火しないので、
+//   onMounted で hook 登録する (server 側で hook を貼っても無害だが、
+//   teardown を簡単にするため client 限定にしている)。
+// 注2: 画面遷移を伴わない長い処理 (設定画面の初期ロード / ダッシュボード更新等)
+//   は useAppLoading() のカウンタを介して同じオーバーレイを表示する。
 // =============================================================================
-const isLoading = ref(false);
+const pageTransitioning = ref(false);
+const { isManualLoading } = useAppLoading();
+const isLoading = computed(
+  () => pageTransitioning.value || isManualLoading.value,
+);
 
 const nuxtApp = useNuxtApp();
 let unsubStart: (() => void) | null = null;
@@ -20,10 +26,10 @@ let unsubEnd: (() => void) | null = null;
 
 onMounted(() => {
   unsubStart = nuxtApp.hook("page:loading:start", () => {
-    isLoading.value = true;
+    pageTransitioning.value = true;
   });
   unsubEnd = nuxtApp.hook("page:loading:end", () => {
-    isLoading.value = false;
+    pageTransitioning.value = false;
   });
 });
 
