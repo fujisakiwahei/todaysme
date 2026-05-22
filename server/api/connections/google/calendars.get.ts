@@ -81,17 +81,18 @@ export default defineEventHandler(async (event) => {
   const userId = await requireUserId(event);
   const admin = getSupabaseAdmin();
 
-  // 除外設定をまず読む。Google 未連携でも 409 を返す前にチェックは不要だが、
-  // ServiceNotConnectedError の方を優先的に拾うため try の中で順番に呼ぶ。
   const { data: userRow, error: userErr } = await admin
     .from("users")
     .select("excluded_google_calendar_ids")
     .eq("id", userId)
     .maybeSingle();
   if (userErr) {
+    // Supabase 側の生メッセージを返さないと、column 未マイグレーション /
+    // RLS / 環境ミスマッチ等を切り分けられない (Issue #108 PR レビュー)。
+    console.error("[calendars.get] failed to load user", userErr);
     throw createError({
       statusCode: 500,
-      statusMessage: "failed to load user",
+      statusMessage: `failed to load user: ${userErr.message}`,
     });
   }
   const excludedIds: string[] = (userRow?.excluded_google_calendar_ids ??
