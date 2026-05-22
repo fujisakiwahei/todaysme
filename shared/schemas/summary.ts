@@ -88,7 +88,6 @@ export const todaysMeOuraSchema = z.object({
 
 export const todaysMeGoogleSchema = z.object({
   total_minutes: z.number().int(),
-  meeting_minutes: z.number().int(),
   by_calendar: z.array(
     z.object({
       calendar_name: z.string(),

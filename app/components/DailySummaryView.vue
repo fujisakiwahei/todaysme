@@ -636,21 +636,6 @@ onBeforeUnmount(() => {
                 }}<span class="unit">m</span>
               </div>
               <dl class="metric__sub">
-                <div>
-                  <dt>会議</dt>
-                  <dd>
-                    {{
-                      formatMinutes(summary.todays_me.google.meeting_minutes)
-                        ?.hours
-                    }}h
-                    {{
-                      String(
-                        formatMinutes(summary.todays_me.google.meeting_minutes)
-                          ?.minutes ?? 0,
-                      ).padStart(2, "0")
-                    }}m
-                  </dd>
-                </div>
                 <div
                   v-for="item in summary.todays_me.google.by_calendar"
                   :key="item.calendar_name"

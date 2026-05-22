@@ -36,9 +36,6 @@ import {
 
 const DEMO_TIMEZONE = "Asia/Tokyo";
 
-// SPEC §3 分類ルール: /api/summary と揃える。
-const MEETING_CALENDAR_NAMES = new Set(["MTG"]);
-
 interface SleepRow {
   id: string;
   sleep_start_at: string;
@@ -231,7 +228,6 @@ export default defineEventHandler(async (event) => {
   {
     const byCalendarMs = new Map<string, number>();
     let totalMs = 0;
-    let meetingMs = 0;
     if (internalRange) {
       for (const ev of calendarRows) {
         const ms = overlappingMs(internalRange, ev.start_at, ev.end_at);
@@ -239,14 +235,10 @@ export default defineEventHandler(async (event) => {
         totalMs += ms;
         const name = ev.calendar_name ?? "";
         byCalendarMs.set(name, (byCalendarMs.get(name) ?? 0) + ms);
-        if (ev.calendar_name && MEETING_CALENDAR_NAMES.has(ev.calendar_name)) {
-          meetingMs += ms;
-        }
       }
     }
     google = {
       total_minutes: msToMinutes(totalMs),
-      meeting_minutes: msToMinutes(meetingMs),
       by_calendar: Array.from(byCalendarMs.entries()).map(
         ([calendar_name, ms]) => ({
           calendar_name,
