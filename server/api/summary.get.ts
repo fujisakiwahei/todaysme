@@ -31,10 +31,6 @@ import {
   type WakeRange as InternalWakeRange,
 } from "../utils/wakeRange";
 
-// SPEC §3 分類ルール: 現状は calendar_name === "MTG" を MTG とみなす想定。
-// 本番カレンダー名が確定したらここを書き換える。
-const MEETING_CALENDAR_NAMES = new Set(["MTG"]);
-
 interface SleepRow {
   id: string;
   sleep_start_at: string;
@@ -346,7 +342,6 @@ export default defineEventHandler(async (event) => {
     // connection_id の集合を別途持つ。
     const byNameConnMs = new Map<string, Map<string, number>>();
     let totalMs = 0;
-    let meetingMs = 0;
     if (internalRange) {
       for (const ev of calendarRows) {
         if (isExcluded(ev.connection_id, ev.calendar_id)) continue;
@@ -360,9 +355,6 @@ export default defineEventHandler(async (event) => {
           byNameConnMs.set(name, inner);
         }
         inner.set(ev.connection_id, (inner.get(ev.connection_id) ?? 0) + ms);
-        if (ev.calendar_name && MEETING_CALENDAR_NAMES.has(ev.calendar_name)) {
-          meetingMs += ms;
-        }
       }
     }
 
@@ -386,7 +378,6 @@ export default defineEventHandler(async (event) => {
 
     google = {
       total_minutes: msToMinutes(totalMs),
-      meeting_minutes: msToMinutes(meetingMs),
       by_calendar: byCalendar,
     };
   }

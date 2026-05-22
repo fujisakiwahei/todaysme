@@ -142,7 +142,7 @@ onMounted(async () => {
         <article class="top__service top__service--calendar">
           <div class="top__service-icon" aria-hidden="true">予</div>
           <h3>Google Calendar</h3>
-          <p>予定時間合計 / カレンダー別 / 会議時間。複数アカウント対応予定</p>
+          <p>予定時間合計 / カレンダー別。複数アカウント対応予定</p>
         </article>
         <article class="top__service top__service--work">
           <div class="top__service-icon" aria-hidden="true">作</div>
