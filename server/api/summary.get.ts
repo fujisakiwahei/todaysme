@@ -293,9 +293,45 @@ export default defineEventHandler(async (event) => {
   // 累積 drift を避けるため ms で足し上げ、最後にまとめて分へ丸める。
   // 除外対象 (Issue #131 Phase 5 で google_excluded_calendars テーブルに
   // 移行) は集計から外す (Issue #108)。
+  //
+  // Issue #131 Phase 7: 複数 Google アカウント連携で同名カレンダー
+  // (例: "プライベート") が衝突するケースに備え、まず (calendar_name,
+  // connection_id) で集計し、衝突したラベルだけ "<name> (<email>)" に
+  // 接尾辞を付ける。1 接続しか登場しない名前は素のままにする。
   let google: TodaysMe["google"] = null;
   if (connected.has("google")) {
-    const byCalendarMs = new Map<string, number>();
+    // connection_id → 表示用 email を引くマップを作る。account_email が無い
+    // 行 (= 旧データ / id_token から email を取れなかった) は provider_user_id
+    // の末尾 4 桁にフォールバックする。
+    const { data: googleConnRows, error: connErr } = await admin
+      .from("service_connections")
+      .select("id, provider_user_id, account_email")
+      .eq("user_id", userId)
+      .eq("provider", "google");
+    if (connErr) {
+      throw createError({
+        statusCode: 500,
+        statusMessage: `failed to load google connection labels: ${connErr.message}`,
+      });
+    }
+    const accountLabelByConn = new Map<string, string>();
+    for (const r of googleConnRows ?? []) {
+      const row = r as {
+        id: string;
+        provider_user_id: string | null;
+        account_email: string | null;
+      };
+      const label =
+        row.account_email ??
+        (row.provider_user_id
+          ? `…${row.provider_user_id.slice(-4)}`
+          : "unknown");
+      accountLabelByConn.set(row.id, label);
+    }
+
+    // (calendar_name, connection_id) ペア単位の集計 + name ごとに登場した
+    // connection_id の集合を別途持つ。
+    const byNameConnMs = new Map<string, Map<string, number>>();
     let totalMs = 0;
     let meetingMs = 0;
     if (internalRange) {
@@ -305,21 +341,40 @@ export default defineEventHandler(async (event) => {
         if (ms <= 0) continue;
         totalMs += ms;
         const name = ev.calendar_name ?? "";
-        byCalendarMs.set(name, (byCalendarMs.get(name) ?? 0) + ms);
+        let inner = byNameConnMs.get(name);
+        if (!inner) {
+          inner = new Map<string, number>();
+          byNameConnMs.set(name, inner);
+        }
+        inner.set(ev.connection_id, (inner.get(ev.connection_id) ?? 0) + ms);
         if (ev.calendar_name && MEETING_CALENDAR_NAMES.has(ev.calendar_name)) {
           meetingMs += ms;
         }
       }
     }
+
+    const byCalendar: { calendar_name: string; minutes: number }[] = [];
+    for (const [name, perConn] of byNameConnMs) {
+      if (perConn.size <= 1) {
+        // 衝突なし → 名前のみで 1 エントリにまとめる。
+        const ms = Array.from(perConn.values()).reduce((a, b) => a + b, 0);
+        byCalendar.push({ calendar_name: name, minutes: msToMinutes(ms) });
+      } else {
+        // 衝突あり → アカウント別に "<name> (<email>)" を出す。
+        for (const [connId, ms] of perConn) {
+          const label = accountLabelByConn.get(connId) ?? "unknown";
+          byCalendar.push({
+            calendar_name: `${name} (${label})`,
+            minutes: msToMinutes(ms),
+          });
+        }
+      }
+    }
+
     google = {
       total_minutes: msToMinutes(totalMs),
       meeting_minutes: msToMinutes(meetingMs),
-      by_calendar: Array.from(byCalendarMs.entries()).map(
-        ([calendar_name, ms]) => ({
-          calendar_name,
-          minutes: msToMinutes(ms),
-        }),
-      ),
+      by_calendar: byCalendar,
     };
   }
 
