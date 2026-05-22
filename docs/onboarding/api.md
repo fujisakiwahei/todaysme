@@ -11,18 +11,21 @@
 
 | メソッド | パス | 認証 | 役割 |
 | --- | --- | --- | --- |
-| `GET` | `/api/summary?date=YYYY-MM-DD` | Bearer | 対象日の Today's ME と Wake-based Timeline 用統合データを返す（DB のみ読む）|
-| `POST` | `/api/summary/refresh` | Bearer | 対象日のデータを再取得 → 外部 API → DB upsert |
+| `GET` | `/api/summary?date=YYYY-MM-DD` | Bearer **or cookie** | 対象日の Today's ME と Wake-based Timeline 用統合データを返す（DB のみ読む）。SSR 経由で叩くため cookie 認証も許容（Issue #141）|
+| `POST` | `/api/summary/refresh` | Bearer **or cookie** | 対象日のデータを再取得 → 外部 API → DB upsert。SSR 起点の追従 fetch を許すため cookie 認証も許容（Issue #141）|
 | `GET` | `/api/cron/daily` | `Bearer ${CRON_SECRET}` | Vercel Cron 専用。users × 直近 14 日を refresh |
-| `GET` | `/api/connections` | Bearer | 現在の連携状況（**トークン本体は返さない**）|
+| `GET` | `/api/connections` | Bearer | 現在の連携状況（**トークン本体は返さない**）。Google は最初の 1 行に集約（複数アカウント一覧は `accounts` を参照）|
 | `GET` | `/api/connections/oura/start` | Bearer | Oura OAuth 認可開始 |
 | `GET` | `/api/connections/oura/callback` | cookie nonce + signed state | Oura OAuth 認可完了（token を暗号化保存）|
-| `GET` | `/api/connections/google/start` | Bearer | Google OAuth 認可開始 |
-| `GET` | `/api/connections/google/callback` | cookie nonce + signed state | Google OAuth 認可完了 |
-| `GET` | `/api/connections/google/calendars` | Bearer | Google から見えているカレンダー一覧 + 除外設定 |
-| `PUT` | `/api/connections/google/excluded-calendars` | Bearer | 除外する calendarId 配列を保存 |
+| `GET` | `/api/connections/google/start[?intent=add]` | Bearer | Google OAuth 認可開始。`intent=add` でアカウントピッカー (`prompt=consent select_account`) を強制 |
+| `GET` | `/api/connections/google/callback` | cookie nonce + signed state | Google OAuth 認可完了。`id_token` を JWKS 検証して `sub`（`provider_user_id`）と `email`（`account_email`）を backfill |
+| `GET` | `/api/connections/google/accounts` | Bearer | 接続済み Google アカウント（= `service_connections` の Google 行）を 0..N 件返す（Issue #131 Phase 3）|
+| `GET` | `/api/connections/google/calendars?connection_id=<uuid>` | Bearer | 指定 Google 接続のカレンダー一覧 + 接続単位の除外設定 |
+| `PUT` | `/api/connections/google/excluded-calendars` | Bearer | 接続単位で除外する calendarId 配列を保存（body に `connection_id` + `excluded_calendar_ids`）|
 | `POST` | `/api/connections/toggl` | Bearer | Toggl API token を暗号化保存 |
-| `DELETE` | `/api/connections/:provider` | Bearer | 連携解除（status を disconnected に）|
+| `DELETE` | `/api/connections/:provider` | Bearer | Oura / Toggl の連携解除（status を disconnected に）|
+| `DELETE` | `/api/connections/google/:connectionId` | Bearer | Google の **接続 ID 単位** ソフト切断（Issue #131 Phase 6）|
+| `DELETE` | `/api/connections/google/:connectionId/account` | Bearer | Google の **接続 ID 単位** ハード削除。events / 除外設定も cascade で消える（Issue #139）|
 | `GET` | `/api/internal/connections-required` | **cookie**（read-only 例外） | `/daily/*` に必要な接続のうち未接続のものを返す |
 | `GET` | `/api/demo/summary?date=YYYY-MM-DD` | なし | デモ用 summary（`demo_*` テーブルから読む）|
 
@@ -34,11 +37,15 @@
 
 ```ts
 const userId = await requireUserId(event);
+// or, for SSR-friendly routes:
+const userId = await requireUserIdAllowCookie(event);
 ```
 
-- `Authorization: Bearer <jwt>` を `server/utils/auth.ts:requireUserId` で検証。
-- 失敗時は 401 を投げる（h3 が JSON 化）。
-- **唯一の例外**: `/api/internal/connections-required` だけは cookie 認証 + read-only。理由は [auth.md](./auth.md) を参照。
+- 基本は `Authorization: Bearer <jwt>` を `server/utils/auth.ts:requireUserId` で検証。失敗時は 401（h3 が JSON 化）。
+- **cookie 認証フォールバックを許す例外**（`requireUserIdAllowCookie`）:
+  - `/api/internal/connections-required`（`require-connections` middleware 専用 / read-only / 旧来の例外）。
+  - `/api/summary` / `/api/summary/refresh`（Issue #141: `daily/[date]` を `useAsyncData` で SSR 化したため。Bearer があれば優先し、無ければ cookie session にフォールバックする）。
+- これら以外の mutation ルート（OAuth start / connections の POST・DELETE 等）は **必ず Bearer のみ**。理由は [auth.md](./auth.md) を参照。
 
 ### 入力検証
 
@@ -88,8 +95,10 @@ return parseOrThrow(<responseSchema>, response);
 
 **Today's ME の集計ルール**:
 - **Oura sleep_minutes / wake_at**: 起床日 = `target_date` となる sleep を選ぶ。複数あれば sleep_minutes が最長のもの（tie-break: wake_at が遅い方）。
-- **Google total / meeting / by_calendar**: wake range と重なる時間を ms で足し上げ、最後に分へ丸める（累積 drift 回避）。`meeting_minutes` は `calendar_name === "MTG"` のもの（本番カレンダー名は要確定 / SPEC §3）。除外カレンダーは集計から外す。
-- **Toggl total / by_title**: 同じく ms で足し上げ。`title` 単位で集計（同名タイトルは別プロジェクトでも同一バケットに入る）。
+- **Google total / by_calendar**: wake range と重なる時間を ms で足し上げ、最後に分へ丸める（累積 drift 回避）。除外カレンダー（`google_excluded_calendars` テーブル, 接続単位）は集計から外す。複数 Google アカウント連携で同名カレンダーが衝突した場合、衝突したラベルだけ `"<name> (<email>)"` に接尾辞を付ける（Issue #131 Phase 7）。**`meeting_minutes` は廃止された**（Issue #151: カレンダー名で会議を機械的に分類するのが本番運用に合わなかったため）。
+- **Toggl total / by_title**: 同じく ms で足し上げ。集計キーは `(title, project_name)` の組（Issue #112: 同名タイトルでも別プロジェクトに紐付くものは別バケット）。各エントリに `project_name` を持たせる（未割当 / 未解決は `null`）。
+
+**前段クエリの並列化（Issue #143）**: `users.timezone` / `google_excluded_calendars` / `listServiceConnections` / `daily_sync_statuses` の 4 つは userId / date だけに依存して相互独立なので `Promise.all` で並列に叩く。`wakeRangeOf` は timezone を必要とするため Promise.all の後に直列実行する。
 
 ### `POST /api/summary/refresh`
 
@@ -98,8 +107,10 @@ return parseOrThrow(<responseSchema>, response);
 実体は `server/utils/runRefresh.ts`。
 - `tryAcquireSyncLock` でサービス単位の排他。
 - `withFreshAccessToken` でトークン取得 + 401 retry。
-- `sync<Provider>ForDate` で upsert + ソフトデリート。
+- `sync<Provider>ForDate` で upsert + ソフトデリート。Google は **接続単位** で `listConnectedGoogleConnections` をループし、各 `connection_id` に対して個別に sync する（Issue #131 Phase 4）。
 - `markSyncSuccess` / `markSyncFailed` でステータス更新。
+
+**3 provider を並列実行**（Issue #140）: `Promise.allSettled` で Oura / Google / Toggl を同時に走らせる。各 provider の中で例外を捕まえて `outcome` に詰めて正常 resolve するので、`allSettled` の `rejected` は「想定外バグ」のみ。
 
 **部分失敗を許容**: Oura が失敗しても Google / Toggl は走る。`errors` 配列にサービス名と短いメッセージを乗せる。
 
@@ -132,10 +143,47 @@ return parseOrThrow(<responseSchema>, response);
 
 ### `DELETE /api/connections/:provider`
 
-**責務**: 連携解除（ソフト切断）。
+**責務**: Oura / Toggl の連携解除（ソフト切断）。
 
 - `status` を `disconnected` に更新し、暗号化トークンを `null` に。
 - 物理削除はしない（過去の `connected_at` 等のメタ情報を保持）。
+- **Google には使わない**。Google は複数アカウント連携を許容するため `connection_id` 単位の `DELETE /api/connections/google/:connectionId` を使う（Issue #131 Phase 6）。
+
+### `DELETE /api/connections/google/:connectionId`
+
+**責務**: Google の **接続 ID 単位** ソフト切断（Issue #131 Phase 6）。
+
+- 対象行が当該 user の Google 行でなければ 404。
+- `status='disconnected'` + 暗号化トークン null + 関連 `google_calendar_events` を `is_deleted=true` にソフトデリート。
+- `google_excluded_calendars` の行は **残す**（再認可で同じ `provider_user_id` に紐づき直ったときに設定を引き継ぐため）。
+
+### `DELETE /api/connections/google/:connectionId/account`
+
+**責務**: Google の **接続行を物理削除**（Issue #139）。設定画面の一覧からも消す。
+
+- `service_connections` の該当行を `DELETE`。`google_calendar_events` / `google_excluded_calendars` は FK の `ON DELETE CASCADE` で巻き取られる。
+- 通常運用ではまず `DELETE /api/connections/google/:connectionId` で soft disconnect してから本エンドポイントを叩く。
+
+### `GET /api/connections/google/accounts`
+
+**責務**: 接続済み Google アカウント（= `service_connections` の Google 行）を 0..N 件返す（Issue #131 Phase 3）。
+
+- `connection_id` / `provider_user_id` / `account_email` / `status` / `has_token` / `connected_at` / `token_expires_at` を返す。
+- `/settings` の Google セクションはこのレスポンスを参照して「複数アカウントカード」を描画する。「別のアカウントを追加」ボタンは `GET /api/connections/google/start?intent=add` を叩く。
+
+### `GET /api/connections/google/calendars?connection_id=<uuid>`
+
+**責務**: 指定 Google 接続のカレンダー一覧 + 接続単位の除外設定を返す（Issue #131 Phase 5）。
+
+- `connection_id` で接続を絞ってから Google `calendarList.list` を叩く。
+- 除外設定は `google_excluded_calendars` テーブル（`(connection_id, calendar_id)`）から引いて `excluded` フラグを付与する。
+
+### `PUT /api/connections/google/excluded-calendars`
+
+**責務**: 接続単位で、除外する `calendar_id` 配列を「置換」保存する（Issue #131 Phase 5）。
+
+- body: `{ connection_id, excluded_calendar_ids: string[] }`。
+- `google_excluded_calendars` の (connection_id) スコープを丸ごと差し替える（delete + insert）。
 
 ### `GET /api/internal/connections-required`
 

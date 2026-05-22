@@ -123,7 +123,11 @@ return data.user.id;
 - 結果、nonce cookie を上書きされて OAuth フロー DoS に至る（CSRF）。
 - Bearer ヘッダはクロスオリジンナビゲーションでは送られないため CSRF にならない。
 
-**唯一の例外**: `/api/internal/connections-required`（`require-connections` middleware 専用 / read-only）は cookie 認証で SSR / client 両方から呼ぶ。SDK が cookie から session を内部状態に復元するタイミングが route middleware より遅いことがあり、Bearer ヘッダではガードが擦り抜ける問題があったため（Issue #104）。read-only かつ「未接続なら設定画面に飛ばす」だけの安全な範囲に限定している。
+**cookie 認証フォールバックを許す例外**（`requireUserIdAllowCookie`）:
+- `/api/internal/connections-required`（`require-connections` middleware 専用 / read-only）。SDK が cookie から session を内部状態に復元するタイミングが route middleware より遅いことがあり、Bearer ヘッダではガードが擦り抜ける問題があったため（Issue #104）。
+- `/api/summary` / `/api/summary/refresh`（Issue #141: `daily/[date]` を `useAsyncData` で SSR 化したため、初回 fetch では Bearer が間に合わない）。Bearer があれば優先し、無ければ cookie session にフォールバックする。
+
+これらは「nonce 等の認証 cookie を書き換えない」「第三者のトップレベル navigation から呼ばれても害が無い」範囲に限定している。OAuth start のような mutation ルートには絶対に cookie フォールバックを追加しない。
 
 ---
 
@@ -145,7 +149,8 @@ state = base64UrlEncode({ uid, nonce, exp }) + "." + HMAC_SHA256(secret, payload
 1. cookie の nonce を読む。無ければ 400。
 2. `verifyOauthState(state, nonce)` … 署名 + nonce + expiry を検証。
 3. `exchange<Provider>Code(code)` で token を取得。
-4. `upsertServiceConnection({ accessToken, refreshToken, ... })` で暗号化保存。
+4. Google のみ: token レスポンスの `id_token` を `verifyGoogleIdToken`（`jose` の `createRemoteJWKSet` でキャッシュ付き JWKS 検証）で検証し、`sub`（= `provider_user_id`）と `email`（= `account_email`）を取り出す（Issue #131 Phase 2）。
+5. `upsertServiceConnection({ accessToken, refreshToken, providerUserId?, accountEmail?, ... })` で暗号化保存。Google は `(user_id, provider, provider_user_id)` の partial unique で衝突判定するので、同じ `sub` を持つ既存行があれば UPDATE（= 再認可）、無ければ INSERT（= 別アカウントの追加）になる。
 
 ---
 
@@ -153,12 +158,14 @@ state = base64UrlEncode({ uid, nonce, exp }) + "." + HMAC_SHA256(secret, payload
 
 | イベント | 何が起きるか |
 | --- | --- |
-| 初回認可 | `access_token` / `refresh_token` を AES-256-GCM で暗号化して `service_connections` に保存 |
-| 同期処理 | `withFreshAccessToken("google", fn)` を介して取得 |
+| 初回認可 | `access_token` / `refresh_token` を AES-256-GCM で暗号化して `service_connections` に保存。Google は `id_token` を JWKS 検証して `provider_user_id` / `account_email` も埋める |
+| 同期処理 | Oura / Toggl は `withFreshAccessToken(userId, provider, fn)` を介して取得。Google は `listConnectedGoogleConnections(userId)` で接続行を列挙し、`connection_id` 単位でトークンを取り出してループ実行（Issue #131 Phase 4）|
 | 期限近傍 | `getValidAccessToken` が事前 refresh（5 分以内に切れる場合）|
 | 401 を受けた | `withFreshAccessToken` が強制 refresh + 1 回だけ retry |
 | refresh 失敗 | `service_connections.status = error` に楽観ロックで遷移 / `OauthRefreshError` を throw |
-| 切断 | `status = disconnected` + 暗号化トークンを null に |
+| `provider_user_id` 未取得の旧 Google 行 | `status = needs_reauth` に落として sync から外す。settings バナーで再認可を促す（Issue #131 Phase 2）|
+| ソフト切断 | Oura / Toggl: `DELETE /api/connections/:provider` で `status = disconnected` + トークン null。Google: `DELETE /api/connections/google/:connectionId` で接続 ID 単位に同じ処理（events も soft-delete）|
+| ハード削除 | Google のみ: `DELETE /api/connections/google/:connectionId/account` で接続行を物理削除。events / 除外設定は FK の `ON DELETE CASCADE` で巻き取られる（Issue #139）|
 
 `refresh_token` の保持仕様は 3 状態:
 - `undefined` → 既存 DB 値を保持（Google の通常 refresh / 一部の再認可レスポンス）。
