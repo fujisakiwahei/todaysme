@@ -80,11 +80,6 @@ export default defineNuxtConfig({
     client: "hidden",
   },
 
-  // sentry: {
-  //   org: "...",
-  //   project: "...",
-  //   authToken: process.env.SENTRY_AUTH_TOKEN,
-  // },
   vite: {
     css: {
       preprocessorOptions: {
