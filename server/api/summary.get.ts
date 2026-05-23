@@ -7,7 +7,14 @@
 //     `target_date` 完全一致ではなく start_at/end_at の重なりで読む (SPEC §11.2)。
 //   - サービス未連携時は todays_me の該当キーを null にする。
 //   - レスポンスは Zod スキーマで検証してから返す (SPEC §12.3)。
+//
+// Issue #161: どの DB クエリ群が遅いかを Sentry トレースで識別できるよう、
+//   各 phase を named span で囲う。tracesSampleRate=1.0 なので全リクエストが
+//   Sentry に記録され、Performance タブで phase 別の所要時間を比較できる。
+//   インデックス追加の要否はこの実測結果を見てから判断する。
 // =============================================================================
+import * as Sentry from "@sentry/nuxt";
+
 import {
   summaryRequestSchema,
   summaryResponseSchema,
@@ -100,19 +107,23 @@ export default defineEventHandler(async (event) => {
   //   2. google_excluded_calendars
   //   3. listServiceConnections (todays_me の null 判定用)
   //   4. daily_sync_statuses (Timeline 構築後に消費するが date 既知なので前出し)
-  const [userRes, excludedRes, connections, syncRes] = await Promise.all([
-    admin.from("users").select("timezone").eq("id", userId).maybeSingle(),
-    admin
-      .from("google_excluded_calendars")
-      .select("connection_id, calendar_id")
-      .eq("user_id", userId),
-    listServiceConnections(userId),
-    admin
-      .from("daily_sync_statuses")
-      .select("source, status, last_synced_at, error_message")
-      .eq("user_id", userId)
-      .eq("target_date", date),
-  ]);
+  const [userRes, excludedRes, connections, syncRes] = await Sentry.startSpan(
+    { name: "summary.prelude", op: "db.query.group" },
+    () =>
+      Promise.all([
+        admin.from("users").select("timezone").eq("id", userId).maybeSingle(),
+        admin
+          .from("google_excluded_calendars")
+          .select("connection_id, calendar_id")
+          .eq("user_id", userId),
+        listServiceConnections(userId),
+        admin
+          .from("daily_sync_statuses")
+          .select("source, status, last_synced_at, error_message")
+          .eq("user_id", userId)
+          .eq("target_date", date),
+      ]),
+  );
 
   // -- user (timezone) -----------------------------------------------------
   if (userRes.error) {
@@ -157,10 +168,10 @@ export default defineEventHandler(async (event) => {
   );
 
   // -- wake range (timezone に依存するため前段の Promise.all 後に実行) ----
-  const internalRange = await wakeRangeOf(date, userId, {
-    client: admin,
-    timezone,
-  });
+  const internalRange = await Sentry.startSpan(
+    { name: "summary.wakeRange", op: "db.query.group" },
+    () => wakeRangeOf(date, userId, { client: admin, timezone }),
+  );
 
   // -- records (wake range と重なるもの) -----------------------------------
   let sleepRows: SleepRow[] = [];
@@ -171,39 +182,43 @@ export default defineEventHandler(async (event) => {
     const fromIso = internalRange.start.toISOString();
     const toIso = internalRange.end.toISOString();
 
-    const [sleepRes, calendarRes, togglRes] = await Promise.all([
-      // 睡眠は sleep_start_at..wake_at が wake range と重なるもの。
-      admin
-        .from("oura_sleep_records")
-        .select("id, sleep_start_at, wake_at, sleep_minutes")
-        .eq("user_id", userId)
-        .eq("is_deleted", false)
-        .lte("sleep_start_at", toIso)
-        .gte("wake_at", fromIso)
-        .order("wake_at", { ascending: true }),
-      admin
-        .from("google_calendar_events")
-        .select(
-          "id, google_event_id, connection_id, calendar_id, calendar_name, title, start_at, end_at",
-        )
-        .eq("user_id", userId)
-        .eq("is_deleted", false)
-        .lte("start_at", toIso)
-        .gte("end_at", fromIso)
-        .order("start_at", { ascending: true }),
-      // Toggl は end_at が null (進行中) を許容する。end_at IS NULL もしくは
-      // end_at >= fromIso のものだけを DB 側で絞り込み、JS の overlaps() で最終判定する。
-      admin
-        .from("toggl_time_entries")
-        .select(
-          "id, toggl_entry_id, title, project_id, project_name, start_at, end_at",
-        )
-        .eq("user_id", userId)
-        .eq("is_deleted", false)
-        .lte("start_at", toIso)
-        .or(`end_at.gte.${fromIso},end_at.is.null`)
-        .order("start_at", { ascending: true }),
-    ]);
+    const [sleepRes, calendarRes, togglRes] = await Sentry.startSpan(
+      { name: "summary.timelineRecords", op: "db.query.group" },
+      () =>
+        Promise.all([
+          // 睡眠は sleep_start_at..wake_at が wake range と重なるもの。
+          admin
+            .from("oura_sleep_records")
+            .select("id, sleep_start_at, wake_at, sleep_minutes")
+            .eq("user_id", userId)
+            .eq("is_deleted", false)
+            .lte("sleep_start_at", toIso)
+            .gte("wake_at", fromIso)
+            .order("wake_at", { ascending: true }),
+          admin
+            .from("google_calendar_events")
+            .select(
+              "id, google_event_id, connection_id, calendar_id, calendar_name, title, start_at, end_at",
+            )
+            .eq("user_id", userId)
+            .eq("is_deleted", false)
+            .lte("start_at", toIso)
+            .gte("end_at", fromIso)
+            .order("start_at", { ascending: true }),
+          // Toggl は end_at が null (進行中) を許容する。end_at IS NULL もしくは
+          // end_at >= fromIso のものだけを DB 側で絞り込み、JS の overlaps() で最終判定する。
+          admin
+            .from("toggl_time_entries")
+            .select(
+              "id, toggl_entry_id, title, project_id, project_name, start_at, end_at",
+            )
+            .eq("user_id", userId)
+            .eq("is_deleted", false)
+            .lte("start_at", toIso)
+            .or(`end_at.gte.${fromIso},end_at.is.null`)
+            .order("start_at", { ascending: true }),
+        ]),
+    );
 
     if (sleepRes.error) throw sleepRes.error;
     if (calendarRes.error) throw calendarRes.error;
@@ -323,11 +338,15 @@ export default defineEventHandler(async (event) => {
     // connection_id → 表示用 email を引くマップを作る。account_email が無い
     // 行 (= 旧データ / id_token から email を取れなかった) は provider_user_id
     // の末尾 4 桁にフォールバックする。
-    const { data: googleConnRows, error: connErr } = await admin
-      .from("service_connections")
-      .select("id, provider_user_id, account_email")
-      .eq("user_id", userId)
-      .eq("provider", "google");
+    const { data: googleConnRows, error: connErr } = await Sentry.startSpan(
+      { name: "summary.googleConnections", op: "db.query.group" },
+      () =>
+        admin
+          .from("service_connections")
+          .select("id, provider_user_id, account_email")
+          .eq("user_id", userId)
+          .eq("provider", "google"),
+    );
     if (connErr) {
       throw createError({
         statusCode: 500,
