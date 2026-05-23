@@ -27,9 +27,8 @@
 // =============================================================================
 import { getGoogleData } from "./getGoogleData";
 import {
-  listConnectedGoogleConnections,
-  withFreshAccessTokenByConnectionId,
-  type GoogleConnectionForSync,
+  withFreshAccessTokenFromRow,
+  type ServiceConnectionTokenRow,
 } from "./serviceConnection";
 import { getSupabaseAdmin } from "./supabaseAdmin";
 
@@ -60,8 +59,8 @@ export async function syncGoogleForDate(
   userId: string,
   targetDate: string,
   timezone: string,
+  connections: readonly ServiceConnectionTokenRow[],
 ): Promise<void> {
-  const connections = await listConnectedGoogleConnections(userId);
   if (connections.length === 0) {
     // 通常 runRefresh.ts 側で connected provider に google を含めない経路で
     // フィルタされるため到達しないが、race condition で空に見える可能性に
@@ -104,7 +103,7 @@ export async function syncGoogleForDate(
 
 interface SyncOneGoogleConnectionInput {
   userId: string;
-  connection: GoogleConnectionForSync;
+  connection: ServiceConnectionTokenRow;
   targetDate: string;
   timezone: string;
   timeMin: string;
@@ -117,8 +116,8 @@ async function syncOneGoogleConnection(
   const { userId, connection, targetDate, timezone, timeMin, timeMax } = input;
   const connectionId = connection.id;
 
-  const { calendars } = await withFreshAccessTokenByConnectionId(
-    connectionId,
+  const { calendars } = await withFreshAccessTokenFromRow(
+    connection,
     (accessToken) =>
       getGoogleData({
         accessToken,

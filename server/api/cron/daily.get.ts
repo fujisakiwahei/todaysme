@@ -145,12 +145,14 @@ export default defineEventHandler(async (event) => {
 
     const today = todayInTimezone(timezone, startedAt);
     // 0..REFRESH_DAYS-1 = today, today-1, ..., today-13 (計 14 日)。
+    // Issue #176: refreshUserDate は内部で service_connections を 1 回ずつ
+    // 取り直す (token 失効・rotate を跨いだ stale snapshot 回避)。日付ループ間で
+    // snapshot を共有しないため、`connected` を渡す option は廃止。
     for (let i = 0; i < REFRESH_DAYS; i += 1) {
       const date = shiftDate(today, -i);
       try {
         const result = await refreshUserDate(user.id, date, {
           timezone,
-          connected,
         });
         if (result.errors.length > 0) errorCount += result.errors.length;
       } catch {
