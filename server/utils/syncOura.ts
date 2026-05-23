@@ -10,10 +10,15 @@
 //     Oura 側 `day` がズレるケース・wake_at の補正で target_date が移動する
 //     ケースを取りこぼさないため (`oura_sleep_id` を保持していれば upsert
 //     で吸収できる)。
-//   - access_token は getOuraData が内部で withFreshAccessToken を介して取得し、
-//     未連携の場合は ServiceNotConnectedError ("oura") を投げる (Issue #75)。
+//   - Issue #176: refresh パスで事前取得した service_connections の行を受け取り、
+//     withFreshAccessTokenFromRow で 401 リトライを回す。getOuraData は
+//     accessToken を直接受け取る形に統一した (getGoogleData と同様)。
 // =============================================================================
 import { getOuraData } from "./getOuraData";
+import {
+  withFreshAccessTokenFromRow,
+  type ServiceConnectionTokenRow,
+} from "./serviceConnection";
 import { getSupabaseAdmin } from "./supabaseAdmin";
 
 const OURA_SLEEP_RECORDS = "oura_sleep_records";
@@ -28,16 +33,21 @@ export async function syncOuraForDate(
   userId: string,
   targetDate: string,
   timezone: string,
+  connectionRow: ServiceConnectionTokenRow,
 ): Promise<void> {
   const startDate = shiftDate(targetDate, -1);
   const endDate = shiftDate(targetDate, 1);
 
-  const fetched = await getOuraData({
-    userId,
-    startDate,
-    endDate,
-    timezone,
-  });
+  const fetched = await withFreshAccessTokenFromRow(
+    connectionRow,
+    (accessToken) =>
+      getOuraData({
+        accessToken,
+        startDate,
+        endDate,
+        timezone,
+      }),
+  );
 
   const admin = getSupabaseAdmin();
   const nowIso = new Date().toISOString();

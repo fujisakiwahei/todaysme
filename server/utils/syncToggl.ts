@@ -15,7 +15,8 @@
 //     upsert 時点で `is_deleted = true` を立てる (keepIds にも入れない)。
 //   - access_token は serviceConnection.ts 経由で取得し、平文はログ / 戻り値に
 //     出さない (SPEC §12.1)。Toggl は API token 方式なので refresh は無いが、
-//     一貫性のため withFreshAccessToken を使う。
+//     一貫性のため withFreshAccessTokenFromRow を使う。
+//   - Issue #176: refresh パスで事前取得した service_connections の行を受け取る。
 // =============================================================================
 import {
   buildProjectNameMap,
@@ -24,8 +25,8 @@ import {
   getTogglProjects,
 } from "./getTogglData";
 import {
-  ServiceNotConnectedError,
-  withFreshAccessToken,
+  withFreshAccessTokenFromRow,
+  type ServiceConnectionTokenRow,
 } from "./serviceConnection";
 import { getSupabaseAdmin } from "./supabaseAdmin";
 import { softDeleteMissing } from "./syncOura";
@@ -42,6 +43,7 @@ export async function syncTogglForDate(
   userId: string,
   targetDate: string,
   timezone: string,
+  connectionRow: ServiceConnectionTokenRow,
 ): Promise<void> {
   // 対象日 ± 1 日のウィンドウ。Toggl の end_date は exclusive のため、
   // 「target_date + 1 日を含めたい」場合は target_date + 2 を渡す。
@@ -49,9 +51,9 @@ export async function syncTogglForDate(
   // end_date は exclusive なので target_date + 1 までを含めるには +2
   const endDate = shiftDate(targetDate, 2);
 
-  let fetched;
-  try {
-    fetched = await withFreshAccessToken(userId, "toggl", async (apiToken) => {
+  const fetched = await withFreshAccessTokenFromRow(
+    connectionRow,
+    async (apiToken) => {
       // time entries と projects を並列取得し、project_id → name を解決する
       // (Issue #112)。projects 取得が失敗した場合でも、entry 自体は表示できる
       // ようにしたいが、ここでは「整合性の取れた状態」を優先してハードエラーに
@@ -68,12 +70,8 @@ export async function syncTogglForDate(
       ]);
       const projectNameById = buildProjectNameMap(projects);
       return enrichWithProjectNames(entries, projectNameById);
-    });
-  } catch (e) {
-    // ServiceNotConnectedError はそのまま伝搬させる (呼び出し側で failed と記録)。
-    if (e instanceof ServiceNotConnectedError) throw e;
-    throw e;
-  }
+    },
+  );
 
   const admin = getSupabaseAdmin();
   const nowIso = new Date().toISOString();

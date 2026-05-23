@@ -2,8 +2,9 @@
 // Oura API v2 データ取得 (Issue #41 / #75)
 // SPEC §3 / §11.2
 //
-//   - access_token は serviceConnection.ts の withFreshAccessToken 経由で
-//     取得する。token_expires_at が 5 分以内なら遅延 refresh、401 が返ったら
+//   - access_token は呼び出し側 (syncOuraForDate) が
+//     serviceConnection.ts の withFreshAccessTokenFromRow 経由で渡す。
+//     token_expires_at が 5 分以内なら遅延 refresh、401 が返ったら
 //     1 回だけ refresh してリトライする (Issue #75)。
 //   - 初期 MVP は usercollection/sleep のみ。readiness / 活動量 / daily_* 系は
 //     将来 readiness 用フェッチャを足すときにこの util を拡張する想定。
@@ -17,10 +18,7 @@ import {
   type OuraSleepItem,
 } from "../../shared/schemas";
 
-import {
-  OauthUnauthorizedError,
-  withFreshAccessToken,
-} from "./serviceConnection";
+import { OauthUnauthorizedError } from "./serviceConnection";
 import { parseExternal } from "./validation";
 import { targetDateOf } from "./wakeRange";
 
@@ -46,7 +44,8 @@ export interface OuraSleepRow {
 }
 
 export interface GetOuraDataInput {
-  userId: string;
+  // 呼び出し側 (syncOuraForDate) が withFreshAccessTokenFromRow で取り出して渡す。
+  accessToken: string;
   // 取得対象の target_date 範囲 (YYYY-MM-DD, 両端含む)。
   startDate: string;
   endDate: string;
@@ -140,46 +139,45 @@ function toRow(item: OuraSleepItem, timezone: string): OuraSleepRow {
 // =============================================================================
 // getOuraData
 //   - 指定範囲の Oura sleep を全件取得し、`oura_sleep_records` 形に整形して返す。
-//   - access_token の取得 / refresh は withFreshAccessToken に委譲 (Issue #75)。
+//   - access_token の取得 / refresh は呼び出し側
+//     (withFreshAccessTokenFromRow) の責務 (Issue #75 / #176)。401 は
+//     OauthUnauthorizedError として伝搬し、ラッパで再試行される。
 //   - upsert は呼び出し側 (refresh / cron) の責務。
 // =============================================================================
 export async function getOuraData(
   input: GetOuraDataInput,
 ): Promise<GetOuraDataResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
+  const sleeps: OuraSleepRow[] = [];
+  let nextToken: string | undefined;
+  let exhausted = false;
 
-  return withFreshAccessToken(input.userId, "oura", async (accessToken) => {
-    const sleeps: OuraSleepRow[] = [];
-    let nextToken: string | undefined;
-    let exhausted = false;
-
-    for (let page = 0; page < MAX_PAGES; page++) {
-      const raw = await callOuraSleep(
-        accessToken,
-        {
-          start_date: input.startDate,
-          end_date: input.endDate,
-          next_token: nextToken,
-        },
-        fetchImpl,
-      );
-      const parsed = parseExternal(ouraSleepResponseSchema, raw, "oura");
-      for (const item of parsed.data) {
-        sleeps.push(toRow(item, input.timezone));
-      }
-      if (!parsed.next_token) {
-        exhausted = true;
-        break;
-      }
-      nextToken = parsed.next_token;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const raw = await callOuraSleep(
+      input.accessToken,
+      {
+        start_date: input.startDate,
+        end_date: input.endDate,
+        next_token: nextToken,
+      },
+      fetchImpl,
+    );
+    const parsed = parseExternal(ouraSleepResponseSchema, raw, "oura");
+    for (const item of parsed.data) {
+      sleeps.push(toRow(item, input.timezone));
     }
-
-    // MAX_PAGES に達したのに next_token が残っている場合は件数欠落の可能性が
-    // あるので、部分結果を返さず明示エラーにする (Codex review)。
-    if (!exhausted) {
-      throw new OuraPaginationOverflowError(MAX_PAGES);
+    if (!parsed.next_token) {
+      exhausted = true;
+      break;
     }
+    nextToken = parsed.next_token;
+  }
 
-    return { sleeps };
-  });
+  // MAX_PAGES に達したのに next_token が残っている場合は件数欠落の可能性が
+  // あるので、部分結果を返さず明示エラーにする (Codex review)。
+  if (!exhausted) {
+    throw new OuraPaginationOverflowError(MAX_PAGES);
+  }
+
+  return { sleeps };
 }

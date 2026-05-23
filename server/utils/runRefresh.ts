@@ -8,6 +8,10 @@
 //   - 未連携サービスは skip しレスポンスにも含めない (連携サービスのみ可視化)。
 //   - 平文トークンは内部の sync runner / getValidAccessToken に閉じ込め、
 //     呼び出し元に渡さない (SPEC §12.1)。
+//   - Issue #176: refresh パス内で `service_connections` を何度も SELECT して
+//     いた問題に対処するため、入口で 1 回だけ全行 (トークン列込み) を引き、
+//     その snapshot を各 sync 関数に引数として渡す。401 リトライ後の refresh
+//     書き戻しは serviceConnection.runWithRetry が DB から再読みする (現状維持)。
 // =============================================================================
 import type {
   ApiErrorItem,
@@ -15,7 +19,13 @@ import type {
   SyncStatusEntry,
 } from "../../shared/schemas";
 
-import { ServiceNotConnectedError } from "./serviceConnection";
+import {
+  loadServiceConnectionsForUser,
+  pickConnectedRow,
+  pickConnectedRows,
+  ServiceNotConnectedError,
+  type ServiceConnectionTokenRow,
+} from "./serviceConnection";
 import { getSupabaseAdmin } from "./supabaseAdmin";
 import { syncGoogleForDate } from "./syncGoogle";
 import { syncOuraForDate } from "./syncOura";
@@ -33,15 +43,31 @@ interface ProviderSyncContext {
   timezone: string;
 }
 
-type SyncRunner = (ctx: ProviderSyncContext) => Promise<void>;
+type SyncRunner = (
+  ctx: ProviderSyncContext,
+  connections: readonly ServiceConnectionTokenRow[],
+) => Promise<void>;
 
+// 各 provider の sync 入口。事前取得済みの connection rows から自分の行を
+// 取り出して sync 関数に渡す。Oura / Toggl は 1 行前提、Google は複数行ありうる。
 const RUNNERS: Record<ServiceProvider, SyncRunner> = {
-  oura: ({ userId, targetDate, timezone }) =>
-    syncOuraForDate(userId, targetDate, timezone),
-  google: ({ userId, targetDate, timezone }) =>
-    syncGoogleForDate(userId, targetDate, timezone),
-  toggl: ({ userId, targetDate, timezone }) =>
-    syncTogglForDate(userId, targetDate, timezone),
+  oura: ({ userId, targetDate, timezone }, connections) => {
+    const row = pickConnectedRow(connections, "oura");
+    if (!row) throw new ServiceNotConnectedError("oura");
+    return syncOuraForDate(userId, targetDate, timezone, row);
+  },
+  google: ({ userId, targetDate, timezone }, connections) =>
+    syncGoogleForDate(
+      userId,
+      targetDate,
+      timezone,
+      pickConnectedRows(connections, "google"),
+    ),
+  toggl: ({ userId, targetDate, timezone }, connections) => {
+    const row = pickConnectedRow(connections, "toggl");
+    if (!row) throw new ServiceNotConnectedError("toggl");
+    return syncTogglForDate(userId, targetDate, timezone, row);
+  },
 };
 
 const ALL_PROVIDERS: readonly ServiceProvider[] = ["oura", "google", "toggl"];
@@ -52,10 +78,8 @@ export interface RefreshUserDateResult {
 }
 
 export interface RefreshUserDateOptions {
-  // 呼び出し側が既に取得済みの場合は再取得を避けるため受け取れるようにする。
   // cron では全 user 共通で 14 日ぶん回すので、user ごとに 1 回だけ読めば済む。
   timezone?: string;
-  connected?: Set<ServiceProvider>;
 }
 
 export async function loadUserTimezone(userId: string): Promise<string> {
@@ -125,6 +149,7 @@ interface ProviderRefreshOutcome {
 async function refreshProvider(
   provider: ServiceProvider,
   ctx: ProviderSyncContext,
+  connections: readonly ServiceConnectionTokenRow[],
 ): Promise<ProviderRefreshOutcome> {
   const { userId, targetDate } = ctx;
   const outcome: ProviderRefreshOutcome = { statuses: [], errors: [] };
@@ -150,7 +175,7 @@ async function refreshProvider(
   const lockId = lock.lockId!;
 
   try {
-    await RUNNERS[provider](ctx);
+    await RUNNERS[provider](ctx, connections);
     const updated = await markSyncSuccess(userId, targetDate, provider, lockId);
     // updated === null = 自分の lock が stale 奪取された。新 worker が
     // 最終 status を書くので、ここでは何も push しない。
@@ -190,14 +215,24 @@ export async function refreshUserDate(
   targetDate: string,
   options: RefreshUserDateOptions = {},
 ): Promise<RefreshUserDateResult> {
-  const [timezone, connected] = await Promise.all([
+  // Issue #176: timezone と service_connections の 1 ユーザー全行を並列で取る。
+  // service_connections はここで取った snapshot を各 sync 関数に渡し、refresh
+  // パス内での重複読みをゼロにする。401 後の refresh 書き戻しは
+  // runWithRetry 側が DB を再読みするため (= 同 row が古くなっても整合性が
+  // 取れる仕組み)、ここでの snapshot 利用は安全。
+  const [timezone, connections] = await Promise.all([
     options.timezone !== undefined
       ? Promise.resolve(options.timezone)
       : loadUserTimezone(userId),
-    options.connected !== undefined
-      ? Promise.resolve(options.connected)
-      : loadConnectedProviders(userId),
+    loadServiceConnectionsForUser(userId),
   ]);
+
+  const connectedProviders = new Set<ServiceProvider>();
+  for (const row of connections) {
+    if (row.status === "connected") {
+      connectedProviders.add(row.provider);
+    }
+  }
 
   const sync_statuses: SyncStatusEntry[] = [];
   const errors: ApiErrorItem[] = [];
@@ -206,9 +241,9 @@ export async function refreshUserDate(
   // refreshProvider 内で全例外を outcome に詰めて正常 resolve するので
   // Promise.allSettled の rejected ケースは「想定外バグ」のみ。
   const ctx = { userId, targetDate, timezone };
-  const targets = ALL_PROVIDERS.filter((p) => connected.has(p));
+  const targets = ALL_PROVIDERS.filter((p) => connectedProviders.has(p));
   const settled = await Promise.allSettled(
-    targets.map((provider) => refreshProvider(provider, ctx)),
+    targets.map((provider) => refreshProvider(provider, ctx, connections)),
   );
 
   // ALL_PROVIDERS の順序を維持するため targets と settled の index を合わせて読む。

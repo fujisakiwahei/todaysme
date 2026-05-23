@@ -535,10 +535,16 @@ export class OauthUnauthorizedError extends Error {
   }
 }
 
-interface ServiceConnectionTokenRow {
+// Issue #176: refresh パスから 1 回だけ全件 SELECT する設計で再利用できるよう
+// `provider_user_id` / `account_email` も含める。Google の複数アカウント sync
+// ループはこの 2 列を見る (旧 GoogleConnectionForSync の置き換え)。
+// Oura / Toggl では参照しないがコスト無視できるレベルで一緒に運ぶ。
+export interface ServiceConnectionTokenRow {
   id: string;
   provider: ServiceProvider;
   status: "connected" | "disconnected" | "error" | "needs_reauth";
+  provider_user_id: string | null;
+  account_email: string | null;
   access_token_encrypted: string | null;
   refresh_token_encrypted: string | null;
   token_expires_at: string | null;
@@ -546,6 +552,11 @@ interface ServiceConnectionTokenRow {
   // ことを確認してから status=error に落とすために使う。
   updated_at: string;
 }
+
+// loadConnectionForToken* / loadServiceConnectionsForUser で共通の SELECT 列。
+// 1 箇所に集約することで「追加で 1 列増やすと他経路だけ漏れる」事故を防ぐ。
+const SERVICE_CONNECTION_TOKEN_COLUMNS =
+  "id, provider, status, provider_user_id, account_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at";
 
 // 既存の (user_id, provider) で接続行を 1 件特定する経路。Oura / Toggl
 // (= partial unique で 1 行に絞られる) で引き続き使う。
@@ -559,9 +570,7 @@ async function loadConnectionForToken(
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
     .from(SERVICE_CONNECTIONS_TABLE)
-    .select(
-      "id, provider, status, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at",
-    )
+    .select(SERVICE_CONNECTION_TOKEN_COLUMNS)
     .eq("user_id", userId)
     .eq("provider", provider)
     .maybeSingle();
@@ -584,9 +593,7 @@ async function loadConnectionForTokenById(
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
     .from(SERVICE_CONNECTIONS_TABLE)
-    .select(
-      "id, provider, status, access_token_encrypted, refresh_token_encrypted, token_expires_at, updated_at",
-    )
+    .select(SERVICE_CONNECTION_TOKEN_COLUMNS)
     .eq("id", connectionId)
     .maybeSingle();
 
@@ -604,31 +611,60 @@ async function loadConnectionForTokenById(
   return data as ServiceConnectionTokenRow;
 }
 
-// Issue #131 Phase 4: ある user の Google 接続行を「sync 対象になりうる」
-// もの (status='connected') のみ取得する。複数アカウント sync ループの
-// 入口で使う。Oura / Toggl は単一行前提で従来通り withFreshAccessToken を
-// (user, provider) で呼ぶため、この helper は Google 専用。
-export interface GoogleConnectionForSync {
-  id: string;
-  provider_user_id: string | null;
-  account_email: string | null;
-}
-
-export async function listConnectedGoogleConnections(
+// Issue #176: 1 ユーザー × 1 リフレッシュで service_connections を何度も
+// 引いていたのを 1 回にまとめるための入口。トークン列まで含めた全行を返す。
+//   - 呼び出し側 (runRefresh.ts) はここで取った行を Oura / Google / Toggl の
+//     sync 関数に **引数として渡す**。
+//   - 401 リトライ経路は従来通り loadConnectionForTokenById で最新行を引き直す。
+//   - order: connected_at 昇順。Google 複数アカウント sync ループの決定的順序を
+//     維持する (旧 listConnectedGoogleConnections と同じ並び)。
+export async function loadServiceConnectionsForUser(
   userId: string,
-): Promise<GoogleConnectionForSync[]> {
+): Promise<ServiceConnectionTokenRow[]> {
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
     .from(SERVICE_CONNECTIONS_TABLE)
-    .select("id, provider_user_id, account_email")
+    .select(SERVICE_CONNECTION_TOKEN_COLUMNS)
     .eq("user_id", userId)
-    .eq("provider", "google")
-    .eq("status", "connected")
     .order("connected_at", { ascending: true });
   if (error) {
-    throw new Error(`failed to list google connections: ${error.message}`);
+    throw new Error(`failed to read service_connections: ${error.message}`);
   }
-  return (data ?? []) as GoogleConnectionForSync[];
+  return (data ?? []) as ServiceConnectionTokenRow[];
+}
+
+// Oura / Toggl 用: 同 provider × status='connected' の行は最大 1 件のはず。
+// access_token_encrypted まで揃っている行のみ返し、揃わなければ ServiceNotConnected。
+export function pickConnectedRow(
+  rows: readonly ServiceConnectionTokenRow[],
+  provider: ServiceProvider,
+): ServiceConnectionTokenRow | undefined {
+  for (const row of rows) {
+    if (
+      row.provider === provider &&
+      row.status === "connected" &&
+      row.access_token_encrypted
+    ) {
+      return row;
+    }
+  }
+  return undefined;
+}
+
+// Google 複数アカウント対応用: status='connected' な行をすべて返す。
+// access_token_encrypted が欠落している壊れた行は除外する (旧
+// listConnectedGoogleConnections は status のみで絞っていたが、後続で
+// withFreshAccessTokenFromRow に渡す前提なら早めに弾いた方が安全)。
+export function pickConnectedRows(
+  rows: readonly ServiceConnectionTokenRow[],
+  provider: ServiceProvider,
+): ServiceConnectionTokenRow[] {
+  return rows.filter(
+    (row) =>
+      row.provider === provider &&
+      row.status === "connected" &&
+      row.access_token_encrypted,
+  );
 }
 
 function decryptStoredToken(packed: string, label: string): string {
@@ -885,6 +921,21 @@ export async function withFreshAccessTokenByConnectionId<T>(
   fn: (accessToken: string) => Promise<T>,
 ): Promise<T> {
   const row = await loadConnectionForTokenById(connectionId);
+  return runWithRetry(row, fn);
+}
+
+// Issue #176: 事前取得済みの接続行を直接受け取って fn を回す版。refresh パスで
+// service_connections の重複読みを潰すために導入。受け取った row が
+// connected & access_token_encrypted 揃いの前提だが、防御的にチェックする。
+// 401 リトライ経路では runWithRetry が DB から最新行を引き直すため、ここで
+// 受け取った row が refresh で stale になっても整合性は保たれる。
+export async function withFreshAccessTokenFromRow<T>(
+  row: ServiceConnectionTokenRow,
+  fn: (accessToken: string) => Promise<T>,
+): Promise<T> {
+  if (row.status !== "connected" || !row.access_token_encrypted) {
+    throw new ServiceNotConnectedError(row.provider);
+  }
   return runWithRetry(row, fn);
 }
 
