@@ -184,82 +184,71 @@ async function syncOneGoogleConnection(
   // 対象日 × connection_id × calendar_id 単位で、今回取得結果に含まれない
   // event_id をソフトデリートする。connection_id でスコープしないと
   // 別アカウントの同名 calendar_id 行を巻き込んでしまう。
-  for (const cal of calendars) {
-    const keepIds = new Set(cal.events.map((e) => e.google_event_id));
-    await softDeleteMissingGoogleEvents({
-      userId,
-      connectionId,
-      targetDate,
-      calendarId: cal.calendarId,
-      keepIds,
-    });
+  // calendar 毎に SELECT を撃つと N+1 になるので、全 calendar をまとめて
+  // 1 回の SELECT で取り、メモリ上で calendar_id 別に分けて diff を取る
+  // (Issue #175)。
+  const activeCalendarIds = calendars.map((c) => c.calendarId);
+  if (activeCalendarIds.length > 0) {
+    const { data: existing, error: readError } = await admin
+      .from(GOOGLE_CALENDAR_EVENTS)
+      .select("calendar_id, google_event_id")
+      .eq("user_id", userId)
+      .eq("connection_id", connectionId)
+      .eq("target_date", targetDate)
+      .eq("is_deleted", false)
+      .in("calendar_id", activeCalendarIds);
+    if (readError) {
+      throw new Error(
+        `failed to read ${GOOGLE_CALENDAR_EVENTS}: ${readError.message}`,
+      );
+    }
+
+    const existingByCalendar = new Map<string, string[]>();
+    for (const row of existing ?? []) {
+      const record = row as unknown as Record<string, unknown>;
+      const calId = record["calendar_id"];
+      const eventId = record["google_event_id"];
+      if (typeof calId !== "string" || typeof eventId !== "string") continue;
+      const bucket = existingByCalendar.get(calId);
+      if (bucket) {
+        bucket.push(eventId);
+      } else {
+        existingByCalendar.set(calId, [eventId]);
+      }
+    }
+
+    for (const cal of calendars) {
+      const existingIds = existingByCalendar.get(cal.calendarId);
+      if (!existingIds || existingIds.length === 0) continue;
+      const keepIds = new Set(cal.events.map((e) => e.google_event_id));
+      const toDelete = existingIds.filter((id) => !keepIds.has(id));
+      if (toDelete.length === 0) continue;
+
+      const { error: updateError } = await admin
+        .from(GOOGLE_CALENDAR_EVENTS)
+        .update({ is_deleted: true, updated_at: new Date().toISOString() })
+        .eq("user_id", userId)
+        .eq("connection_id", connectionId)
+        .eq("calendar_id", cal.calendarId)
+        .eq("target_date", targetDate)
+        .in("google_event_id", toDelete);
+      if (updateError) {
+        throw new Error(
+          `failed to soft-delete ${GOOGLE_CALENDAR_EVENTS}: ${updateError.message}`,
+        );
+      }
+    }
   }
 
   // 今回の calendars に登場しない calendar_id (= ユーザーが Google 側で削除
   // / 購読解除したカレンダー) に紐づく既存行も、対象日ぶんはソフトデリート
   // する。これも connection_id でスコープする。
-  const activeCalendarIds = calendars.map((c) => c.calendarId);
   await softDeleteEventsForRemovedCalendars({
     userId,
     connectionId,
     targetDate,
     activeCalendarIds,
   });
-}
-
-interface SoftDeleteGoogleInput {
-  userId: string;
-  connectionId: string;
-  targetDate: string;
-  calendarId: string;
-  keepIds: Set<string>;
-}
-
-// google_calendar_events は (user_id, connection_id, calendar_id,
-// google_event_id) で unique。syncOura.ts の汎用 softDeleteMissing は単一
-// external id 前提なのでこちらは独自に書く。
-async function softDeleteMissingGoogleEvents(
-  input: SoftDeleteGoogleInput,
-): Promise<void> {
-  const admin = getSupabaseAdmin();
-
-  const { data: existing, error: readError } = await admin
-    .from(GOOGLE_CALENDAR_EVENTS)
-    .select("google_event_id")
-    .eq("user_id", input.userId)
-    .eq("connection_id", input.connectionId)
-    .eq("calendar_id", input.calendarId)
-    .eq("target_date", input.targetDate)
-    .eq("is_deleted", false);
-  if (readError) {
-    throw new Error(
-      `failed to read ${GOOGLE_CALENDAR_EVENTS}: ${readError.message}`,
-    );
-  }
-
-  const toDelete: string[] = [];
-  for (const row of existing ?? []) {
-    const record = row as unknown as Record<string, unknown>;
-    const id = record["google_event_id"];
-    if (typeof id === "string" && !input.keepIds.has(id)) {
-      toDelete.push(id);
-    }
-  }
-  if (toDelete.length === 0) return;
-
-  const { error: updateError } = await admin
-    .from(GOOGLE_CALENDAR_EVENTS)
-    .update({ is_deleted: true, updated_at: new Date().toISOString() })
-    .eq("user_id", input.userId)
-    .eq("connection_id", input.connectionId)
-    .eq("calendar_id", input.calendarId)
-    .eq("target_date", input.targetDate)
-    .in("google_event_id", toDelete);
-  if (updateError) {
-    throw new Error(
-      `failed to soft-delete ${GOOGLE_CALENDAR_EVENTS}: ${updateError.message}`,
-    );
-  }
 }
 
 interface SoftDeleteRemovedCalendarsInput {
