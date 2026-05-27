@@ -280,6 +280,8 @@ const allTimelineEvents = computed<TimelineEventLite[]>(() => {
     });
   }
   for (const ev of props.summary.timeline.calendar) {
+    // 除外カレンダーの予定は空き時間計測の境界に含めない (Issue #187)
+    if (ev.is_excluded) continue;
     items.push({
       start: new Date(ev.start_at).getTime(),
       end: new Date(ev.end_at).getTime(),
