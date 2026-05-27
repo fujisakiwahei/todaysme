@@ -13,8 +13,14 @@
 //     その snapshot を各 sync 関数に引数として渡す。401 リトライ後の refresh
 //     書き戻しは serviceConnection.runWithRetry が DB から再読みする (現状維持)。
 // =============================================================================
-import type { ApiErrorItem, ServiceProvider, SyncStatusEntry } from "../../shared/schemas";
+import {
+  TOGGL_RATE_LIMIT_MARKER,
+  type ApiErrorItem,
+  type ServiceProvider,
+  type SyncStatusEntry,
+} from "../../shared/schemas";
 
+import { TogglRateLimitError } from "./getTogglData";
 import {
   loadServiceConnectionsForUser,
   pickConnectedRow,
@@ -123,6 +129,16 @@ function summarizeError(err: unknown): string {
   return "unknown error";
 }
 
+// Toggl 429: UI 側で専用バナーに切り替えるため、error_message の先頭に
+// マーカーを付ける。本文は後段の表示のために短く構造化しておく
+// (`[TOGGL_RATE_LIMIT] retry_after=<秒>` 形式。秒は不明なら省略)。
+// Issue #185。
+function formatTogglRateLimitMessage(err: TogglRateLimitError): string {
+  return err.retryAfterSeconds !== null
+    ? `${TOGGL_RATE_LIMIT_MARKER} retry_after=${err.retryAfterSeconds}`
+    : TOGGL_RATE_LIMIT_MARKER;
+}
+
 interface ProviderRefreshOutcome {
   statuses: SyncStatusEntry[];
   errors: ApiErrorItem[];
@@ -169,8 +185,15 @@ async function refreshProvider(
   } catch (e) {
     // ServiceNotConnectedError はロック取得後に判明する稀ケース (connections と
     // 復号結果がズレている等)。それも含めて failed として記録する。
+    // Toggl の 429 (Issue #185) は UI 側で「少し待ってリロードを促す」専用
+    // バナーに切り替えるため、shared マーカー付きのメッセージで記録する。
+    // 他 provider の同期はそのまま継続する (refresh は Promise.allSettled)。
     const message =
-      e instanceof ServiceNotConnectedError ? "service is not connected" : summarizeError(e);
+      e instanceof TogglRateLimitError
+        ? formatTogglRateLimitMessage(e)
+        : e instanceof ServiceNotConnectedError
+          ? "service is not connected"
+          : summarizeError(e);
     try {
       const updated = await markSyncFailed(userId, targetDate, provider, lockId, message);
       if (updated) outcome.statuses.push(toStatusEntry(provider, updated));
