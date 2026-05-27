@@ -1,0 +1,30 @@
+# Nuxt / build artifacts
+.nuxt
+.output
+.data
+.nitro
+.cache
+dist
+
+# Deploy / env
+.vercel
+.env.sentry-build-plugin
+
+# Dependencies / lockfile
+node_modules
+pnpm-lock.yaml
+
+# DB migrations (SQL)
+supabase/migrations
+
+# Design / docs (個人メモ等)
+design-tone
+docs/personal
+.playwright-mcp
+
+# Worktrees (別ブランチ作業ツリー)
+worktrees
+
+# その他
+.DS_Store
+LEARNINGS.md
