@@ -7,9 +7,11 @@
 //     Timeline 用データを取得して表示する。
 //   - 進行中の wake range (= まだ次の睡眠が記録されていない最新の起床) かつ
 //     sync_status の last_synced_at が 30 分以上古ければ、表示直後に裏で
-//     POST /api/summary/refresh を呼ぶ (SPEC §10.2)。早朝でまだ未睡眠の
-//     ケースでは「wake-based today」が前日のカレンダー日付になるため、
-//     カレンダー一致ではなく wake_range.end が "現在" 付近かで判定する。
+//     POST /api/summary/refresh を呼ぶ (SPEC §10.2)。
+//     active 判定は (a) wake_range.end が "現在" 付近 か (b) target_date が
+//     ユーザータイムゾーンのカレンダー今日と一致、のどちらかで成立させる。
+//     (a) は早朝でまだ未睡眠 (wake-based today が前日カレンダー日付) のケース、
+//     (b) は Oura 未連携 / 直近 wake が 24h 以上前で end が頭打ちのケースを拾う。
 //   - 手動「更新」ボタンで同じ refresh を呼び、終了後に再フェッチする。
 //   - 過去日も手動更新は許容する (SPEC §10.2 / §10.3)。
 //   - 描画は DailySummaryView コンポーネントに委譲する (Issue #31)。
@@ -18,6 +20,7 @@
 //     認証は cookie 経路 (`requireUserIdAllowCookie`) に統一。
 // =============================================================================
 import { isoDateSchema, type SummaryResponse } from "~~/shared/schemas";
+import { targetDateInTimezone } from "~/utils/wakeBasedToday";
 
 definePageMeta({
   middleware: ["auth", "require-connections"],
@@ -116,9 +119,20 @@ const ACTIVE_WAKE_RANGE_GRACE_MS = 5 * 60 * 1000;
 // 「カレンダー上の今日」ではなく「進行中の wake range」を today 扱いする。
 // 早朝でまだ未睡眠 (wake-based today が前日カレンダー日付) のケースでも
 // /daily/today 経由の自動更新が走るようにするための判定。
+//
+// 2 つの経路で active と判定する:
+//   (a) wake_range.end が "今" 付近: 早朝でまだ未睡眠ケース (Issue #189)。
+//   (b) target_date がユーザータイムゾーンのカレンダー今日と一致:
+//       - wake_range が null (Oura 未連携 / 初回 sync 前で sleep_records 空)
+//       - 直近 wake が 24h 以上前で computeWakeRange が end を頭打ちしている
+//         (= long-awake / Oura sync が停止しているユーザの復旧経路)
+//       いずれも (a) では拾えないが、自動 refresh が必要なケース。
 function isActiveWakeRange(s: SummaryResponse): boolean {
-  if (!s.wake_range) return false;
-  return Date.now() - new Date(s.wake_range.end).getTime() <= ACTIVE_WAKE_RANGE_GRACE_MS;
+  if (s.wake_range) {
+    const end = new Date(s.wake_range.end).getTime();
+    if (Date.now() - end <= ACTIVE_WAKE_RANGE_GRACE_MS) return true;
+  }
+  return s.target_date === targetDateInTimezone(new Date(), s.timezone);
 }
 
 function isStale(s: SummaryResponse): boolean {
