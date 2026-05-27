@@ -9,22 +9,22 @@
 
 ### 公開ページ（認証不要）
 
-| ルート | ファイル | 役割 |
-| --- | --- | --- |
-| `/` | `app/pages/index.vue` | トップ。プロダクト紹介 |
-| `/login` | `app/pages/login.vue` | ログイン（Google OAuth + Email）|
-| `/signup` | `app/pages/signup.vue` | サインアップ |
-| `/auth/callback` | `app/pages/auth/callback.vue` | OAuth / magic link callback |
-| `/demo` | `app/pages/demo/index.vue` | デモエントリ |
-| `/demo/daily/[date]` | `app/pages/demo/daily/[date].vue` | デモ日次詳細（`demo_*` テーブル）|
+| ルート               | ファイル                          | 役割                              |
+| -------------------- | --------------------------------- | --------------------------------- |
+| `/`                  | `app/pages/index.vue`             | トップ。プロダクト紹介            |
+| `/login`             | `app/pages/login.vue`             | ログイン（Google OAuth + Email）  |
+| `/signup`            | `app/pages/signup.vue`            | サインアップ                      |
+| `/auth/callback`     | `app/pages/auth/callback.vue`     | OAuth / magic link callback       |
+| `/demo`              | `app/pages/demo/index.vue`        | デモエントリ                      |
+| `/demo/daily/[date]` | `app/pages/demo/daily/[date].vue` | デモ日次詳細（`demo_*` テーブル） |
 
 ### 認証必須ページ
 
-| ルート | ファイル | 役割 |
-| --- | --- | --- |
-| `/daily/[date]` | `app/pages/daily/[date].vue` | 日次詳細（Today's ME + Timeline）|
-| `/daily/today` | `app/pages/daily/today.vue` | Wake-based today へリダイレクト |
-| `/settings` | `app/pages/settings.vue` | サービス連携 / 除外カレンダー設定 |
+| ルート          | ファイル                     | 役割                              |
+| --------------- | ---------------------------- | --------------------------------- |
+| `/daily/[date]` | `app/pages/daily/[date].vue` | 日次詳細（Today's ME + Timeline） |
+| `/daily/today`  | `app/pages/daily/today.vue`  | Wake-based today へリダイレクト   |
+| `/settings`     | `app/pages/settings.vue`     | サービス連携 / 除外カレンダー設定 |
 
 ---
 
@@ -37,6 +37,7 @@ definePageMeta({ middleware: ["auth", "require-connections"] });
 ```
 
 責務:
+
 - date の妥当性検証（`isoDateSchema` で実在日もチェック）。
 - Bearer ヘッダの組み立て。
 - `/api/summary` のフェッチ / レース防御（`activeRequestId`）。
@@ -48,18 +49,21 @@ definePageMeta({ middleware: ["auth", "require-connections"] });
 ### `/daily/today.vue`
 
 責務:
+
 - `fetchWakeBasedToday()` で「自分にとっての今日」を解決。
 - 結果に基づいて `/daily/<YYYY-MM-DD>` に navigate。
 
 ### `/demo/daily/[date].vue`
 
 責務:
+
 - 認証不要。`/api/demo/summary` を叩いて `demo_*` テーブルからデータを取る。
 - 同じ **`DailySummaryView`** で描画（コンポーネント再利用）。
 
 ### `/settings.vue`
 
 責務:
+
 - `/api/connections` を読んで連携状況を表示。
 - Oura / Google の「接続」ボタン → `start` API → 認可画面へリダイレクト。
 - Toggl は API token 入力フォーム → `POST /api/connections/toggl`。
@@ -71,8 +75,8 @@ definePageMeta({ middleware: ["auth", "require-connections"] });
 
 現在のコンポーネントは **1 つだけ**:
 
-| コンポーネント | 責務 |
-| --- | --- |
+| コンポーネント         | 責務                                                              |
+| ---------------------- | ----------------------------------------------------------------- |
 | `DailySummaryView.vue` | Today's ME と Wake-based Timeline の描画本体。認証 / デモで再利用 |
 
 **なぜコンポーネントが少ないのか**: ページ数自体が少なく、ページ間で共有が必要な UI が `DailySummaryView` 以外に無いから。将来 Timeline の lane を別出ししたくなれば `app/components/timeline/<lane>.vue` のような構造に育てる。
@@ -88,10 +92,10 @@ definePageMeta({ middleware: ["auth", "require-connections"] });
 
 ## レイアウト
 
-| ファイル | 役割 |
-| --- | --- |
-| `app/layouts/default.vue` | デフォルトレイアウト |
-| `app/app.vue` | ルート。SEO メタ / OGP 設定 / `<NuxtLayout><NuxtPage /></NuxtLayout>` |
+| ファイル                  | 役割                                                                  |
+| ------------------------- | --------------------------------------------------------------------- |
+| `app/layouts/default.vue` | デフォルトレイアウト                                                  |
+| `app/app.vue`             | ルート。SEO メタ / OGP 設定 / `<NuxtLayout><NuxtPage /></NuxtLayout>` |
 
 `/auth/callback` は `definePageMeta({ layout: false })` でレイアウトを外している（フォーム要素がほぼ無い、認証完了の一瞬しか描画されないため）。
 
@@ -125,14 +129,14 @@ css: ["~/assets/styles/style.scss"],
 
 ### スタイルファイル
 
-| ファイル | 役割 |
-| --- | --- |
-| `app/assets/styles/reset.scss` | CSS リセット |
-| `app/assets/styles/design-tokens.scss` | 色 / spacing / typography トークン |
-| `app/assets/styles/variables.scss` | SCSS 変数（自動 inject 経由で使う）|
-| `app/assets/styles/mixins.scss` | SCSS mixin |
-| `app/assets/styles/style.scss` | エントリ |
-| `app/assets/styles/images/` | UI で使う画像（サービスアイコン等）|
+| ファイル                               | 役割                                |
+| -------------------------------------- | ----------------------------------- |
+| `app/assets/styles/reset.scss`         | CSS リセット                        |
+| `app/assets/styles/design-tokens.scss` | 色 / spacing / typography トークン  |
+| `app/assets/styles/variables.scss`     | SCSS 変数（自動 inject 経由で使う） |
+| `app/assets/styles/mixins.scss`        | SCSS mixin                          |
+| `app/assets/styles/style.scss`         | エントリ                            |
+| `app/assets/styles/images/`            | UI で使う画像（サービスアイコン等） |
 
 ### コンパイル
 
@@ -153,11 +157,13 @@ UI 実装時は **必ず** `desine-tone/` の内容をベースにする（CLAUD
 ## UI 動作確認
 
 CLAUDE.md より:
+
 - UI を実装したら **Playwright MCP（ブラウザ操作）で必ず動作確認**。
 - テストファイル（`*.spec.ts` / `tests/`）は **明示指示が無い限り作らない**（Issue #63）。
 - 実行できない場合は省略せず **ユーザーに確認**。
 
 確認のチェックリスト（典型）:
+
 - [ ] golden path（最も使われる経路）が動く
 - [ ] エッジケース（空データ / エラー / 過去日 / 進行中エントリ）も崩れない
 - [ ] PC（1440px） / タブレット（820px） / SP（375px）でレイアウトが破綻しない
@@ -171,7 +177,10 @@ CLAUDE.md より:
 
 ```html
 <head>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:...">
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:..."
+  />
 </head>
 ```
 
@@ -191,6 +200,7 @@ CLAUDE.md より:
 ## SEO / OGP
 
 `app/app.vue` で `useSeoMeta` / `useHead` を設定:
+
 - `og:image` は `/ogp-rectangle.png`（1731×909）と `/ogp-square.png`（1254×1254）の 2 種類。
 - `twitter:card` は `summary_large_image`。
 - `lang="ja"` を `<html>` に。

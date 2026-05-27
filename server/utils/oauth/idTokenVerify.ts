@@ -22,10 +22,7 @@ import process from "node:process";
 import { createRemoteJWKSet, jwtVerify, errors } from "jose";
 
 const GOOGLE_JWKS_URL = new URL("https://www.googleapis.com/oauth2/v3/certs");
-const GOOGLE_ISS_VALUES = [
-  "https://accounts.google.com",
-  "accounts.google.com",
-] as const;
+const GOOGLE_ISS_VALUES = ["https://accounts.google.com", "accounts.google.com"] as const;
 // iat の clock skew 許容幅 (設計 §4.2 (2): 5 分)。
 const CLOCK_SKEW_SECONDS = 5 * 60;
 // JWKS のキャッシュ TTL。jose のデフォルト挙動でも 10 分程度キャッシュされるが
@@ -82,9 +79,7 @@ function loadAudience(): string {
 //   - 署名失敗 / iss 不一致 / aud 不一致 / 期限切れ / iat の skew 超過 → throw
 //   - email は scope に email が含まれていれば付く想定。欠落しても fail させない
 //     (provider_user_id だけあれば「どの Google アカウントか」は確定できるため)。
-export async function verifyGoogleIdToken(
-  idToken: string,
-): Promise<GoogleIdTokenClaims> {
+export async function verifyGoogleIdToken(idToken: string): Promise<GoogleIdTokenClaims> {
   const audience = loadAudience();
 
   let verified: Awaited<ReturnType<typeof jwtVerify>>;
@@ -107,7 +102,7 @@ export async function verifyGoogleIdToken(
     }
     throw new IdTokenVerificationError(
       e instanceof Error ? e.message : "unknown verification error",
-      e,
+      e
     );
   }
 
@@ -119,9 +114,7 @@ export async function verifyGoogleIdToken(
   }
 
   const emailRaw = payload["email"];
-  const email = typeof emailRaw === "string" && emailRaw.length > 0
-    ? emailRaw
-    : null;
+  const email = typeof emailRaw === "string" && emailRaw.length > 0 ? emailRaw : null;
 
   const emailVerifiedRaw = payload["email_verified"];
   const email_verified = emailVerifiedRaw === true;

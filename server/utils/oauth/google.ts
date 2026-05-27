@@ -61,7 +61,7 @@ export interface BuildGoogleAuthorizeUrlOptions {
 export function buildGoogleAuthorizeUrl(
   state: string,
   redirectUri: string,
-  options: BuildGoogleAuthorizeUrlOptions = {},
+  options: BuildGoogleAuthorizeUrlOptions = {}
 ): string {
   const env = loadEnv();
   const url = new URL(GOOGLE_AUTHORIZE_URL);
@@ -72,10 +72,7 @@ export function buildGoogleAuthorizeUrl(
   url.searchParams.set("state", state);
   // refresh_token を確実に得るための定型
   url.searchParams.set("access_type", "offline");
-  url.searchParams.set(
-    "prompt",
-    options.selectAccount ? "consent select_account" : "consent",
-  );
+  url.searchParams.set("prompt", options.selectAccount ? "consent select_account" : "consent");
   url.searchParams.set("include_granted_scopes", "true");
   return url.toString();
 }

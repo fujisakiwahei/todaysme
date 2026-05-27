@@ -64,7 +64,7 @@ export function targetDateOf(wakeAt: Date | string, timezone: string): string {
 export function computeWakeRange(
   targetDate: string,
   sleeps: SleepRecordLike[],
-  options: { timezone: string; now?: Date },
+  options: { timezone: string; now?: Date }
 ): WakeRange | null {
   const now = options.now ?? new Date();
   const sorted = sleeps
@@ -74,9 +74,7 @@ export function computeWakeRange(
     }))
     .sort((a, b) => a.wake_at.getTime() - b.wake_at.getTime());
 
-  const idx = sorted.findIndex(
-    (s) => targetDateOf(s.wake_at, options.timezone) === targetDate,
-  );
+  const idx = sorted.findIndex((s) => targetDateOf(s.wake_at, options.timezone) === targetDate);
   if (idx === -1) return null;
 
   const start = sorted[idx]!.wake_at;
@@ -93,9 +91,7 @@ export function computeWakeRange(
     // 「24h 後で頭打ち」だと日跨ぎ直後に起床経過時間が 24h で固定されてしまう。
     // ただし古い日付でデータが欠落しているケースで経過時間が際限なく増えないよう
     // start から 24h を上限としてキャップする。
-    end =
-      nextSleep ??
-      new Date(Math.min(now.getTime(), start.getTime() + 24 * 60 * 60 * 1000));
+    end = nextSleep ?? new Date(Math.min(now.getTime(), start.getTime() + 24 * 60 * 60 * 1000));
   }
 
   return { start, end };
@@ -116,7 +112,7 @@ export interface WakeRangeOfOptions {
 export async function wakeRangeOf(
   targetDate: string,
   userId: string,
-  options: WakeRangeOfOptions,
+  options: WakeRangeOfOptions
 ): Promise<WakeRange | null> {
   // targetDate を中心に ±2 日の睡眠記録を読む
   // (前夜の睡眠開始 〜 翌朝の起床 を取りこぼさないため)
@@ -150,7 +146,7 @@ export async function wakeRangeOf(
 export function overlaps(
   range: WakeRange,
   start: Date | string,
-  end: Date | string | null | undefined,
+  end: Date | string | null | undefined
 ): boolean {
   const s = toDate(start).getTime();
   const e = end == null ? range.end.getTime() : toDate(end).getTime();

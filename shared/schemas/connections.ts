@@ -8,11 +8,7 @@
 // =============================================================================
 import { z } from "zod";
 
-import {
-  connectionStatusSchema,
-  isoDateTimeSchema,
-  serviceProviderSchema,
-} from "./common";
+import { connectionStatusSchema, isoDateTimeSchema, serviceProviderSchema } from "./common";
 
 // -----------------------------------------------------------------------------
 // OAuth start (`GET /api/connections/<provider>/start`)
@@ -167,19 +163,13 @@ export type OauthCallbackQuery = z.infer<typeof oauthCallbackQuerySchema>;
 export type TogglConnectRequest = z.infer<typeof togglConnectRequestSchema>;
 export type DisconnectParams = z.infer<typeof disconnectParamsSchema>;
 export type ConnectionSummary = z.infer<typeof connectionSummarySchema>;
-export type ConnectionListResponse = z.infer<
-  typeof connectionListResponseSchema
->;
-export type ConnectionsRequiredResponse = z.infer<
-  typeof connectionsRequiredResponseSchema
->;
+export type ConnectionListResponse = z.infer<typeof connectionListResponseSchema>;
+export type ConnectionsRequiredResponse = z.infer<typeof connectionsRequiredResponseSchema>;
 export type GoogleAccount = z.infer<typeof googleAccountSchema>;
 export type GoogleAccountsResponse = z.infer<typeof googleAccountsResponseSchema>;
 export type GoogleCalendarsRequest = z.infer<typeof googleCalendarsRequestSchema>;
 export type GoogleCalendarItem = z.infer<typeof googleCalendarItemSchema>;
-export type GoogleCalendarsResponse = z.infer<
-  typeof googleCalendarsResponseSchema
->;
+export type GoogleCalendarsResponse = z.infer<typeof googleCalendarsResponseSchema>;
 export type GoogleExcludedCalendarsUpdateRequest = z.infer<
   typeof googleExcludedCalendarsUpdateRequestSchema
 >;

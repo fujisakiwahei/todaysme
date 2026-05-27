@@ -23,11 +23,7 @@ export class SchemaValidationError extends Error {
   statusMessage: string;
   data: { issues: ValidationIssue[] };
 
-  constructor(
-    statusCode: number,
-    statusMessage: string,
-    issues: ValidationIssue[],
-  ) {
+  constructor(statusCode: number, statusMessage: string, issues: ValidationIssue[]) {
     super(statusMessage);
     this.name = "SchemaValidationError";
     this.statusCode = statusCode;
@@ -44,7 +40,7 @@ interface ParseOptions {
 export function parseOrThrow<S extends ZodType>(
   schema: S,
   data: unknown,
-  options: ParseOptions = {},
+  options: ParseOptions = {}
 ): z.infer<S> {
   const result = schema.safeParse(data);
   if (!result.success) {
@@ -54,7 +50,7 @@ export function parseOrThrow<S extends ZodType>(
       result.error.issues.map((issue) => ({
         path: issue.path,
         message: issue.message,
-      })),
+      }))
     );
   }
   return result.data;
@@ -64,7 +60,7 @@ export function parseOrThrow<S extends ZodType>(
 export function parseExternal<S extends ZodType>(
   schema: S,
   data: unknown,
-  service: "oura" | "google" | "toggl",
+  service: "oura" | "google" | "toggl"
 ): z.infer<S> {
   return parseOrThrow(schema, data, {
     statusCode: 502,

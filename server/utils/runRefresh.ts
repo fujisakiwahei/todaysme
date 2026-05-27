@@ -13,11 +13,7 @@
 //     その snapshot を各 sync 関数に引数として渡す。401 リトライ後の refresh
 //     書き戻しは serviceConnection.runWithRetry が DB から再読みする (現状維持)。
 // =============================================================================
-import type {
-  ApiErrorItem,
-  ServiceProvider,
-  SyncStatusEntry,
-} from "../../shared/schemas";
+import type { ApiErrorItem, ServiceProvider, SyncStatusEntry } from "../../shared/schemas";
 
 import {
   loadServiceConnectionsForUser,
@@ -45,7 +41,7 @@ interface ProviderSyncContext {
 
 type SyncRunner = (
   ctx: ProviderSyncContext,
-  connections: readonly ServiceConnectionTokenRow[],
+  connections: readonly ServiceConnectionTokenRow[]
 ) => Promise<void>;
 
 // 各 provider の sync 入口。事前取得済みの connection rows から自分の行を
@@ -57,12 +53,7 @@ const RUNNERS: Record<ServiceProvider, SyncRunner> = {
     return syncOuraForDate(userId, targetDate, timezone, row);
   },
   google: ({ userId, targetDate, timezone }, connections) =>
-    syncGoogleForDate(
-      userId,
-      targetDate,
-      timezone,
-      pickConnectedRows(connections, "google"),
-    ),
+    syncGoogleForDate(userId, targetDate, timezone, pickConnectedRows(connections, "google")),
   toggl: ({ userId, targetDate, timezone }, connections) => {
     const row = pickConnectedRow(connections, "toggl");
     if (!row) throw new ServiceNotConnectedError("toggl");
@@ -97,9 +88,7 @@ export async function loadUserTimezone(userId: string): Promise<string> {
   return (data?.timezone as string | undefined) ?? "Asia/Tokyo";
 }
 
-export async function loadConnectedProviders(
-  userId: string,
-): Promise<Set<ServiceProvider>> {
+export async function loadConnectedProviders(userId: string): Promise<Set<ServiceProvider>> {
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
     .from("service_connections")
@@ -119,10 +108,7 @@ export async function loadConnectedProviders(
   return set;
 }
 
-function toStatusEntry(
-  source: ServiceProvider,
-  row: SyncStatusRow,
-): SyncStatusEntry {
+function toStatusEntry(source: ServiceProvider, row: SyncStatusRow): SyncStatusEntry {
   return {
     source,
     status: row.status,
@@ -149,7 +135,7 @@ interface ProviderRefreshOutcome {
 async function refreshProvider(
   provider: ServiceProvider,
   ctx: ProviderSyncContext,
-  connections: readonly ServiceConnectionTokenRow[],
+  connections: readonly ServiceConnectionTokenRow[]
 ): Promise<ProviderRefreshOutcome> {
   const { userId, targetDate } = ctx;
   const outcome: ProviderRefreshOutcome = { statuses: [], errors: [] };
@@ -184,17 +170,9 @@ async function refreshProvider(
     // ServiceNotConnectedError はロック取得後に判明する稀ケース (connections と
     // 復号結果がズレている等)。それも含めて failed として記録する。
     const message =
-      e instanceof ServiceNotConnectedError
-        ? "service is not connected"
-        : summarizeError(e);
+      e instanceof ServiceNotConnectedError ? "service is not connected" : summarizeError(e);
     try {
-      const updated = await markSyncFailed(
-        userId,
-        targetDate,
-        provider,
-        lockId,
-        message,
-      );
+      const updated = await markSyncFailed(userId, targetDate, provider, lockId, message);
       if (updated) outcome.statuses.push(toStatusEntry(provider, updated));
       // updated === null も「lock を奪われた」だけなので errors 側にだけ載せる。
     } catch (markErr) {
@@ -213,7 +191,7 @@ async function refreshProvider(
 export async function refreshUserDate(
   userId: string,
   targetDate: string,
-  options: RefreshUserDateOptions = {},
+  options: RefreshUserDateOptions = {}
 ): Promise<RefreshUserDateResult> {
   // Issue #176: timezone と service_connections の 1 ユーザー全行を並列で取る。
   // service_connections はここで取った snapshot を各 sync 関数に渡し、refresh
@@ -221,9 +199,7 @@ export async function refreshUserDate(
   // runWithRetry 側が DB を再読みするため (= 同 row が古くなっても整合性が
   // 取れる仕組み)、ここでの snapshot 利用は安全。
   const [timezone, connections] = await Promise.all([
-    options.timezone !== undefined
-      ? Promise.resolve(options.timezone)
-      : loadUserTimezone(userId),
+    options.timezone !== undefined ? Promise.resolve(options.timezone) : loadUserTimezone(userId),
     loadServiceConnectionsForUser(userId),
   ]);
 
@@ -243,7 +219,7 @@ export async function refreshUserDate(
   const ctx = { userId, targetDate, timezone };
   const targets = ALL_PROVIDERS.filter((p) => connectedProviders.has(p));
   const settled = await Promise.allSettled(
-    targets.map((provider) => refreshProvider(provider, ctx, connections)),
+    targets.map((provider) => refreshProvider(provider, ctx, connections))
   );
 
   // ALL_PROVIDERS の順序を維持するため targets と settled の index を合わせて読む。

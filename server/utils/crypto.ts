@@ -20,7 +20,7 @@ function loadKey(): Buffer {
   const key = Buffer.from(raw, "base64");
   if (key.length !== KEY_LENGTH_BYTES) {
     throw new Error(
-      `TOKEN_ENCRYPTION_KEY must decode to ${KEY_LENGTH_BYTES} bytes (got ${key.length})`,
+      `TOKEN_ENCRYPTION_KEY must decode to ${KEY_LENGTH_BYTES} bytes (got ${key.length})`
     );
   }
   return key;
@@ -33,10 +33,7 @@ export function encrypt(plain: string): EncryptedPayload {
   const key = loadKey();
   const iv = randomBytes(IV_LENGTH_BYTES);
   const cipher = createCipheriv(ALGORITHM, key, iv);
-  const ciphertext = Buffer.concat([
-    cipher.update(plain, "utf8"),
-    cipher.final(),
-  ]);
+  const ciphertext = Buffer.concat([cipher.update(plain, "utf8"), cipher.final()]);
   const authTag = cipher.getAuthTag();
   return {
     iv: iv.toString("base64"),

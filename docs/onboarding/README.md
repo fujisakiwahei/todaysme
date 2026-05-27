@@ -25,19 +25,19 @@ MVP は単一ユーザー運用（開発者自身）が前提。マルチユー�
 
 ## 2. 技術スタック（30 秒版）
 
-| レイヤ | 採用 | 役割 |
-| --- | --- | --- |
-| フロント / API | **Nuxt 4 (SSR)** + Vue 3 | 画面とサーバ API を同居 |
-| 言語 | **TypeScript strict** | 型安全 |
-| 状態管理 | （Pinia は将来用に SPEC に記載。**現状ストアなし**）| `useState` / SDK 内部状態で足りている |
-| 認証 | **Supabase Auth**（Google OAuth / Email） | JWT を発行 |
-| DB | **Supabase PostgreSQL** + RLS | `auth.uid()` で行レベル制御 |
-| スキーマ検証 | **Zod**（`shared/schemas/`） | API I/O と外部 API レスポンスを検証 |
-| 暗号化 | Node 標準 `crypto`（AES-256-GCM） | 外部サービストークン保存用 |
-| Cron | **Vercel Cron**（毎朝 05:00 JST） | 直近 14 日を再同期 |
-| ホスティング | **Vercel** | Preview / Production |
-| エラートラッキング | **Sentry**（client / server 両方） | |
-| パッケージマネージャ | **pnpm 11**（corepack） | Node 22（`.nvmrc`） |
+| レイヤ               | 採用                                                 | 役割                                  |
+| -------------------- | ---------------------------------------------------- | ------------------------------------- |
+| フロント / API       | **Nuxt 4 (SSR)** + Vue 3                             | 画面とサーバ API を同居               |
+| 言語                 | **TypeScript strict**                                | 型安全                                |
+| 状態管理             | （Pinia は将来用に SPEC に記載。**現状ストアなし**） | `useState` / SDK 内部状態で足りている |
+| 認証                 | **Supabase Auth**（Google OAuth / Email）            | JWT を発行                            |
+| DB                   | **Supabase PostgreSQL** + RLS                        | `auth.uid()` で行レベル制御           |
+| スキーマ検証         | **Zod**（`shared/schemas/`）                         | API I/O と外部 API レスポンスを検証   |
+| 暗号化               | Node 標準 `crypto`（AES-256-GCM）                    | 外部サービストークン保存用            |
+| Cron                 | **Vercel Cron**（毎朝 05:00 JST）                    | 直近 14 日を再同期                    |
+| ホスティング         | **Vercel**                                           | Preview / Production                  |
+| エラートラッキング   | **Sentry**（client / server 両方）                   |                                       |
+| パッケージマネージャ | **pnpm 11**（corepack）                              | Node 22（`.nvmrc`）                   |
 
 ---
 
@@ -161,15 +161,15 @@ pnpm format
 
 ## 7. よくある詰まりポイント
 
-| 症状 | 原因と対処 |
-| --- | --- |
-| `pnpm dev` 起動時に `TOKEN_ENCRYPTION_KEY is not set` で 500 | `.env` に base64 32 bytes の鍵を入れる。サンプル生成は `openssl rand -base64 32` |
-| `/api/connections/*` が 401 | Bearer トークン未付与。`useSupabaseClient().auth.getSession()` で取った `access_token` を `Authorization: Bearer ...` で渡す（[auth.md](./auth.md)）|
-| `/daily/[date]` を開いても何も出ない | Oura 未連携。Wake range が組み立てられず timeline / Today's ME が空になる。`/settings` で Oura を繋ぐ。`require-connections` middleware が `/settings` に強制遷移させているはず |
-| 「更新」ボタンを押しても変わらない | 30 分以内の last_synced_at がある = idempotent / 別 process が in_progress（`syncLock`）。`daily_sync_statuses` を直接見ると現在の状態が分かる |
-| Google OAuth で `redirect_uri_mismatch` | Google Cloud Console の登録 URI と `resolveOauthRedirectUri()` の出力が一致していない。リクエスト origin から組み立てる仕様（Issue #100） |
-| 本番が全ルート 500（過去事例） | Pinia の SSR バンドル問題（Issue #99）。今は `@pinia/nuxt` を `nuxt.config.ts` から外している。**ストアを実際に使い始める時に再導入する** |
-| `pnpm dev` で SCSS 変数が解決されない | `nuxt.config.ts` の `additionalData` で `variables` / `mixins` を全 SCSS に自動 inject している。`@use` を書く必要はない |
+| 症状                                                         | 原因と対処                                                                                                                                                                      |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev` 起動時に `TOKEN_ENCRYPTION_KEY is not set` で 500 | `.env` に base64 32 bytes の鍵を入れる。サンプル生成は `openssl rand -base64 32`                                                                                                |
+| `/api/connections/*` が 401                                  | Bearer トークン未付与。`useSupabaseClient().auth.getSession()` で取った `access_token` を `Authorization: Bearer ...` で渡す（[auth.md](./auth.md)）                            |
+| `/daily/[date]` を開いても何も出ない                         | Oura 未連携。Wake range が組み立てられず timeline / Today's ME が空になる。`/settings` で Oura を繋ぐ。`require-connections` middleware が `/settings` に強制遷移させているはず |
+| 「更新」ボタンを押しても変わらない                           | 30 分以内の last_synced_at がある = idempotent / 別 process が in_progress（`syncLock`）。`daily_sync_statuses` を直接見ると現在の状態が分かる                                  |
+| Google OAuth で `redirect_uri_mismatch`                      | Google Cloud Console の登録 URI と `resolveOauthRedirectUri()` の出力が一致していない。リクエスト origin から組み立てる仕様（Issue #100）                                       |
+| 本番が全ルート 500（過去事例）                               | Pinia の SSR バンドル問題（Issue #99）。今は `@pinia/nuxt` を `nuxt.config.ts` から外している。**ストアを実際に使い始める時に再導入する**                                       |
+| `pnpm dev` で SCSS 変数が解決されない                        | `nuxt.config.ts` の `additionalData` で `variables` / `mixins` を全 SCSS に自動 inject している。`@use` を書く必要はない                                                        |
 
 ---
 

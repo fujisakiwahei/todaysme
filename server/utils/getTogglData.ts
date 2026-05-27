@@ -70,17 +70,13 @@ export interface TogglTimeEntryRecord {
 }
 
 function buildAuthorizationHeader(apiToken: string): string {
-  const encoded = Buffer.from(
-    `${apiToken}:${TOGGL_BASIC_AUTH_PASSWORD}`,
-    "utf8",
-  ).toString("base64");
+  const encoded = Buffer.from(`${apiToken}:${TOGGL_BASIC_AUTH_PASSWORD}`, "utf8").toString(
+    "base64"
+  );
   return `Basic ${encoded}`;
 }
 
-function toRecord(
-  entry: TogglTimeEntry,
-  timezone: string,
-): TogglTimeEntryRecord {
+function toRecord(entry: TogglTimeEntry, timezone: string): TogglTimeEntryRecord {
   return {
     toggl_entry_id: String(entry.id),
     title: entry.description ?? null,
@@ -101,10 +97,7 @@ interface FetchPageParams {
   endDate?: string;
 }
 
-async function fetchPage(
-  apiToken: string,
-  params: FetchPageParams,
-): Promise<TogglTimeEntry[]> {
+async function fetchPage(apiToken: string, params: FetchPageParams): Promise<TogglTimeEntry[]> {
   const url = new URL(`${TOGGL_API_BASE}/me/time_entries`);
   if (params.startDate !== undefined && params.endDate !== undefined) {
     url.searchParams.set("start_date", params.startDate);
@@ -132,9 +125,7 @@ async function fetchPage(
   return parseExternal(togglTimeEntriesResponseSchema, raw, "toggl");
 }
 
-export async function getTogglData(
-  options: GetTogglDataOptions,
-): Promise<TogglTimeEntryRecord[]> {
+export async function getTogglData(options: GetTogglDataOptions): Promise<TogglTimeEntryRecord[]> {
   if (!options.apiToken) {
     throw new Error("apiToken is required");
   }
@@ -159,7 +150,7 @@ export async function getTogglData(
       throw new Error(
         `Toggl window [${options.startDate}, ${options.endDate}) returned ` +
           `${entries.length} entries (>= ${TOGGL_PAGE_LIMIT} page limit). ` +
-          `Refusing to soft-delete because remaining entries cannot be fetched safely.`,
+          `Refusing to soft-delete because remaining entries cannot be fetched safely.`
       );
     }
     return entries.map((e) => toRecord(e, options.timezone));
@@ -168,9 +159,7 @@ export async function getTogglData(
   // 同一エントリの再受信 (since == max(at) を再送する境界ケース) を捨てる
   const seen = new Set<number>();
   const result: TogglTimeEntryRecord[] = [];
-  let sinceSeconds = options.since
-    ? Math.floor(options.since.getTime() / 1000)
-    : undefined;
+  let sinceSeconds = options.since ? Math.floor(options.since.getTime() / 1000) : undefined;
 
   for (let i = 0; i < MAX_PAGE_ITERATIONS; i++) {
     const entries = await fetchPage(options.apiToken, { since: sinceSeconds });
@@ -207,9 +196,7 @@ export async function getTogglData(
 //   (個人 MVP の project 数) では十分にレスポンスに収まる。
 // ----------------------------------------------------------------------------
 
-export async function getTogglProjects(
-  apiToken: string,
-): Promise<TogglProject[]> {
+export async function getTogglProjects(apiToken: string): Promise<TogglProject[]> {
   if (!apiToken) {
     throw new Error("apiToken is required");
   }
@@ -233,9 +220,7 @@ export async function getTogglProjects(
 
 // project_id -> project_name の Map を組み立てる。
 // 名前が空・無し (Toggl 上では稀だが) のものは Map に入れない。
-export function buildProjectNameMap(
-  projects: TogglProject[],
-): Map<number, string> {
+export function buildProjectNameMap(projects: TogglProject[]): Map<number, string> {
   const map = new Map<number, string>();
   for (const p of projects) {
     if (p.name && p.name.length > 0) {
@@ -249,7 +234,7 @@ export function buildProjectNameMap(
 // 元配列はミューテートせず、新しい配列を返す。
 export function enrichWithProjectNames(
   entries: TogglTimeEntryRecord[],
-  projectNameById: Map<number, string>,
+  projectNameById: Map<number, string>
 ): TogglTimeEntryRecord[] {
   return entries.map((e) => {
     if (e.project_id == null) return e;

@@ -21,15 +21,9 @@ const deleteGoogleAccountParamsSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const userId = await requireUserId(event);
-  const params = parseOrThrow(
-    deleteGoogleAccountParamsSchema,
-    getRouterParams(event),
-  );
+  const params = parseOrThrow(deleteGoogleAccountParamsSchema, getRouterParams(event));
 
-  const result = await deleteGoogleConnectionPermanently(
-    userId,
-    params.connectionId,
-  );
+  const result = await deleteGoogleConnectionPermanently(userId, params.connectionId);
   if (!result.found) {
     throw createError({
       statusCode: 404,

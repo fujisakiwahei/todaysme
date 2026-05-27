@@ -26,10 +26,7 @@
 //     service_connections.status に既に書き込まれている)。
 // =============================================================================
 import { getGoogleData } from "./getGoogleData";
-import {
-  withFreshAccessTokenFromRow,
-  type ServiceConnectionTokenRow,
-} from "./serviceConnection";
+import { withFreshAccessTokenFromRow, type ServiceConnectionTokenRow } from "./serviceConnection";
 import { getSupabaseAdmin } from "./supabaseAdmin";
 
 const GOOGLE_CALENDAR_EVENTS = "google_calendar_events";
@@ -59,7 +56,7 @@ export async function syncGoogleForDate(
   userId: string,
   targetDate: string,
   timezone: string,
-  connections: readonly ServiceConnectionTokenRow[],
+  connections: readonly ServiceConnectionTokenRow[]
 ): Promise<void> {
   if (connections.length === 0) {
     // 通常 runRefresh.ts 側で connected provider に google を含めない経路で
@@ -110,21 +107,17 @@ interface SyncOneGoogleConnectionInput {
   timeMax: string;
 }
 
-async function syncOneGoogleConnection(
-  input: SyncOneGoogleConnectionInput,
-): Promise<void> {
+async function syncOneGoogleConnection(input: SyncOneGoogleConnectionInput): Promise<void> {
   const { userId, connection, targetDate, timezone, timeMin, timeMax } = input;
   const connectionId = connection.id;
 
-  const { calendars } = await withFreshAccessTokenFromRow(
-    connection,
-    (accessToken) =>
-      getGoogleData({
-        accessToken,
-        timezone,
-        timeMin,
-        timeMax,
-      }),
+  const { calendars } = await withFreshAccessTokenFromRow(connection, (accessToken) =>
+    getGoogleData({
+      accessToken,
+      timezone,
+      timeMin,
+      timeMax,
+    })
   );
 
   const admin = getSupabaseAdmin();
@@ -150,15 +143,11 @@ async function syncOneGoogleConnection(
       updated_at: nowIso,
     }));
 
-    const { error: upsertError } = await admin
-      .from(GOOGLE_CALENDAR_EVENTS)
-      .upsert(rows, {
-        onConflict: "user_id,connection_id,calendar_id,google_event_id",
-      });
+    const { error: upsertError } = await admin.from(GOOGLE_CALENDAR_EVENTS).upsert(rows, {
+      onConflict: "user_id,connection_id,calendar_id,google_event_id",
+    });
     if (upsertError) {
-      throw new Error(
-        `failed to upsert ${GOOGLE_CALENDAR_EVENTS}: ${upsertError.message}`,
-      );
+      throw new Error(`failed to upsert ${GOOGLE_CALENDAR_EVENTS}: ${upsertError.message}`);
     }
   }
 
@@ -174,9 +163,7 @@ async function syncOneGoogleConnection(
       .eq("calendar_id", cal.calendarId)
       .in("google_event_id", cal.deletedEventIds);
     if (deleteError) {
-      throw new Error(
-        `failed to soft-delete cancelled events: ${deleteError.message}`,
-      );
+      throw new Error(`failed to soft-delete cancelled events: ${deleteError.message}`);
     }
   }
 
@@ -197,9 +184,7 @@ async function syncOneGoogleConnection(
       .eq("is_deleted", false)
       .in("calendar_id", activeCalendarIds);
     if (readError) {
-      throw new Error(
-        `failed to read ${GOOGLE_CALENDAR_EVENTS}: ${readError.message}`,
-      );
+      throw new Error(`failed to read ${GOOGLE_CALENDAR_EVENTS}: ${readError.message}`);
     }
 
     const existingByCalendar = new Map<string, string[]>();
@@ -232,9 +217,7 @@ async function syncOneGoogleConnection(
         .eq("target_date", targetDate)
         .in("google_event_id", toDelete);
       if (updateError) {
-        throw new Error(
-          `failed to soft-delete ${GOOGLE_CALENDAR_EVENTS}: ${updateError.message}`,
-        );
+        throw new Error(`failed to soft-delete ${GOOGLE_CALENDAR_EVENTS}: ${updateError.message}`);
       }
     }
   }
@@ -264,7 +247,7 @@ interface SoftDeleteRemovedCalendarsInput {
 // connection_id でスコープすることで「別アカウントが同 calendar_id を購読
 // している」ケースでも他接続の行を巻き込まない。
 async function softDeleteEventsForRemovedCalendars(
-  input: SoftDeleteRemovedCalendarsInput,
+  input: SoftDeleteRemovedCalendarsInput
 ): Promise<void> {
   const admin = getSupabaseAdmin();
 
@@ -279,16 +262,12 @@ async function softDeleteEventsForRemovedCalendars(
   if (input.activeCalendarIds.length > 0) {
     // PostgREST の filter 形式: `not.in.("a","b")`。 calendar_id に
     // ダブルクォートが含まれる正規ケースは無いはずだが、念のため escape する。
-    const escaped = input.activeCalendarIds
-      .map((id) => `"${id.replace(/"/g, '""')}"`)
-      .join(",");
+    const escaped = input.activeCalendarIds.map((id) => `"${id.replace(/"/g, '""')}"`).join(",");
     query = query.filter("calendar_id", "not.in", `(${escaped})`);
   }
 
   const { error } = await query;
   if (error) {
-    throw new Error(
-      `failed to soft-delete events for removed calendars: ${error.message}`,
-    );
+    throw new Error(`failed to soft-delete events for removed calendars: ${error.message}`);
   }
 }

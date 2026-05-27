@@ -31,12 +31,9 @@ export default defineNuxtRouteMiddleware(async (to) => {
     // SSR では Nuxt が internal call にリクエスト cookie を引き継いでくれる
     // (server $fetch は同一プロセス呼び出し)。client では fetch が同一オリジン
     // cookie を自動付与する。明示的に cookie を渡す必要はない。
-    res = await $fetch<ConnectionsRequiredResponse>(
-      "/api/internal/connections-required",
-      {
-        headers: useRequestHeaders(["cookie"]),
-      },
-    );
+    res = await $fetch<ConnectionsRequiredResponse>("/api/internal/connections-required", {
+      headers: useRequestHeaders(["cookie"]),
+    });
   } catch {
     return;
   }
@@ -51,6 +48,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
       path: "/settings",
       query: { require_connections: res.missing.join(",") },
     },
-    { replace: true },
+    { replace: true }
   );
 });

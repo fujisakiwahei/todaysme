@@ -8,27 +8,27 @@
 
 ## 環境変数一覧
 
-| 変数 | スコープ | 用途 | どこで使う |
-| --- | --- | --- | --- |
-| `NUXT_PUBLIC_SUPABASE_URL` | public | Supabase プロジェクト URL | クライアント / サーバ両方（`@nuxtjs/supabase` / `getSupabaseAdmin`）|
-| `NUXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | public | 旧 `anon` key 相当。RLS が効く | クライアント側で SDK 初期化 |
-| `SUPABASE_SECRET_KEY` | **server only** | 旧 `service_role` key 相当。**RLS を bypass** | `getSupabaseAdmin()` 経由でのみ |
-| `TOKEN_ENCRYPTION_KEY` | **server only** | 外部サービストークン暗号化キー（base64 32 bytes）| `server/utils/crypto.ts` |
-| `OAUTH_STATE_SECRET` | **server only** | OAuth state の HMAC 鍵（未設定なら `TOKEN_ENCRYPTION_KEY` から派生）| `server/utils/oauthState.ts` |
-| `OURA_CLIENT_ID` / `OURA_CLIENT_SECRET` | server only | Oura OAuth2 | `server/utils/oauth/oura.ts` |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | server only | Google Calendar OAuth2 | `server/utils/oauth/google.ts` |
-| `TOGGL_API_TOKEN` | server only | Toggl Track API token（個人用 MVP 向け fallback）| `server/utils/getTogglData.ts` 等 |
-| `CRON_SECRET` | server only | Vercel Cron 認証用 | `server/api/cron/daily.get.ts:authorizeCron` |
-| `SENTRY_AUTH_TOKEN` | server only | Sentry source map upload | ビルド時のみ（`.env.sentry-build-plugin` 経由が推奨）|
+| 変数                                        | スコープ        | 用途                                                                 | どこで使う                                                           |
+| ------------------------------------------- | --------------- | -------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `NUXT_PUBLIC_SUPABASE_URL`                  | public          | Supabase プロジェクト URL                                            | クライアント / サーバ両方（`@nuxtjs/supabase` / `getSupabaseAdmin`） |
+| `NUXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`      | public          | 旧 `anon` key 相当。RLS が効く                                       | クライアント側で SDK 初期化                                          |
+| `SUPABASE_SECRET_KEY`                       | **server only** | 旧 `service_role` key 相当。**RLS を bypass**                        | `getSupabaseAdmin()` 経由でのみ                                      |
+| `TOKEN_ENCRYPTION_KEY`                      | **server only** | 外部サービストークン暗号化キー（base64 32 bytes）                    | `server/utils/crypto.ts`                                             |
+| `OAUTH_STATE_SECRET`                        | **server only** | OAuth state の HMAC 鍵（未設定なら `TOKEN_ENCRYPTION_KEY` から派生） | `server/utils/oauthState.ts`                                         |
+| `OURA_CLIENT_ID` / `OURA_CLIENT_SECRET`     | server only     | Oura OAuth2                                                          | `server/utils/oauth/oura.ts`                                         |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | server only     | Google Calendar OAuth2                                               | `server/utils/oauth/google.ts`                                       |
+| `TOGGL_API_TOKEN`                           | server only     | Toggl Track API token（個人用 MVP 向け fallback）                    | `server/utils/getTogglData.ts` 等                                    |
+| `CRON_SECRET`                               | server only     | Vercel Cron 認証用                                                   | `server/api/cron/daily.get.ts:authorizeCron`                         |
+| `SENTRY_AUTH_TOKEN`                         | server only     | Sentry source map upload                                             | ビルド時のみ（`.env.sentry-build-plugin` 経由が推奨）                |
 
 ---
 
 ## public / server only の分け方
 
-| プレフィックス | 露出範囲 |
-| --- | --- |
+| プレフィックス  | 露出範囲                                           |
+| --------------- | -------------------------------------------------- |
 | `NUXT_PUBLIC_*` | **クライアント JS にも入る**。秘密にしてはいけない |
-| それ以外 | サーバプロセスのみ。クライアントに露出しない |
+| それ以外        | サーバプロセスのみ。クライアントに露出しない       |
 
 **理由**: Nuxt の `runtimeConfig.public` に入る値（= `NUXT_PUBLIC_*`）はクライアントバンドルにインライン化される。secret を入れたら全世界に公開されることになる。
 
@@ -106,6 +106,7 @@ pnpm dev          # http://localhost:3000
 ## OAuth プロバイダ側の設定
 
 各サービスのデベロッパーポータルで:
+
 - **Oura**: redirect URI に `http://localhost:3000/api/connections/oura/callback` と Vercel Preview / Production の URL を登録。
 - **Google Cloud Console**:
   - OAuth client（Web application）を作る。
@@ -146,14 +147,14 @@ Vercel Project Settings → Environment Variables。スコープを **Production
 
 ## ありがちなトラブル
 
-| 症状 | 原因 | 対処 |
-| --- | --- | --- |
-| `TOKEN_ENCRYPTION_KEY is not set` | `.env` に未設定 / base64 デコード後が 32 bytes でない | `openssl rand -base64 32` で生成 |
-| `CRON_SECRET is not configured` で 503 | Cron 用シークレット未設定 | Vercel env に登録 |
-| `GOOGLE_CLIENT_ID is not set` | OAuth 起動時に env 不足 | dev portal で発行 |
-| Vercel Preview で OAuth が `redirect_uri_mismatch` | Google Cloud Console に Preview URL が未登録 | Preview の callback URL を Google 側に追加 |
-| `SUPABASE_SECRET_KEY is not set` で 500 | server / cron で admin client を呼ぶ前に env が無い | Vercel env に登録 |
-| クライアントで `import.meta.env.VITE_*` を使った | Nuxt + Vercel + Vite では `NUXT_PUBLIC_*` を使う | `NUXT_PUBLIC_<NAME>` に rename |
+| 症状                                               | 原因                                                  | 対処                                       |
+| -------------------------------------------------- | ----------------------------------------------------- | ------------------------------------------ |
+| `TOKEN_ENCRYPTION_KEY is not set`                  | `.env` に未設定 / base64 デコード後が 32 bytes でない | `openssl rand -base64 32` で生成           |
+| `CRON_SECRET is not configured` で 503             | Cron 用シークレット未設定                             | Vercel env に登録                          |
+| `GOOGLE_CLIENT_ID is not set`                      | OAuth 起動時に env 不足                               | dev portal で発行                          |
+| Vercel Preview で OAuth が `redirect_uri_mismatch` | Google Cloud Console に Preview URL が未登録          | Preview の callback URL を Google 側に追加 |
+| `SUPABASE_SECRET_KEY is not set` で 500            | server / cron で admin client を呼ぶ前に env が無い   | Vercel env に登録                          |
+| クライアントで `import.meta.env.VITE_*` を使った   | Nuxt + Vercel + Vite では `NUXT_PUBLIC_*` を使う      | `NUXT_PUBLIC_<NAME>` に rename             |
 
 ---
 

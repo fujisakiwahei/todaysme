@@ -14,14 +14,8 @@
 import { serverSupabaseUser } from "#supabase/server";
 import { createError, defineEventHandler } from "h3";
 
-import {
-  connectionsRequiredResponseSchema,
-  type ServiceProvider,
-} from "../../../shared/schemas";
-import {
-  pickPrimaryConnectionRow,
-  listServiceConnections,
-} from "../../utils/serviceConnection";
+import { connectionsRequiredResponseSchema, type ServiceProvider } from "../../../shared/schemas";
+import { pickPrimaryConnectionRow, listServiceConnections } from "../../utils/serviceConnection";
 import { parseOrThrow } from "../../utils/validation";
 
 // Oura の起床時刻 (wake_at) が無いと SPEC §4.2 の Wake-based Timeline が
@@ -43,7 +37,7 @@ export default defineEventHandler(async (event) => {
   // 「最も active な 1 行」を決定的に選ぶ。1 つでも connected があれば
   // missing から外れる挙動になる。
   const missing = REQUIRED_PROVIDERS.filter(
-    (p) => pickPrimaryConnectionRow(rows, p)?.status !== "connected",
+    (p) => pickPrimaryConnectionRow(rows, p)?.status !== "connected"
   );
 
   return parseOrThrow(connectionsRequiredResponseSchema, { missing });

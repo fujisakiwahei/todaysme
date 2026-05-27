@@ -46,8 +46,6 @@ export const togglProjectSchema = z.object({
 export const togglProjectsResponseSchema = z.array(togglProjectSchema);
 
 export type TogglTimeEntry = z.infer<typeof togglTimeEntrySchema>;
-export type TogglTimeEntriesResponse = z.infer<
-  typeof togglTimeEntriesResponseSchema
->;
+export type TogglTimeEntriesResponse = z.infer<typeof togglTimeEntriesResponseSchema>;
 export type TogglProject = z.infer<typeof togglProjectSchema>;
 export type TogglProjectsResponse = z.infer<typeof togglProjectsResponseSchema>;

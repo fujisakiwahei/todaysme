@@ -56,9 +56,7 @@ export async function requireUserId(event: H3Event): Promise<string> {
 // 書き換えない / 第三者のトップレベル navigation から呼ばれても害が無い)
 // だけ、cookie 認証 (serverSupabaseUser) へのフォールバックを許す。
 // /api/internal/connections-required と同じ方針 (Codex #104)。
-export async function requireUserIdAllowCookie(
-  event: H3Event,
-): Promise<string> {
+export async function requireUserIdAllowCookie(event: H3Event): Promise<string> {
   const bearerUserId = await resolveBearerUserId(event);
   if (bearerUserId) return bearerUserId;
 

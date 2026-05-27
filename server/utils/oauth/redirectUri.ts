@@ -17,10 +17,7 @@ const ENV_KEY: Record<Provider, string> = {
   oura: "OURA_REDIRECT_URI",
 };
 
-export function resolveOauthRedirectUri(
-  event: H3Event,
-  provider: Provider,
-): string {
+export function resolveOauthRedirectUri(event: H3Event, provider: Provider): string {
   const fromEnv = process.env[ENV_KEY[provider]];
   if (fromEnv && fromEnv.length > 0) return fromEnv;
 

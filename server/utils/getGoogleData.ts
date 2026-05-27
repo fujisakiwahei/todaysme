@@ -88,9 +88,7 @@ export interface GetGoogleDataResult {
 // 公開関数
 // =============================================================================
 
-export async function getGoogleData(
-  input: GetGoogleDataInput,
-): Promise<GetGoogleDataResult> {
+export async function getGoogleData(input: GetGoogleDataInput): Promise<GetGoogleDataResult> {
   const calendarMap = await fetchCalendarList(input.accessToken);
 
   const targetIds =
@@ -120,9 +118,7 @@ export async function getGoogleData(
 // 内部実装
 // =============================================================================
 
-async function fetchCalendarList(
-  accessToken: string,
-): Promise<Map<string, string | null>> {
+async function fetchCalendarList(accessToken: string): Promise<Map<string, string | null>> {
   const map = new Map<string, string | null>();
   let pageToken: string | undefined;
 
@@ -139,11 +135,7 @@ async function fetchCalendarList(
       throw new Error(`Google calendarList.list failed: HTTP ${res.status}`);
     }
     const json: unknown = await res.json();
-    const parsed = parseExternal(
-      googleCalendarListResponseSchema,
-      json,
-      "google",
-    );
+    const parsed = parseExternal(googleCalendarListResponseSchema, json, "google");
     for (const item of parsed.items) {
       if (item.deleted) continue;
       const name = item.summaryOverride ?? item.summary ?? null;
@@ -165,9 +157,7 @@ interface FetchCalendarEventsInput {
   syncToken: string | undefined;
 }
 
-async function fetchCalendarEvents(
-  input: FetchCalendarEventsInput,
-): Promise<CalendarSyncResult> {
+async function fetchCalendarEvents(input: FetchCalendarEventsInput): Promise<CalendarSyncResult> {
   const useSyncToken = Boolean(input.syncToken);
   let nextSyncToken: string | null = null;
   let pageToken: string | undefined;
@@ -177,7 +167,7 @@ async function fetchCalendarEvents(
 
   do {
     const url = new URL(
-      `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(input.calendarId)}/events`,
+      `${GOOGLE_CALENDAR_API_BASE}/calendars/${encodeURIComponent(input.calendarId)}/events`
     );
     url.searchParams.set("maxResults", String(EVENTS_PAGE_SIZE));
     url.searchParams.set("singleEvents", "true");
@@ -209,29 +199,18 @@ async function fetchCalendarEvents(
     }
 
     if (!res.ok) {
-      throw new Error(
-        `Google events.list failed for ${input.calendarId}: HTTP ${res.status}`,
-      );
+      throw new Error(`Google events.list failed for ${input.calendarId}: HTTP ${res.status}`);
     }
 
     const json: unknown = await res.json();
-    const parsed = parseExternal(
-      googleEventsListResponseSchema,
-      json,
-      "google",
-    );
+    const parsed = parseExternal(googleEventsListResponseSchema, json, "google");
 
     for (const event of parsed.items) {
       if (event.status === "cancelled") {
         deletedEventIds.push(event.id);
         continue;
       }
-      const row = toEventRow(
-        event,
-        input.calendarId,
-        input.calendarName,
-        input.timezone,
-      );
+      const row = toEventRow(event, input.calendarId, input.calendarName, input.timezone);
       if (row) events.push(row);
     }
 
@@ -254,7 +233,7 @@ function toEventRow(
   event: GoogleCalendarEvent,
   calendarId: string,
   calendarName: string | null,
-  timezone: string,
+  timezone: string
 ): GoogleEventRow | null {
   // superRefine により cancelled 以外は start/end が必ず存在する。
   if (!event.start || !event.end) return null;
@@ -285,10 +264,7 @@ interface EventDateLike {
 // 自身の timeZone 指定がある場合はそれ) でその日の 00:00 を ISO instant に解決する。
 // 終日イベントの end.date は Google 側で既に exclusive (翌日付) として返るため、
 // ここで加算は行わない。
-function resolveInstant(
-  value: EventDateLike,
-  userTimezone: string,
-): string | null {
+function resolveInstant(value: EventDateLike, userTimezone: string): string | null {
   if (value.dateTime) return value.dateTime;
   if (!value.date) return null;
 
@@ -338,7 +314,7 @@ function getTimezoneOffsetMs(at: Date, timezone: string): number {
     get("day"),
     get("hour"),
     get("minute"),
-    get("second"),
+    get("second")
   );
   return localAsUtc - at.getTime();
 }

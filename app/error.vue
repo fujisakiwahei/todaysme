@@ -13,15 +13,13 @@ const statusCode = computed(() => {
 });
 
 const title = computed(() =>
-  isNotFound.value
-    ? "ページが見つかりません"
-    : "予期しないエラーが発生しました",
+  isNotFound.value ? "ページが見つかりません" : "予期しないエラーが発生しました"
 );
 
 const description = computed(() =>
   isNotFound.value
     ? "URL が変更されたか、もう存在しないページの可能性があります。"
-    : "時間をおいてから再度お試しください。問題が続く場合は管理者にお問い合わせください。",
+    : "時間をおいてから再度お試しください。問題が続く場合は管理者にお問い合わせください。"
 );
 
 async function goHome() {
@@ -51,12 +49,8 @@ async function goLogin() {
       <p class="error__desc">{{ description }}</p>
 
       <div class="error__actions">
-        <button type="button" class="error__primary" @click="goHome">
-          トップへ戻る →
-        </button>
-        <button type="button" class="error__secondary" @click="goLogin">
-          ログインへ
-        </button>
+        <button type="button" class="error__primary" @click="goHome">トップへ戻る →</button>
+        <button type="button" class="error__secondary" @click="goLogin">ログインへ</button>
       </div>
     </section>
 
@@ -90,16 +84,8 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
     position: absolute;
     inset: 0;
     background-image:
-      radial-gradient(
-        circle at 20% 25%,
-        rgba(59, 79, 134, 0.06),
-        transparent 50%
-      ),
-      radial-gradient(
-        circle at 80% 75%,
-        rgba(212, 168, 44, 0.05),
-        transparent 50%
-      );
+      radial-gradient(circle at 20% 25%, rgba(59, 79, 134, 0.06), transparent 50%),
+      radial-gradient(circle at 80% 75%, rgba(212, 168, 44, 0.05), transparent 50%);
     pointer-events: none;
   }
 
@@ -169,12 +155,7 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
   line-height: 0.9;
   letter-spacing: -0.05em;
   color: $color-text;
-  background: linear-gradient(
-    180deg,
-    $color-text 0%,
-    $color-text 55%,
-    rgba(26, 24, 20, 0.35) 100%
-  );
+  background: linear-gradient(180deg, $color-text 0%, $color-text 55%, rgba(26, 24, 20, 0.35) 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;

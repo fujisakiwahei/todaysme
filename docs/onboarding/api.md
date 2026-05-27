@@ -9,25 +9,25 @@
 
 ## エンドポイント一覧
 
-| メソッド | パス | 認証 | 役割 |
-| --- | --- | --- | --- |
-| `GET` | `/api/summary?date=YYYY-MM-DD` | Bearer **or cookie** | 対象日の Today's ME と Wake-based Timeline 用統合データを返す（DB のみ読む）。SSR 経由で叩くため cookie 認証も許容（Issue #141）|
-| `POST` | `/api/summary/refresh` | Bearer **or cookie** | 対象日のデータを再取得 → 外部 API → DB upsert。SSR 起点の追従 fetch を許すため cookie 認証も許容（Issue #141）|
-| `GET` | `/api/cron/daily` | `Bearer ${CRON_SECRET}` | Vercel Cron 専用。users × 直近 14 日を refresh |
-| `GET` | `/api/connections` | Bearer | 現在の連携状況（**トークン本体は返さない**）。Google は最初の 1 行に集約（複数アカウント一覧は `accounts` を参照）|
-| `GET` | `/api/connections/oura/start` | Bearer | Oura OAuth 認可開始 |
-| `GET` | `/api/connections/oura/callback` | cookie nonce + signed state | Oura OAuth 認可完了（token を暗号化保存）|
-| `GET` | `/api/connections/google/start[?intent=add]` | Bearer | Google OAuth 認可開始。`intent=add` でアカウントピッカー (`prompt=consent select_account`) を強制 |
-| `GET` | `/api/connections/google/callback` | cookie nonce + signed state | Google OAuth 認可完了。`id_token` を JWKS 検証して `sub`（`provider_user_id`）と `email`（`account_email`）を backfill |
-| `GET` | `/api/connections/google/accounts` | Bearer | 接続済み Google アカウント（= `service_connections` の Google 行）を 0..N 件返す（Issue #131 Phase 3）|
-| `GET` | `/api/connections/google/calendars?connection_id=<uuid>` | Bearer | 指定 Google 接続のカレンダー一覧 + 接続単位の除外設定 |
-| `PUT` | `/api/connections/google/excluded-calendars` | Bearer | 接続単位で除外する calendarId 配列を保存（body に `connection_id` + `excluded_calendar_ids`）|
-| `POST` | `/api/connections/toggl` | Bearer | Toggl API token を暗号化保存 |
-| `DELETE` | `/api/connections/:provider` | Bearer | Oura / Toggl の連携解除（status を disconnected に）|
-| `DELETE` | `/api/connections/google/:connectionId` | Bearer | Google の **接続 ID 単位** ソフト切断（Issue #131 Phase 6）|
-| `DELETE` | `/api/connections/google/:connectionId/account` | Bearer | Google の **接続 ID 単位** ハード削除。events / 除外設定も cascade で消える（Issue #139）|
-| `GET` | `/api/internal/connections-required` | **cookie**（read-only 例外） | `/daily/*` に必要な接続のうち未接続のものを返す |
-| `GET` | `/api/demo/summary?date=YYYY-MM-DD` | なし | デモ用 summary（`demo_*` テーブルから読む）|
+| メソッド | パス                                                     | 認証                         | 役割                                                                                                                             |
+| -------- | -------------------------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/summary?date=YYYY-MM-DD`                           | Bearer **or cookie**         | 対象日の Today's ME と Wake-based Timeline 用統合データを返す（DB のみ読む）。SSR 経由で叩くため cookie 認証も許容（Issue #141） |
+| `POST`   | `/api/summary/refresh`                                   | Bearer **or cookie**         | 対象日のデータを再取得 → 外部 API → DB upsert。SSR 起点の追従 fetch を許すため cookie 認証も許容（Issue #141）                   |
+| `GET`    | `/api/cron/daily`                                        | `Bearer ${CRON_SECRET}`      | Vercel Cron 専用。users × 直近 14 日を refresh                                                                                   |
+| `GET`    | `/api/connections`                                       | Bearer                       | 現在の連携状況（**トークン本体は返さない**）。Google は最初の 1 行に集約（複数アカウント一覧は `accounts` を参照）               |
+| `GET`    | `/api/connections/oura/start`                            | Bearer                       | Oura OAuth 認可開始                                                                                                              |
+| `GET`    | `/api/connections/oura/callback`                         | cookie nonce + signed state  | Oura OAuth 認可完了（token を暗号化保存）                                                                                        |
+| `GET`    | `/api/connections/google/start[?intent=add]`             | Bearer                       | Google OAuth 認可開始。`intent=add` でアカウントピッカー (`prompt=consent select_account`) を強制                                |
+| `GET`    | `/api/connections/google/callback`                       | cookie nonce + signed state  | Google OAuth 認可完了。`id_token` を JWKS 検証して `sub`（`provider_user_id`）と `email`（`account_email`）を backfill           |
+| `GET`    | `/api/connections/google/accounts`                       | Bearer                       | 接続済み Google アカウント（= `service_connections` の Google 行）を 0..N 件返す（Issue #131 Phase 3）                           |
+| `GET`    | `/api/connections/google/calendars?connection_id=<uuid>` | Bearer                       | 指定 Google 接続のカレンダー一覧 + 接続単位の除外設定                                                                            |
+| `PUT`    | `/api/connections/google/excluded-calendars`             | Bearer                       | 接続単位で除外する calendarId 配列を保存（body に `connection_id` + `excluded_calendar_ids`）                                    |
+| `POST`   | `/api/connections/toggl`                                 | Bearer                       | Toggl API token を暗号化保存                                                                                                     |
+| `DELETE` | `/api/connections/:provider`                             | Bearer                       | Oura / Toggl の連携解除（status を disconnected に）                                                                             |
+| `DELETE` | `/api/connections/google/:connectionId`                  | Bearer                       | Google の **接続 ID 単位** ソフト切断（Issue #131 Phase 6）                                                                      |
+| `DELETE` | `/api/connections/google/:connectionId/account`          | Bearer                       | Google の **接続 ID 単位** ハード削除。events / 除外設定も cascade で消える（Issue #139）                                        |
+| `GET`    | `/api/internal/connections-required`                     | **cookie**（read-only 例外） | `/daily/*` に必要な接続のうち未接続のものを返す                                                                                  |
+| `GET`    | `/api/demo/summary?date=YYYY-MM-DD`                      | なし                         | デモ用 summary（`demo_*` テーブルから読む）                                                                                      |
 
 ---
 
@@ -88,12 +88,14 @@ return parseOrThrow(<responseSchema>, response);
 **責務**: 対象日の Today's ME と Wake-based Timeline 用統合データを返す。
 
 **重要**:
+
 - **DB しか読まない**。外部 API は叩かない（その責務は `refresh` が持つ）。
 - `users.timezone` をもとに wake range を計算し、各サービスのレコードは `target_date` 完全一致ではなく `start_at`/`end_at` の重なりで読む。
 - サービス未連携時は `todays_me.<service>` を `null` にする。
 - 除外カレンダー（`users.excluded_google_calendar_ids`）は Timeline には出すが集計から外す（Issue #108）。
 
 **Today's ME の集計ルール**:
+
 - **Oura sleep_minutes / wake_at**: 起床日 = `target_date` となる sleep を選ぶ。複数あれば sleep_minutes が最長のもの（tie-break: wake_at が遅い方）。
 - **Google total / by_calendar**: wake range と重なる時間を ms で足し上げ、最後に分へ丸める（累積 drift 回避）。除外カレンダー（`google_excluded_calendars` テーブル, 接続単位）は集計から外す。複数 Google アカウント連携で同名カレンダーが衝突した場合、衝突したラベルだけ `"<name> (<email>)"` に接尾辞を付ける（Issue #131 Phase 7）。**`meeting_minutes` は廃止された**（Issue #151: カレンダー名で会議を機械的に分類するのが本番運用に合わなかったため）。
 - **Toggl total / by_title**: 同じく ms で足し上げ。集計キーは `(title, project_name)` の組（Issue #112: 同名タイトルでも別プロジェクトに紐付くものは別バケット）。各エントリに `project_name` を持たせる（未割当 / 未解決は `null`）。
@@ -105,6 +107,7 @@ return parseOrThrow(<responseSchema>, response);
 **責務**: `refreshUserDate(userId, date)` の薄いラッパ。
 
 実体は `server/utils/runRefresh.ts`。
+
 - `tryAcquireSyncLock` でサービス単位の排他。
 - `withFreshAccessToken` でトークン取得 + 401 retry。
 - `sync<Provider>ForDate` で upsert + ソフトデリート。Google は **接続単位** で `listConnectedGoogleConnections` をループし、各 `connection_id` に対して個別に sync する（Issue #131 Phase 4）。
@@ -128,6 +131,7 @@ return parseOrThrow(<responseSchema>, response);
 **責務**: 連携状況一覧を返す。
 
 **返さないもの**:
+
 - `access_token` / `refresh_token`（暗号化前後問わず）。
 - `iv` / `authTag` / `ciphertext`。
 
@@ -218,6 +222,7 @@ sequenceDiagram
 ```
 
 **state の中身**: `{ uid, nonce, exp }` を HMAC-SHA256 で署名（`server/utils/oauthState.ts`）。
+
 - `uid` は callback で「誰の接続か」を引き当てるために必要（Bearer がリダイレクトでは届かない）。
 - `nonce` は cookie と突き合わせて CSRF を防ぐ。
 
@@ -247,10 +252,12 @@ sequenceDiagram
 ## BFF 的責務はあるか
 
 ある。`/api/summary` がまさに BFF。
+
 - 1 リクエストで Today's ME + Timeline + sync_statuses をまとめて返す。
 - 各データソース（Oura / Google / Toggl / sync 状態）を **DB レベルで合体** することで、画面は 1 回の fetch で完結する。
 
 これによって:
+
 - 画面側のロジックがシンプル（state 管理が `summary ref` 1 つで済む）。
 - ネットワーク往復が減る。
 - 認証 / Zod 検証 / RLS の責務がサーバに集約される。

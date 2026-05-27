@@ -21,12 +21,7 @@ export const uuidSchema = z.uuid();
 export const serviceProviderSchema = z.enum(["oura", "google", "toggl"]);
 
 // daily_sync_statuses.status
-export const syncStatusSchema = z.enum([
-  "idle",
-  "in_progress",
-  "success",
-  "failed",
-]);
+export const syncStatusSchema = z.enum(["idle", "in_progress", "success", "failed"]);
 
 // service_connections.status
 //   - needs_reauth: Issue #131 Phase 2。OAuth scope の拡張 (openid email)

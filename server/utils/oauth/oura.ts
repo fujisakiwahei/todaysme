@@ -35,10 +35,7 @@ function loadEnv(): OuraOauthEnv {
   return { clientId, clientSecret };
 }
 
-export function buildOuraAuthorizeUrl(
-  state: string,
-  redirectUri: string,
-): string {
+export function buildOuraAuthorizeUrl(state: string, redirectUri: string): string {
   const env = loadEnv();
   const url = new URL(OURA_AUTHORIZE_URL);
   url.searchParams.set("response_type", "code");

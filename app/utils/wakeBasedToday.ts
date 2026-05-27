@@ -34,7 +34,7 @@ export function targetDateInTimezone(date: Date, timezone: string): string {
 export async function fetchWakeBasedToday(
   client: SupabaseClient,
   userId: string,
-  timezone: string,
+  timezone: string
 ): Promise<string> {
   // 最新の起床記録の target_date を「今日」とする。
   // 直近 1 件だけ読めば十分 (より古い記録は判定に使わない)。

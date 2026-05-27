@@ -13,10 +13,7 @@
 //     retry する。再度 429 ならそのまま 5xx 系として throw し、呼び出し側
 //     (daily_sync_statuses) が failed を記録できるようにする。
 // =============================================================================
-import {
-  ouraSleepResponseSchema,
-  type OuraSleepItem,
-} from "../../shared/schemas";
+import { ouraSleepResponseSchema, type OuraSleepItem } from "../../shared/schemas";
 
 import { OauthUnauthorizedError } from "./serviceConnection";
 import { parseExternal } from "./validation";
@@ -72,9 +69,7 @@ export class OuraApiError extends Error {
 // 部分結果を返して downstream で「同期成功」扱いされるのを防ぐ。
 export class OuraPaginationOverflowError extends Error {
   constructor(maxPages: number) {
-    super(
-      `Oura sleep pagination exceeded ${maxPages} pages; refusing to return partial data`,
-    );
+    super(`Oura sleep pagination exceeded ${maxPages} pages; refusing to return partial data`);
     this.name = "OuraPaginationOverflowError";
   }
 }
@@ -89,7 +84,7 @@ export class OuraPaginationOverflowError extends Error {
 async function callOuraSleep(
   accessToken: string,
   params: { start_date: string; end_date: string; next_token?: string },
-  fetchImpl: typeof fetch,
+  fetchImpl: typeof fetch
 ): Promise<unknown> {
   const url = new URL(OURA_SLEEP_URL);
   url.searchParams.set("start_date", params.start_date);
@@ -111,10 +106,7 @@ async function callOuraSleep(
     throw new OauthUnauthorizedError("oura");
   }
   if (!res.ok) {
-    throw new OuraApiError(
-      res.status,
-      `Oura API request failed: HTTP ${res.status}`,
-    );
+    throw new OuraApiError(res.status, `Oura API request failed: HTTP ${res.status}`);
   }
   return (await res.json()) as unknown;
 }
@@ -131,8 +123,7 @@ function toRow(item: OuraSleepItem, timezone: string): OuraSleepRow {
     target_date: targetDateOf(item.bedtime_end, timezone),
     sleep_start_at: item.bedtime_start,
     wake_at: item.bedtime_end,
-    sleep_minutes:
-      durationSeconds == null ? null : Math.round(durationSeconds / 60),
+    sleep_minutes: durationSeconds == null ? null : Math.round(durationSeconds / 60),
   };
 }
 
@@ -144,9 +135,7 @@ function toRow(item: OuraSleepItem, timezone: string): OuraSleepRow {
 //     OauthUnauthorizedError として伝搬し、ラッパで再試行される。
 //   - upsert は呼び出し側 (refresh / cron) の責務。
 // =============================================================================
-export async function getOuraData(
-  input: GetOuraDataInput,
-): Promise<GetOuraDataResult> {
+export async function getOuraData(input: GetOuraDataInput): Promise<GetOuraDataResult> {
   const fetchImpl = input.fetchImpl ?? fetch;
   const sleeps: OuraSleepRow[] = [];
   let nextToken: string | undefined;
@@ -160,7 +149,7 @@ export async function getOuraData(
         end_date: input.endDate,
         next_token: nextToken,
       },
-      fetchImpl,
+      fetchImpl
     );
     const parsed = parseExternal(ouraSleepResponseSchema, raw, "oura");
     for (const item of parsed.data) {
