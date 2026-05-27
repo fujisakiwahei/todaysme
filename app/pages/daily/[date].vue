@@ -5,8 +5,11 @@
 //
 //   - GET /api/summary?date=YYYY-MM-DD で対象日の Today's ME と Wake-based
 //     Timeline 用データを取得して表示する。
-//   - 当日かつ sync_status の last_synced_at が 30 分以上古ければ、表示直後に
-//     裏で POST /api/summary/refresh を呼ぶ (SPEC §10.2)。
+//   - 進行中の wake range (= まだ次の睡眠が記録されていない最新の起床) かつ
+//     sync_status の last_synced_at が 30 分以上古ければ、表示直後に裏で
+//     POST /api/summary/refresh を呼ぶ (SPEC §10.2)。早朝でまだ未睡眠の
+//     ケースでは「wake-based today」が前日のカレンダー日付になるため、
+//     カレンダー一致ではなく wake_range.end が "現在" 付近かで判定する。
 //   - 手動「更新」ボタンで同じ refresh を呼び、終了後に再フェッチする。
 //   - 過去日も手動更新は許容する (SPEC §10.2 / §10.3)。
 //   - 描画は DailySummaryView コンポーネントに委譲する (Issue #31)。
@@ -61,7 +64,7 @@ const {
       query: { date: dateParam.value },
       headers: summaryFetchHeaders(),
     }),
-  { default: () => null, watch: [dateParam] },
+  { default: () => null, watch: [dateParam] }
 );
 
 const refreshing = ref(false);
@@ -75,9 +78,7 @@ const errorMessage = computed<string | null>(() => {
   if (manualErrorMessage.value) return manualErrorMessage.value;
   if (!summaryError.value) return null;
   const msg =
-    summaryError.value instanceof Error
-      ? summaryError.value.message
-      : "failed to load summary";
+    summaryError.value instanceof Error ? summaryError.value.message : "failed to load summary";
   return `サマリー取得に失敗しました: ${msg}`;
 });
 
@@ -103,28 +104,25 @@ async function manualRefresh() {
   }
 }
 
-// 当日かつ stale なら裏で refresh する。
+// 「進行中の当日 (= まだ次の睡眠が記録されていない wake range)」かつ stale なら
+// 裏で refresh する (SPEC §10.2)。
 // stale 判定 = sync_statuses が空、または last_synced_at が 30 分以上古い。
 const STALE_MS = 30 * 60 * 1000;
+// wake_range.end は当日扱いの summary では server 側で取得時の "now" に
+// 打ち切られる。SSR→hydration のラグやサーバ/クライアントのクロックずれを
+// 許容するためのバッファ。これより内側なら「まだ進行中の wake range」とみなす。
+const ACTIVE_WAKE_RANGE_GRACE_MS = 5 * 60 * 1000;
 
-function isTodayInTimezone(date: string, timezone: string): boolean {
-  // ロケール依存の format(...) (例: "en-CA" でも実装によっては M/D/YYYY) を避け、
-  // formatToParts から year/month/day を取り出して自前で YYYY-MM-DD を組み立てる。
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date());
-  const yyyy = parts.find((p) => p.type === "year")?.value;
-  const mm = parts.find((p) => p.type === "month")?.value;
-  const dd = parts.find((p) => p.type === "day")?.value;
-  if (!yyyy || !mm || !dd) return false;
-  return `${yyyy}-${mm}-${dd}` === date;
+// 「カレンダー上の今日」ではなく「進行中の wake range」を today 扱いする。
+// 早朝でまだ未睡眠 (wake-based today が前日カレンダー日付) のケースでも
+// /daily/today 経由の自動更新が走るようにするための判定。
+function isActiveWakeRange(s: SummaryResponse): boolean {
+  if (!s.wake_range) return false;
+  return Date.now() - new Date(s.wake_range.end).getTime() <= ACTIVE_WAKE_RANGE_GRACE_MS;
 }
 
 function isStale(s: SummaryResponse): boolean {
-  if (!isTodayInTimezone(s.target_date, s.timezone)) return false;
+  if (!isActiveWakeRange(s)) return false;
   if (s.sync_statuses.length === 0) return true;
   const t = Date.now();
   return s.sync_statuses.some((st) => {
@@ -178,7 +176,7 @@ onMounted(() => {
       checkedDates.add(date);
       void backgroundRefreshIfStale();
     },
-    { immediate: true },
+    { immediate: true }
   );
 });
 </script>
@@ -209,10 +207,7 @@ onMounted(() => {
         <span v-else>更新</span>
       </button>
       <NuxtLink to="/settings" class="daily-settings-btn" aria-label="設定">
-        <span
-          class="material-symbols-outlined daily-settings-btn__icon"
-          aria-hidden="true"
-        >
+        <span class="material-symbols-outlined daily-settings-btn__icon" aria-hidden="true">
           settings
         </span>
       </NuxtLink>
