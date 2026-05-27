@@ -19,43 +19,45 @@ Nuxt 4 (SSR) + Supabase (PostgreSQL + Auth) + Vercel 構成。MVP は単一ユ�
 
 ## ディレクトリ規約
 
-| パス | 役割 |
-| --- | --- |
-| `app/` | Nuxt 4 の app ディレクトリ（`app.vue` / `pages/` / `components/` / `layouts/` / `assets/`） |
-| `app/pages/` | ルーティング（`/` / `/demo` / `/daily/[date]` / `/settings` 等） |
-| `app/components/` | Vue コンポーネント |
-| `app/assets/styles/` | SCSS（`design-tokens.scss` / `variables.scss` / `mixins.scss` / `reset.scss` / `style.scss`） |
-| `server/api/` | Nuxt server routes（`/api/summary`, `/api/summary/refresh`, `/api/cron/daily` など） |
-| `server/utils/` | Oura / Google / Toggl の API クライアント等の内部モジュール。サービス別 HTTP エンドポイントは公開しない |
-| `shared/schemas/` | Zod スキーマ（API リクエスト/レスポンス、外部 API レスポンス検証用） |
-| `supabase/migrations/` | Supabase の SQL マイグレーション（GUI で変更後ここにコミット） |
-| `docs/` | 仕様書類。`docs/personal/` は個人メモ（git 追跡対象外） |
-| `desine-tone/` | デザインの基準ファイル群。UI 実装時はここの内容をベースにする |
+| パス                   | 役割                                                                                                    |
+| ---------------------- | ------------------------------------------------------------------------------------------------------- |
+| `app/`                 | Nuxt 4 の app ディレクトリ（`app.vue` / `pages/` / `components/` / `layouts/` / `assets/`）             |
+| `app/pages/`           | ルーティング（`/` / `/demo` / `/daily/[date]` / `/settings` 等）                                        |
+| `app/components/`      | Vue コンポーネント                                                                                      |
+| `app/assets/styles/`   | SCSS（`design-tokens.scss` / `variables.scss` / `mixins.scss` / `reset.scss` / `style.scss`）           |
+| `server/api/`          | Nuxt server routes（`/api/summary`, `/api/summary/refresh`, `/api/cron/daily` など）                    |
+| `server/utils/`        | Oura / Google / Toggl の API クライアント等の内部モジュール。サービス別 HTTP エンドポイントは公開しない |
+| `shared/schemas/`      | Zod スキーマ（API リクエスト/レスポンス、外部 API レスポンス検証用）                                    |
+| `supabase/migrations/` | Supabase の SQL マイグレーション（GUI で変更後ここにコミット）                                          |
+| `docs/`                | 仕様書類。`docs/personal/` は個人メモ（git 追跡対象外）                                                 |
+| `desine-tone/`         | デザインの基準ファイル群。UI 実装時はここの内容をベースにする                                           |
 
 ## コマンド一覧
 
-| コマンド | 用途 |
-| --- | --- |
-| `pnpm dev` | 開発サーバ起動（http://localhost:3000） |
-| `pnpm build` | 本番ビルド |
-| `pnpm preview` | ビルド結果のプレビュー |
-| `pnpm typecheck` | 型チェック（`nuxi typecheck`） |
-| `pnpm lint` | ESLint |
-| `pnpm lint:style` | Stylelint（SCSS / Vue） |
-| `pnpm format` | Prettier フォーマット |
-| `pnpm sass` | SCSS のコンパイル（UI 実装後・テスト前に必ず実行） |
-| `supabase start` / `supabase stop` | ローカル Supabase 起動・停止 |
+| コマンド                           | 用途                                               |
+| ---------------------------------- | -------------------------------------------------- |
+| `pnpm dev`                         | 開発サーバ起動（http://localhost:3000）            |
+| `pnpm build`                       | 本番ビルド                                         |
+| `pnpm preview`                     | ビルド結果のプレビュー                             |
+| `pnpm typecheck`                   | 型チェック（`nuxi typecheck`）                     |
+| `pnpm lint`                        | ESLint                                             |
+| `pnpm lint:style`                  | Stylelint（SCSS / Vue）                            |
+| `pnpm format`                      | Prettier フォーマット                              |
+| `pnpm sass`                        | SCSS のコンパイル（UI 実装後・テスト前に必ず実行） |
+| `supabase start` / `supabase stop` | ローカル Supabase 起動・停止                       |
 
 ## 実装時の必須ルール
 
 - PRをしたら、`@codex review`をコメントする
 
 ### UI 実装時
+
 - **デザインは `desine-tone/` ディレクトリの内容をベースにする**。独自にトーンを作らない。
 - 実装後、**テスト前に SCSS のコンパイル（`pnpm sass`）を必ず実行**する。
 - UI を実装したら、**Playwright MCP（ブラウザ操作）で必ず動作確認**する。テストファイルは書かない（後述「テストファイル」を参照）。実行できない場合（環境依存・ローカル Supabase 未起動など）は、勝手に省略せずユーザーに確認する。
 
 ### コード規約
+
 - TypeScript strict。
 - API のリクエスト / レスポンスは **Zod でスキーマ検証**（仕様 §12.3）。
 - 外部サービストークンは **AES-256-GCM で暗号化**して `service_connections` に保存。**クライアントに返さない / ログに出さない**（仕様 §12.1）。
@@ -63,15 +65,18 @@ Nuxt 4 (SSR) + Supabase (PostgreSQL + Auth) + Vercel 構成。MVP は単一ユ�
 - SCSS は `app/assets/styles/variables` と `mixins` が `additionalData` で全 SCSS に自動 inject される（`nuxt.config.ts`）。各ファイルで `@use` する必要はない。
 
 ### テストファイル
+
 - **ユーザーから明示的な指示がない限り、テストファイル（`*.test.ts` / `*.spec.ts` などユニット / e2e テスト用のファイル）を生成しない**。開発段階での予期せぬエラーを防ぐため（Issue #63）。
 - UI の動作確認は Playwright MCP（ブラウザ操作）で都度行う。Playwright のテストファイル（`tests/` 配下や `*.spec.ts`）も同様に明示指示がない限り作らない。
 
 ### Git / PR
-- `main` への直接 push は不可（保護ブランチ）。feature branch → PR → Vercel Preview で確認 → マージ。
+
+- `main` への直接 push は不可（保護ブランチ）。feature branch → PR → Vercel Preview で確認 → マージ。mainをbaseにブランチを作成。
 - pre-commit で `lint-staged`（`eslint --fix` + `prettier --write`）が走る。
 - CI（`.github/workflows/ci-check.yml`）で `pnpm lint` / `pnpm nuxi typecheck` / `pnpm build` が実行される。
 
 ### Zod スキーマ（`shared/schemas/`）
+
 - 配置: `shared/schemas/` 直下にサービス / 用途別ファイル（`common.ts` / `errors.ts` / `summary.ts` / `oura.ts` / `google.ts` / `toggl.ts`）。利用側は barrel の `shared/schemas/index.ts` から import する。
 - 命名規約: スキーマ実体は `<対象>Schema`（例: `summaryRequestSchema`）。`z.infer` した型は `<対象>` をそのまま PascalCase で（例: `SummaryRequest`）。
 - export 方針: スキーマと推論型を **必ずペアで named export**。default export は禁止。`shared/schemas/index.ts` から `export *` で再公開する。
@@ -83,16 +88,16 @@ Nuxt 4 (SSR) + Supabase (PostgreSQL + Auth) + Vercel 構成。MVP は単一ユ�
 
 `.env.example` をコピーして `.env` を作成する（`cp .env.example .env`）。
 
-| 変数 | 用途 |
-| --- | --- |
-| `NUXT_PUBLIC_SUPABASE_URL` | Supabase プロジェクト URL（クライアント / サーバ両方で参照） |
-| `NUXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase publishable key（旧 `anon` key 相当。クライアント側で使用） |
-| `SUPABASE_SECRET_KEY` | Supabase secret key（旧 `service_role` key 相当。RLS バイパス。server 側のみ・Cron 等で使用） |
-| `TOKEN_ENCRYPTION_KEY` | 外部サービストークン暗号化キー（base64 encoded 32 bytes）。DB には置かない |
-| `OURA_CLIENT_ID` / `OURA_CLIENT_SECRET` | Oura OAuth2 |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Calendar OAuth2 |
-| `TOGGL_API_TOKEN` | Toggl Track API token（個人用 MVP のみ） |
-| `SENTRY_AUTH_TOKEN` | Sentry source map アップロード用（`.env.sentry-build-plugin` に格納） |
+| 変数                                        | 用途                                                                                          |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `NUXT_PUBLIC_SUPABASE_URL`                  | Supabase プロジェクト URL（クライアント / サーバ両方で参照）                                  |
+| `NUXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`      | Supabase publishable key（旧 `anon` key 相当。クライアント側で使用）                          |
+| `SUPABASE_SECRET_KEY`                       | Supabase secret key（旧 `service_role` key 相当。RLS バイパス。server 側のみ・Cron 等で使用） |
+| `TOKEN_ENCRYPTION_KEY`                      | 外部サービストークン暗号化キー（base64 encoded 32 bytes）。DB には置かない                    |
+| `OURA_CLIENT_ID` / `OURA_CLIENT_SECRET`     | Oura OAuth2                                                                                   |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Calendar OAuth2                                                                        |
+| `TOGGL_API_TOKEN`                           | Toggl Track API token（個人用 MVP のみ）                                                      |
+| `SENTRY_AUTH_TOKEN`                         | Sentry source map アップロード用（`.env.sentry-build-plugin` に格納）                         |
 
 ## 主要な仕様メモ（実装時に間違えやすい点）
 
