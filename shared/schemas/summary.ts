@@ -96,7 +96,7 @@ export const todaysMeGoogleSchema = z.object({
     z.object({
       calendar_name: z.string(),
       minutes: z.number().int(),
-    }),
+    })
   ),
 });
 
@@ -109,7 +109,7 @@ export const todaysMeTogglSchema = z.object({
       title: z.string(),
       project_name: z.string().nullable(),
       minutes: z.number().int(),
-    }),
+    })
   ),
 });
 
@@ -165,9 +165,7 @@ export const summaryRefreshResponseSchema = z.object({
 export type SummaryRequest = z.infer<typeof summaryRequestSchema>;
 export type SummaryResponse = z.infer<typeof summaryResponseSchema>;
 export type SummaryRefreshRequest = z.infer<typeof summaryRefreshRequestSchema>;
-export type SummaryRefreshResponse = z.infer<
-  typeof summaryRefreshResponseSchema
->;
+export type SummaryRefreshResponse = z.infer<typeof summaryRefreshResponseSchema>;
 export type SleepTimelineEntry = z.infer<typeof sleepTimelineEntrySchema>;
 export type CalendarTimelineEntry = z.infer<typeof calendarTimelineEntrySchema>;
 export type TogglTimelineEntry = z.infer<typeof togglTimelineEntrySchema>;

@@ -16,9 +16,7 @@
 // =============================================================================
 const pageTransitioning = ref(false);
 const { isManualLoading } = useAppLoading();
-const isLoading = computed(
-  () => pageTransitioning.value || isManualLoading.value,
-);
+const isLoading = computed(() => pageTransitioning.value || isManualLoading.value);
 
 const nuxtApp = useNuxtApp();
 let unsubStart: (() => void) | null = null;
@@ -41,12 +39,7 @@ onBeforeUnmount(() => {
 
 <template>
   <Transition name="app-loading">
-    <div
-      v-if="isLoading"
-      class="app-loading-overlay"
-      role="status"
-      aria-live="polite"
-    >
+    <div v-if="isLoading" class="app-loading-overlay" role="status" aria-live="polite">
       <div class="ball-clip-rotate-multiple" aria-hidden="true">
         <div />
         <div />

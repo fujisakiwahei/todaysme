@@ -47,9 +47,7 @@ Vercel Project Settings → Environment Variables で管理。プロダクショ
 ```json
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [
-    { "path": "/api/cron/daily", "schedule": "0 20 * * *" }
-  ]
+  "crons": [{ "path": "/api/cron/daily", "schedule": "0 20 * * *" }]
 }
 ```
 
@@ -62,6 +60,7 @@ Vercel Project Settings → Environment Variables で管理。プロダクショ
 ## Cron の責務
 
 毎朝 05:00 JST に `GET /api/cron/daily` が呼ばれる:
+
 - `users` 全件 × **直近 14 日**（today を含む）を `refreshUserDate` で順次回す。
 - user 単位の `timezone` / `connected` は 1 回だけ読んで 14 日ぶん使い回す。
 - 1 user の bad timezone でバッチが止まらないよう `resolveTimezone()` で fallback。
@@ -83,12 +82,14 @@ Vercel Project Settings → Environment Variables で管理。プロダクショ
 `.github/workflows/ci-check.yml`:
 
 実行内容（push / PR ごと）:
+
 - `pnpm install --frozen-lockfile`
 - `pnpm lint`（ESLint）
 - `pnpm nuxi typecheck`
 - `pnpm build`
 
 ローカル側でも:
+
 - Husky + lint-staged で `eslint --fix` + `prettier --write` を pre-commit。
 
 ---
@@ -114,6 +115,7 @@ Vercel Project Settings → Environment Variables で管理。プロダクショ
 ## デプロイの流れ（実務）
 
 1. **ローカルで実装**:
+
    ```bash
    git checkout main
    git pull origin main
@@ -154,6 +156,7 @@ Vercel Project Settings → Environment Variables で管理。プロダクショ
 ## デプロイ前のチェックリスト
 
 PR を出す前に:
+
 - [ ] `pnpm typecheck` が通る
 - [ ] `pnpm lint` が通る
 - [ ] `pnpm lint:style` が通る（UI 変更時）

@@ -60,9 +60,7 @@ export const googleEventsListResponseSchema = z.object({
 });
 
 export type GoogleCalendarEvent = z.infer<typeof googleCalendarEventSchema>;
-export type GoogleEventsListResponse = z.infer<
-  typeof googleEventsListResponseSchema
->;
+export type GoogleEventsListResponse = z.infer<typeof googleEventsListResponseSchema>;
 
 // -----------------------------------------------------------------------------
 // `GET /calendar/v3/users/me/calendarList` のレスポンス (SPEC §3)
@@ -85,12 +83,8 @@ export const googleCalendarListResponseSchema = z.object({
   nextPageToken: z.string().optional(),
 });
 
-export type GoogleCalendarListEntry = z.infer<
-  typeof googleCalendarListEntrySchema
->;
-export type GoogleCalendarListResponse = z.infer<
-  typeof googleCalendarListResponseSchema
->;
+export type GoogleCalendarListEntry = z.infer<typeof googleCalendarListEntrySchema>;
+export type GoogleCalendarListResponse = z.infer<typeof googleCalendarListResponseSchema>;
 
 // -----------------------------------------------------------------------------
 // `POST https://oauth2.googleapis.com/token` のレスポンス (Issue #52)

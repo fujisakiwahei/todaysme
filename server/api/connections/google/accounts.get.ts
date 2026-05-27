@@ -9,10 +9,7 @@
 //   - 並び順は connected_at (古い順)。最初に繋いだメインアカウントが
 //     先頭に来る挙動 (UI 上のチラつきを抑える)。
 // =============================================================================
-import {
-  googleAccountsResponseSchema,
-  type GoogleAccount,
-} from "../../../../shared/schemas";
+import { googleAccountsResponseSchema, type GoogleAccount } from "../../../../shared/schemas";
 import { requireUserId } from "../../../utils/auth";
 import { getSupabaseAdmin } from "../../../utils/supabaseAdmin";
 import { parseOrThrow } from "../../../utils/validation";
@@ -24,7 +21,7 @@ export default defineEventHandler(async (event) => {
   const { data, error } = await admin
     .from("service_connections")
     .select(
-      "id, provider_user_id, account_email, status, access_token_encrypted, connected_at, token_expires_at",
+      "id, provider_user_id, account_email, status, access_token_encrypted, connected_at, token_expires_at"
     )
     .eq("user_id", userId)
     .eq("provider", "google")

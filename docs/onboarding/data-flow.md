@@ -73,6 +73,7 @@ sequenceDiagram
 ### 2. `today` の解決
 
 `/daily/today.vue` は「**Wake-based today**」を `fetchWakeBasedToday()` で計算する。最新の `oura_sleep_records.wake_at` の日付を「今日」とみなす。
+
 - 起床していない深夜 → まだ「昨日」扱い。
 - Oura 未連携 → カレンダー日付に fallback（実際には require-connections で `/settings` に飛ばされるので、ここまで来ない）。
 
@@ -104,7 +105,7 @@ function isStale(s: SummaryResponse): boolean {
   if (!isTodayInTimezone(s.target_date, s.timezone)) return false;
   if (s.sync_statuses.length === 0) return true;
   const t = Date.now();
-  return s.sync_statuses.some(st => {
+  return s.sync_statuses.some((st) => {
     if (!st.last_synced_at) return true;
     return t - new Date(st.last_synced_at).getTime() > STALE_MS;
   });
@@ -184,6 +185,7 @@ flowchart LR
 `daily_sync_statuses` の `unique(user_id, target_date, source)` 行を **条件付き UPDATE** して `status = in_progress` に切り替えることで多重実行を抑止する（楽観排他）。
 
 奪取の条件:
+
 - 行が無ければ事前に `idle` で INSERT。
 - `status != in_progress` または `sync_started_at` が **10 分** より古い場合に奪える（stale lock 回収）。
 
@@ -209,17 +211,17 @@ users 全件 × 直近 14 日 をループ
 
 ## エラー処理の責務
 
-| エラータイプ | どこで起きて、誰が、どう処理するか |
-| --- | --- |
-| **Zod 検証失敗（リクエスト）** | API 内 `parseOrThrow` が 400 を投げる。h3 が JSON にする |
-| **Zod 検証失敗（外部 API レスポンス）** | `get<Provider>Data` の `parseExternal` が 502 を投げる。`statusMessage: InvalidExternalResponse:<service>` |
-| **JWT 不正** | `requireUserId` が 401 を投げる |
-| **OAuth refresh 失敗** | `OauthRefreshError`。`service_connections.status = error` に落とす |
-| **外部 API 401** | `OauthUnauthorizedError`。`withFreshAccessToken` が 1 回だけ refresh して retry |
-| **個別サービスの sync エラー** | `runRefresh` が try/catch で受けて `markSyncFailed` + `errors` に push。他サービスの sync は続行 |
-| **DB エラー** | 各 sync が throw → `runRefresh` の try/catch → `markSyncFailed`。markSyncFailed 自体が落ちたら `errors` にだけ残す |
-| **クライアントの $fetch 失敗** | ページの `errorMessage` に表示。バックグラウンド refresh の失敗は UI に出さない |
-| **想定外の例外** | Sentry が拾う（client / server 両方）|
+| エラータイプ                            | どこで起きて、誰が、どう処理するか                                                                                 |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Zod 検証失敗（リクエスト）**          | API 内 `parseOrThrow` が 400 を投げる。h3 が JSON にする                                                           |
+| **Zod 検証失敗（外部 API レスポンス）** | `get<Provider>Data` の `parseExternal` が 502 を投げる。`statusMessage: InvalidExternalResponse:<service>`         |
+| **JWT 不正**                            | `requireUserId` が 401 を投げる                                                                                    |
+| **OAuth refresh 失敗**                  | `OauthRefreshError`。`service_connections.status = error` に落とす                                                 |
+| **外部 API 401**                        | `OauthUnauthorizedError`。`withFreshAccessToken` が 1 回だけ refresh して retry                                    |
+| **個別サービスの sync エラー**          | `runRefresh` が try/catch で受けて `markSyncFailed` + `errors` に push。他サービスの sync は続行                   |
+| **DB エラー**                           | 各 sync が throw → `runRefresh` の try/catch → `markSyncFailed`。markSyncFailed 自体が落ちたら `errors` にだけ残す |
+| **クライアントの $fetch 失敗**          | ページの `errorMessage` に表示。バックグラウンド refresh の失敗は UI に出さない                                    |
+| **想定外の例外**                        | Sentry が拾う（client / server 両方）                                                                              |
 
 ---
 

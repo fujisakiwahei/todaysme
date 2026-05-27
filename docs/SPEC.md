@@ -61,11 +61,11 @@ Oura の睡眠データは **睡眠開始日ではなく、起床した日** に
 
 ## 3. 使用サービス（外部 API）
 
-| サービス | 取得対象 | API 仕様（Issue #11） |
-| --- | --- | --- |
-| **Oura** | 睡眠 / readiness / 活動量 / 起床時刻 / active calories | Oura API v2 (`https://api.ouraring.com/v2`)。OAuth2 / Bearer。`daily_sleep`・`daily_readiness`・`daily_activity`・`sleep` 等。Rate limit 5000 req / 5 min。 |
-| **Google Calendar** | 今日の予定 / カレンダー別予定時間 / 会議時間 | Calendar API v3。OAuth2、最小スコープ `calendar.events.readonly`。`events.list` + `nextSyncToken` で差分同期。 |
-| **Toggl Track** | 今日の作業時間 / タイトル別作業時間 | Track API v9。API token を Basic Auth で利用（`api_token` を password に指定）。`GET /me/time_entries` を `since` watermark で差分取得。 |
+| サービス            | 取得対象                                               | API 仕様（Issue #11）                                                                                                                                       |
+| ------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Oura**            | 睡眠 / readiness / 活動量 / 起床時刻 / active calories | Oura API v2 (`https://api.ouraring.com/v2`)。OAuth2 / Bearer。`daily_sleep`・`daily_readiness`・`daily_activity`・`sleep` 等。Rate limit 5000 req / 5 min。 |
+| **Google Calendar** | 今日の予定 / カレンダー別予定時間 / 会議時間           | Calendar API v3。OAuth2、最小スコープ `calendar.events.readonly`。`events.list` + `nextSyncToken` で差分同期。                                              |
+| **Toggl Track**     | 今日の作業時間 / タイトル別作業時間                    | Track API v9。API token を Basic Auth で利用（`api_token` を password に指定）。`GET /me/time_entries` を `since` watermark で差分取得。                    |
 
 ### 分類ルール
 
@@ -81,6 +81,7 @@ Oura の睡眠データは **睡眠開始日ではなく、起床した日** に
 ### 4.1 Today's ME（日次サマリー）
 
 #### Oura
+
 - 睡眠時間
 - 睡眠スコア
 - readiness
@@ -88,15 +89,18 @@ Oura の睡眠データは **睡眠開始日ではなく、起床した日** に
 - active calories
 
 #### Google Calendar
+
 - 今日の予定時間
 - カレンダー別予定時間
 - 会議時間（§3 分類ルール参照。「MTG」とみなすカレンダーの判定は要確認）
 
 #### Toggl Track
+
 - 今日の作業時間
 - タイトル別作業時間
 
 #### 独自集計
+
 - 起床から現在までの経過時間
 - アクティブ時間割合
 - 未記録時間
@@ -105,11 +109,11 @@ Oura の睡眠データは **睡眠開始日ではなく、起床した日** に
 
 Oura / Google Calendar / Toggl Track を統合した 1 本のタイムライン。
 
-| レーン | データソース |
-| --- | --- |
-| Sleep | Oura 睡眠 |
+| レーン   | データソース         |
+| -------- | -------------------- |
+| Sleep    | Oura 睡眠            |
 | Calendar | Google Calendar 予定 |
-| Work | Toggl Track 作業ログ |
+| Work     | Toggl Track 作業ログ |
 
 タイムラインに載せるレコードは **wake range と `start_at`/`end_at` の重なり** で判定する（`target_date` 完全一致では取りこぼすため）。
 
@@ -119,18 +123,18 @@ Oura / Google Calendar / Toggl Track を統合した 1 本のタイムライン�
 
 ### 公開ページ（ログイン不要）
 
-| ルート | 内容 |
-| --- | --- |
-| `/` | トップページ |
-| `/demo` | 公開デモのエントリ |
+| ルート               | 内容                                             |
+| -------------------- | ------------------------------------------------ |
+| `/`                  | トップページ                                     |
+| `/demo`              | 公開デモのエントリ                               |
 | `/demo/daily/[date]` | デモ用日次詳細ページ（デモ専用テーブルから読む） |
 
 ### 認証必須ページ
 
-| ルート | 内容 |
-| --- | --- |
+| ルート          | 内容                                                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------- |
 | `/daily/[date]` | 日次詳細（Today's ME + Wake-based Timeline + 各サービス詳細）。`date` は `YYYY-MM-DD` または `today` |
-| `/settings` | 外部サービス連携設定（Oura / Google / Toggl の接続・切断、タイムゾーン設定） |
+| `/settings`     | 外部サービス連携設定（Oura / Google / Toggl の接続・切断、タイムゾーン設定）                         |
 
 ### ページ遷移図
 
@@ -214,12 +218,12 @@ flowchart LR
 
 ### 7.2 インフラ
 
-| レイヤ | サービス |
-| --- | --- |
-| Frontend / API | Nuxt 4 + Vercel |
-| Database / Auth | Supabase（PostgreSQL + Supabase Auth） |
-| Cron | Vercel Cron（毎朝 05:00 に `POST /api/summary/refresh` 系を起動） |
-| エラートラッキング | Sentry（client / server 両方初期化済み） |
+| レイヤ             | サービス                                                          |
+| ------------------ | ----------------------------------------------------------------- |
+| Frontend / API     | Nuxt 4 + Vercel                                                   |
+| Database / Auth    | Supabase（PostgreSQL + Supabase Auth）                            |
+| Cron               | Vercel Cron（毎朝 05:00 に `POST /api/summary/refresh` 系を起動） |
+| エラートラッキング | Sentry（client / server 両方初期化済み）                          |
 
 ### 7.3 Cloudflare
 
@@ -230,20 +234,20 @@ flowchart LR
 
 ## 8. 使用技術
 
-| カテゴリ | 採用 |
-| --- | --- |
-| フレームワーク | Nuxt 4（SSR）、Vue 3 |
-| 言語 | TypeScript（strict） |
-| 状態管理 | Pinia |
-| サーバ API | Nuxt server routes |
-| スキーマ検証 | Zod（内外問わず API レスポンスを検証 / Issue #20） |
-| スタイル | SCSS（sass-embedded）、Stylelint、Prettier |
-| Lint | ESLint（**今後導入**。Issue #27 で初期から入れる方針）、Stylelint、Prettier |
-| テスト | Playwright |
-| エラートラッキング | Sentry（`@sentry/nuxt`） |
-| ランタイム | Node 22（`.nvmrc` で固定 / Issue #14） |
-| パッケージマネージャ | pnpm 11（corepack で固定） |
-| ビルド | Vite 8 |
+| カテゴリ             | 採用                                                                        |
+| -------------------- | --------------------------------------------------------------------------- |
+| フレームワーク       | Nuxt 4（SSR）、Vue 3                                                        |
+| 言語                 | TypeScript（strict）                                                        |
+| 状態管理             | Pinia                                                                       |
+| サーバ API           | Nuxt server routes                                                          |
+| スキーマ検証         | Zod（内外問わず API レスポンスを検証 / Issue #20）                          |
+| スタイル             | SCSS（sass-embedded）、Stylelint、Prettier                                  |
+| Lint                 | ESLint（**今後導入**。Issue #27 で初期から入れる方針）、Stylelint、Prettier |
+| テスト               | Playwright                                                                  |
+| エラートラッキング   | Sentry（`@sentry/nuxt`）                                                    |
+| ランタイム           | Node 22（`.nvmrc` で固定 / Issue #14）                                      |
+| パッケージマネージャ | pnpm 11（corepack で固定）                                                  |
+| ビルド               | Vite 8                                                                      |
 
 ### CI（Issue #22 / 未実装）
 
@@ -262,11 +266,11 @@ flowchart LR
 
 ### 9.1 公開エンドポイント
 
-| エンドポイント | 役割 |
-| --- | --- |
+| エンドポイント                     | 役割                                                                                                                                             |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET /api/summary?date=YYYY-MM-DD` | 対象日の Today's ME と Wake-based Timeline 用統合データを返す。**DB に保存された各サービスのレコードから読込時に組み立てる**（事前計算しない）。 |
-| `POST /api/summary/refresh` | 対象日のデータを再取得・再同期する。Oura / Google / Toggl を叩いて DB に upsert する。 |
-| `GET /api/cron/daily` （仮 / MVP） | Vercel Cron 専用。直近 14 日 × （MVP では自分 1 ユーザー）の refresh を実行。 |
+| `POST /api/summary/refresh`        | 対象日のデータを再取得・再同期する。Oura / Google / Toggl を叩いて DB に upsert する。                                                           |
+| `GET /api/cron/daily` （仮 / MVP） | Vercel Cron 専用。直近 14 日 × （MVP では自分 1 ユーザー）の refresh を実行。                                                                    |
 
 > **注**: Oura / Google / Toggl の個別 API クライアントは `server/utils/` 等の **内部モジュール** として実装する。`/api/oura`・`/api/google`・`/api/toggl` のような **サービス別 HTTP エンドポイントは公開しない**（spec-rough.md にはあったが、内部化することで責務とテスト容易性を優先）。
 
@@ -276,9 +280,7 @@ flowchart LR
 
 ```json
 {
-  "errors": [
-    { "service": "google", "message": "token expired" }
-  ]
+  "errors": [{ "service": "google", "message": "token expired" }]
 }
 ```
 
@@ -335,11 +337,11 @@ sequenceDiagram
 
 ### 10.2 同期トリガー
 
-| トリガー | 対象 | 備考 |
-| --- | --- | --- |
-| **手動更新ボタン** | 表示中の日 | `/daily/[date]` の更新ボタン押下で `POST /api/summary/refresh` |
-| **バックグラウンド自動更新** | 当日 | `/daily/today` 表示時に `daily_sync_statuses.last_synced_at` が **30 分以上古ければ** 裏で `POST /api/summary/refresh` を呼ぶ |
-| **Vercel Cron** | 直近 14 日 | 毎朝 05:00。15 日以前は対象外 |
+| トリガー                     | 対象       | 備考                                                                                                                          |
+| ---------------------------- | ---------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| **手動更新ボタン**           | 表示中の日 | `/daily/[date]` の更新ボタン押下で `POST /api/summary/refresh`                                                                |
+| **バックグラウンド自動更新** | 当日       | `/daily/today` 表示時に `daily_sync_statuses.last_synced_at` が **30 分以上古ければ** 裏で `POST /api/summary/refresh` を呼ぶ |
+| **Vercel Cron**              | 直近 14 日 | 毎朝 05:00。15 日以前は対象外                                                                                                 |
 
 ### 10.3 15 日以前のデータ
 
@@ -464,10 +466,12 @@ erDiagram
 ### 11.2 各テーブルの制約・運用
 
 #### users
+
 - Supabase Auth が管理する `auth.users` と 1:1 で対応する。
 - `timezone` はユーザー設定（タイムゾーンは **ユーザー設定** とする）。
 
 #### service_connections
+
 - 外部サービス連携のトークンとメタ情報を保持。
 - `access_token` / `refresh_token` は **AES-256-GCM** で暗号化して保存。
 - `TOKEN_ENCRYPTION_KEY` は base64 encoded 32 bytes として **Vercel env に保存**。DB には置かない。
@@ -478,21 +482,25 @@ erDiagram
 - `access_token` が期限切れなら `refresh_token` でサーバ側から更新する。
 
 #### daily_sync_statuses
+
 - `unique(user_id, target_date, source)`
 - `status`: `idle` / `in_progress` / `success` / `failed`
 - 多重実行対策は **上記 unique キーの行を条件付き更新して `in_progress`** にする（タイムスタンプ unique では取り扱わない）。
 - `sync_started_at` が古すぎる `in_progress` は timeout 扱いにできる。
 
 #### oura_sleep_records
+
 - `unique(user_id, oura_sleep_id)`
-- 初期仕様では **睡眠時間にフォーカス**。readiness / 活動量は別レコード（または daily_* 系を将来追加）。
+- 初期仕様では **睡眠時間にフォーカス**。readiness / 活動量は別レコード（または daily\_\* 系を将来追加）。
 - Issue #24 のとおり `target_date` は wake date（ユーザータイムゾーンで起床した日）。
 
 #### google_calendar_events
+
 - `unique(user_id, google_event_id)`
 - 表示時は **`target_date` 完全一致ではなく、wake range と `start_at`/`end_at` の重なり** で読む。
 
 #### toggl_time_entries
+
 - `unique(user_id, toggl_entry_id)`
 - 表示時は wake range と `start_at`/`end_at` の重なりで読む。
 

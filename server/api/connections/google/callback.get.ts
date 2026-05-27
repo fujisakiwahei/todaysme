@@ -4,10 +4,7 @@
 // =============================================================================
 import { oauthCallbackQuerySchema } from "../../../../shared/schemas";
 import { exchangeGoogleCode } from "../../../utils/oauth/google";
-import {
-  IdTokenVerificationError,
-  verifyGoogleIdToken,
-} from "../../../utils/oauth/idTokenVerify";
+import { IdTokenVerificationError, verifyGoogleIdToken } from "../../../utils/oauth/idTokenVerify";
 import { resolveOauthRedirectUri } from "../../../utils/oauth/redirectUri";
 import { OauthStateError, verifyOauthState } from "../../../utils/oauthState";
 import { upsertServiceConnection } from "../../../utils/serviceConnection";
@@ -15,10 +12,7 @@ import { parseOrThrow } from "../../../utils/validation";
 
 const GOOGLE_STATE_COOKIE = "todaysme_oauth_state_google";
 
-function redirectToSettings(
-  event: import("h3").H3Event,
-  params: Record<string, string>,
-) {
+function redirectToSettings(event: import("h3").H3Event, params: Record<string, string>) {
   const search = new URLSearchParams(params).toString();
   return sendRedirect(event, `/settings?${search}`, 302);
 }
@@ -79,8 +73,7 @@ export default defineEventHandler(async (event) => {
     try {
       claims = await verifyGoogleIdToken(token.id_token);
     } catch (e) {
-      const reason =
-        e instanceof IdTokenVerificationError ? e.reason : "id_token_invalid";
+      const reason = e instanceof IdTokenVerificationError ? e.reason : "id_token_invalid";
       console.error("[google callback] id_token verification failed", e);
       return redirectToSettings(event, {
         provider: "google",

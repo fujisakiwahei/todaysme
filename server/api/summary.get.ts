@@ -71,11 +71,7 @@ interface SyncStatusRow {
 // wake range と [start, end] の重なり部分の長さ (ミリ秒)。
 // end が null (進行中の Toggl エントリ) のときは range.end までで打ち切る。
 // 分への丸めは累積 drift を避けるため呼び出し側で sum 後に 1 度だけ行う。
-function overlappingMs(
-  range: InternalWakeRange,
-  start: string,
-  end: string | null,
-): number {
+function overlappingMs(range: InternalWakeRange, start: string, end: string | null): number {
   const s = Math.max(new Date(start).getTime(), range.start.getTime());
   const eMs = end == null ? range.end.getTime() : new Date(end).getTime();
   const e = Math.min(eMs, range.end.getTime());
@@ -145,7 +141,7 @@ export default defineEventHandler(async (event) => {
     (excludedRes.data ?? []).map((r) => {
       const row = r as { connection_id: string; calendar_id: string };
       return `${row.connection_id}|${row.calendar_id}`;
-    }),
+    })
   );
   function isExcluded(connectionId: string, calendarId: string): boolean {
     return excludedKeys.has(`${connectionId}|${calendarId}`);
@@ -153,7 +149,7 @@ export default defineEventHandler(async (event) => {
 
   // -- service connection 状況 (todays_me の null 判定に使う) ---------------
   const connected = new Set(
-    connections.filter((c) => c.status === "connected").map((c) => c.provider),
+    connections.filter((c) => c.status === "connected").map((c) => c.provider)
   );
 
   // -- wake range (timezone に依存するため前段の Promise.all 後に実行) ----
@@ -184,7 +180,7 @@ export default defineEventHandler(async (event) => {
       admin
         .from("google_calendar_events")
         .select(
-          "id, google_event_id, connection_id, calendar_id, calendar_name, title, start_at, end_at",
+          "id, google_event_id, connection_id, calendar_id, calendar_name, title, start_at, end_at"
         )
         .eq("user_id", userId)
         .eq("is_deleted", false)
@@ -195,9 +191,7 @@ export default defineEventHandler(async (event) => {
       // end_at >= fromIso のものだけを DB 側で絞り込み、JS の overlaps() で最終判定する。
       admin
         .from("toggl_time_entries")
-        .select(
-          "id, toggl_entry_id, title, project_id, project_name, start_at, end_at",
-        )
+        .select("id, toggl_entry_id, title, project_id, project_name, start_at, end_at")
         .eq("user_id", userId)
         .eq("is_deleted", false)
         .lte("start_at", toIso)
@@ -226,19 +220,17 @@ export default defineEventHandler(async (event) => {
       return s < rangeEndMs && e >= rangeStartMs;
     });
     calendarRows = ((calendarRes.data ?? []) as CalendarRow[]).filter((r) =>
-      overlaps(internalRange, r.start_at, r.end_at),
+      overlaps(internalRange, r.start_at, r.end_at)
     );
     togglRows = ((togglRes.data ?? []) as TogglRow[]).filter((r) =>
-      overlaps(internalRange, r.start_at, r.end_at),
+      overlaps(internalRange, r.start_at, r.end_at)
     );
   }
 
   // -- sync statuses (Issue #143 で前段 Promise.all に移動済み) -----------
   if (syncRes.error) throw syncRes.error;
 
-  const sync_statuses: SyncStatusEntry[] = (
-    (syncRes.data ?? []) as SyncStatusRow[]
-  ).map((r) => ({
+  const sync_statuses: SyncStatusEntry[] = ((syncRes.data ?? []) as SyncStatusRow[]).map((r) => ({
     source: r.source,
     status: r.status,
     last_synced_at: r.last_synced_at,
@@ -297,9 +289,8 @@ export default defineEventHandler(async (event) => {
     // いない時間」が落ちる。両方並べて見せたい (dashboard Oura)。
     const timeInBedMinutes = todayWake
       ? Math.round(
-          (new Date(todayWake.wake_at).getTime() -
-            new Date(todayWake.sleep_start_at).getTime()) /
-            60000,
+          (new Date(todayWake.wake_at).getTime() - new Date(todayWake.sleep_start_at).getTime()) /
+            60000
         )
       : null;
     oura = {
@@ -343,9 +334,7 @@ export default defineEventHandler(async (event) => {
       };
       const label =
         row.account_email ??
-        (row.provider_user_id
-          ? `…${row.provider_user_id.slice(-4)}`
-          : "unknown");
+        (row.provider_user_id ? `…${row.provider_user_id.slice(-4)}` : "unknown");
       accountLabelByConn.set(row.id, label);
     }
 
@@ -400,10 +389,7 @@ export default defineEventHandler(async (event) => {
   // プロジェクト名の衝突を防ぐ)。
   let toggl: TodaysMe["toggl"] = null;
   if (connected.has("toggl")) {
-    const byKey = new Map<
-      string,
-      { title: string; project_name: string | null; ms: number }
-    >();
+    const byKey = new Map<string, { title: string; project_name: string | null; ms: number }>();
     let totalMs = 0;
     if (internalRange) {
       for (const t of togglRows) {

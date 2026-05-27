@@ -13,6 +13,7 @@
 Today's ME は Oura / Google Calendar / Toggl Track を統合する個人ダッシュボードで、ユーザー（=開発者本人）が**個人用と仕事用など複数の Google アカウント**にカレンダーを分けて運用しているケースを想定する必要がある。現状は **1 ユーザーにつき 1 つの Google アカウントしか連携できない**（後述 §3 で詳細）。
 
 Issue #109 の要求：
+
 - 複数 Google アカウントのカレンダーを **同じタイムラインに統合表示**したい。
 - まず「複数 Google アカウントで OAuth 連携を保持できるか」を調査するところから着手する。
 
@@ -22,14 +23,14 @@ Issue #109 の要求：
 
 Google OAuth 2.0 の挙動を SPEC・実装と突き合わせて確認した結果：
 
-| 項目 | 現状の前提 | 複数アカウント時の挙動 |
-| --- | --- | --- |
-| 認可エンドポイント | `https://accounts.google.com/o/oauth2/v2/auth`（`server/utils/oauth/google.ts`） | アカウント切替は `prompt=select_account` で Google 側ピッカーに任せられる。既に `prompt=consent` を渡している（refresh_token 取得目的）。`prompt=consent select_account` の併用は許可されている。 |
-| `refresh_token` | アカウント＋クライアント＋スコープ単位で 1 本発行される。`access_type=offline` + `prompt=consent` で取得済み。 | 別アカウントで認可すれば **そのアカウント専用の refresh_token** が新規に発行される。既存アカウントの token に影響はしない。 |
-| `provider_user_id` | 現状は **未取得 / 未保存**（`upsertServiceConnection` の `providerUserId` フィールドはあるが、Google callback では渡していない）。 | カレンダー識別の前段として、Google の安定 ID（`userinfo.sub` または `calendarList.list` の primary calendar id）を取得し、行の uniqueness 判定に使う必要がある。 |
-| `calendarList.list` | 単一アカウント配下のカレンダーのみ返る。 | 別アカウントで `calendarList.list` を叩けば、そのアカウント配下のみが返る。**アカウント間でカレンダー id が衝突する保証はない**（実態は衝突しないが、それを前提にしてはいけない）。 |
-| OAuth client / 認証情報 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` 1 組。 | 同じ OAuth client で複数アカウント分の認可は完全に可能。クライアント側の追加準備は不要。 |
-| Google Cloud Console 側のクォータ | `events.list` / `calendarList.list` の per-user / per-project クォータ。 | アカウントが増えた分だけ API 呼び出しが線形に増える。MVP の単一ユーザー運用なら問題にならない見込みだが、Cron 同期で複数アカウント × 14 日分を一気に叩く場合は要観察。 |
+| 項目                              | 現状の前提                                                                                                                         | 複数アカウント時の挙動                                                                                                                                                                            |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 認可エンドポイント                | `https://accounts.google.com/o/oauth2/v2/auth`（`server/utils/oauth/google.ts`）                                                   | アカウント切替は `prompt=select_account` で Google 側ピッカーに任せられる。既に `prompt=consent` を渡している（refresh_token 取得目的）。`prompt=consent select_account` の併用は許可されている。 |
+| `refresh_token`                   | アカウント＋クライアント＋スコープ単位で 1 本発行される。`access_type=offline` + `prompt=consent` で取得済み。                     | 別アカウントで認可すれば **そのアカウント専用の refresh_token** が新規に発行される。既存アカウントの token に影響はしない。                                                                       |
+| `provider_user_id`                | 現状は **未取得 / 未保存**（`upsertServiceConnection` の `providerUserId` フィールドはあるが、Google callback では渡していない）。 | カレンダー識別の前段として、Google の安定 ID（`userinfo.sub` または `calendarList.list` の primary calendar id）を取得し、行の uniqueness 判定に使う必要がある。                                  |
+| `calendarList.list`               | 単一アカウント配下のカレンダーのみ返る。                                                                                           | 別アカウントで `calendarList.list` を叩けば、そのアカウント配下のみが返る。**アカウント間でカレンダー id が衝突する保証はない**（実態は衝突しないが、それを前提にしてはいけない）。               |
+| OAuth client / 認証情報           | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` 1 組。                                                                                 | 同じ OAuth client で複数アカウント分の認可は完全に可能。クライアント側の追加準備は不要。                                                                                                          |
+| Google Cloud Console 側のクォータ | `events.list` / `calendarList.list` の per-user / per-project クォータ。                                                           | アカウントが増えた分だけ API 呼び出しが線形に増える。MVP の単一ユーザー運用なら問題にならない見込みだが、Cron 同期で複数アカウント × 14 日分を一気に叩く場合は要観察。                            |
 
 **結論**: Google 側は完全に対応可能。**詰めるべきは Today's ME 側のデータモデル・OAuth フロー・同期ロジック**。
 
@@ -40,6 +41,7 @@ Google OAuth 2.0 の挙動を SPEC・実装と突き合わせて確認した結�
 複数アカウント化で改修が必要な箇所を洗い出した。
 
 ### 3.1 DB スキーマ
+
 - `supabase/migrations/20260517160100_create_production_tables.sql`
   - `service_connections` に `unique(user_id, provider)` 制約 → **1 ユーザー × 1 provider に行を 1 つしか持てない**。
   - `upsertServiceConnection` の `onConflict: "user_id,provider"`（`server/utils/serviceConnection.ts:130`）が同じ前提で動く。
@@ -53,13 +55,14 @@ Google OAuth 2.0 の挙動を SPEC・実装と突き合わせて確認した結�
   - `unique(user_id, target_date, source)` で `source` は `'oura' | 'google' | 'toggl'`。複数 Google アカウントで個別ステータスを管理したいかは要決定（§5 参照）。
 
 ### 3.2 OAuth フロー
+
 - `server/api/connections/google/start.get.ts`
   - 認可開始時、固定 cookie 名 `todaysme_oauth_state_google` を使い、state は `createOauthState(userId)` で発行。
   - **同一ユーザーで 2 個目の Google アカウントを認可するときの判別ができない**（state が同じ cookie キーで上書きされる、認可後にどの「接続行」へ追記するか判断する手がかりが userId だけ）。
   - 追加アカウント連携用に
     - state の payload に `intent: "add" | "reauth" | "replace_for_connection_id"` を持たせる
     - or `prompt=select_account` を強制し、callback で `id_token.sub` を見て「既存の provider_user_id とマッチするか / 新規か」を判定する
-    のどちらかが必要。
+      のどちらかが必要。
 
 - `server/api/connections/google/callback.get.ts`
   - 現状は `upsertServiceConnection({ userId, provider: "google", ... })` を呼ぶだけ。**provider_user_id を取得していない**ので、複数アカウント対応の主キー候補が無い。
@@ -69,6 +72,7 @@ Google OAuth 2.0 の挙動を SPEC・実装と突き合わせて確認した結�
   - `disconnectServiceConnection(userId, provider)` で provider 単位の disconnect しかできない（`server/utils/serviceConnection.ts:155`）。複数アカウント化すると **接続行 id 単位の disconnect** が必要。
 
 ### 3.3 同期ロジック
+
 - `server/utils/serviceConnection.ts`
   - `getValidAccessToken(userId, provider)` / `withFreshAccessToken(userId, provider, fn)` が「`(user_id, provider)` の単一行」前提で書かれている。複数アカウント化すると `connectionId` を引数に取る形に拡張する必要がある。
 - `server/utils/syncGoogle.ts`
@@ -80,6 +84,7 @@ Google OAuth 2.0 の挙動を SPEC・実装と突き合わせて確認した結�
   - `index.get.ts` は `provider` 単位で 3 行に集約している。複数アカウント化したら **`google` だけは N 件返る** 形に API を拡張する必要がある（or 別エンドポイント `/api/connections/google/accounts`）。
 
 ### 3.4 UI
+
 - `app/pages/settings.vue`
   - `connections` 配列を `provider` で 1:1 に展開している（`provider === 'google'` で接続ボタンと除外設定 UI を出す）。複数アカウント化すると **「Google」ブロックがアカウント数ぶん**並ぶ形になる。
   - 「Google Calendar と接続する」ボタンが「**追加で**もう 1 つ接続する」へ役割が変わる。OAuth start のクエリに `intent=add` 等を渡す必要が出てくる。
@@ -121,6 +126,7 @@ create unique index service_connections_single_provider_unique
 ```
 
 ポイント：
+
 - 既存の `unique(user_id, provider)` constraint は **drop**。代わりに上記 **partial unique index 2 本** に置き換える。
 - Oura / Toggl は `provider_user_id` 不在のまま「1 ユーザー × 1 行」を物理的に強制できる（NULL 重複が起きない）。`loadConnectionForToken` の `.maybeSingle()` 前提が崩れない。
 - Google は `provider_user_id IS NULL` の状態を許容するが、その NULL 状態でも複数行は作れない（後述の Phase 1a で「Google 行は最大 1 件」のレガシー前提を維持する別 partial index を併用する。§6 Phase 1a 参照）。
@@ -136,6 +142,7 @@ google_calendar_events (改修)
 ```
 
 ポイント：
+
 - 既存 unique `(user_id, calendar_id, google_event_id)` を drop し、`connection_id` を含めた形で再定義。
 - 既存行のマイグレーションは「現状の唯一の Google 接続行」へ全て紐付ければ済む（MVP は単一ユーザー / 単一アカウント運用なので破壊的でない）。
 
@@ -204,7 +211,7 @@ google_excluded_calendars (新規 / 既存 users 配列の置換)
   const googleConnections = await listGoogleConnections(userId);
   for (const conn of googleConnections) {
     await withFreshAccessTokenById(conn.id, "google", (token) =>
-      syncOneConnectionForDate(conn, targetDate, timezone, token),
+      syncOneConnectionForDate(conn, targetDate, timezone, token)
     );
   }
   ```
@@ -251,17 +258,17 @@ google_excluded_calendars (新規 / 既存 users 配列の置換)
 
 ## 6. 段階的実装プラン（フォロー Issue 候補）
 
-| 段階 | 概要 | 主な変更先 |
-| --- | --- | --- |
-| Phase 0（本 PR） | この設計ドラフト Doc | `docs/designs/multi-google-account.md` |
-| Phase 1a | DB マイグレーション 第1段: `service_connections` に `provider_user_id` カラム追加（NULL 許容）。`unique(user_id, provider)` は **そのまま維持**し、追加で「Google かつ provider_user_id IS NULL の行は 1 件まで」の過渡期用 partial unique index を張る（再認可フローと並行運用するための保険）。 | `supabase/migrations/` |
-| Phase 2 | OAuth callback で `id_token` を **JWKS で検証**（iss / aud / exp / 署名）した上で `sub` / `email` を取り、`provider_user_id` を埋める。`shared/schemas/google.ts` に `id_token` を含むトークンレスポンス検証を追加。Google 接続行に `status='needs_reauth'` のセマンティクスを追加し、settings に再認可バナーを出す。 | `oauth/google.ts`, `connections/google/callback.get.ts`, `shared/schemas/google.ts`, `serviceConnection.ts`, `app/pages/settings.vue` |
-| Phase 1b | Backfill 完了の検査スクリプト（`provider_user_id IS NULL AND provider='google'` が 0 件）を回したうえで、1 トランザクションで: ①旧 `unique(user_id, provider)` constraint を drop ②過渡期用 partial index を drop ③§4.1 の 2 本の partial unique index（Google = 3 列 / Oura・Toggl = 2 列）を作成 ④**`upsertServiceConnection` を `upsert({ onConflict })` から explicit な「SELECT → UPDATE or INSERT」に書き換え**（PostgREST の `onConflict` は partial index に推論マッチせず `42P10` で落ちるため。§4.2 末尾参照）。**ここを通過するまで「アカウント追加」UI は出さない**。 | `supabase/migrations/`, `serviceConnection.ts` |
-| Phase 3 | settings UI に「別のアカウントを追加」導線 / `intent=add` フローと `prompt=select_account` 対応 | `app/pages/settings.vue`, `connections/google/start.get.ts` |
-| Phase 4 | `google_calendar_events.connection_id` 追加 / sync ロジックを接続単位ループに変更 / `softDeleteEventsForRemovedCalendars` の絞り込み | `supabase/migrations/`, `syncGoogle.ts`, `getGoogleData.ts` |
-| Phase 5 | 除外カレンダー設定を `google_excluded_calendars` テーブルへ移行（接続単位） | `supabase/migrations/`, `connections/google/calendars.get.ts`, `excluded-calendars.put.ts`, `settings.vue` |
-| Phase 6 | 切断 API を接続 id 単位へ拡張 / 接続ラベル編集 UI | `connections/[provider].delete.ts` 周辺, `settings.vue` |
-| Phase 7 | ダッシュボード表示の最終調整（同名カレンダー衝突時のラベル付け、必要なら凡例） | `DailySummaryView.vue`, `summary.get.ts` |
+| 段階             | 概要                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | 主な変更先                                                                                                                            |
+| ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Phase 0（本 PR） | この設計ドラフト Doc                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | `docs/designs/multi-google-account.md`                                                                                                |
+| Phase 1a         | DB マイグレーション 第1段: `service_connections` に `provider_user_id` カラム追加（NULL 許容）。`unique(user_id, provider)` は **そのまま維持**し、追加で「Google かつ provider_user_id IS NULL の行は 1 件まで」の過渡期用 partial unique index を張る（再認可フローと並行運用するための保険）。                                                                                                                                                                                                                                                                                 | `supabase/migrations/`                                                                                                                |
+| Phase 2          | OAuth callback で `id_token` を **JWKS で検証**（iss / aud / exp / 署名）した上で `sub` / `email` を取り、`provider_user_id` を埋める。`shared/schemas/google.ts` に `id_token` を含むトークンレスポンス検証を追加。Google 接続行に `status='needs_reauth'` のセマンティクスを追加し、settings に再認可バナーを出す。                                                                                                                                                                                                                                                             | `oauth/google.ts`, `connections/google/callback.get.ts`, `shared/schemas/google.ts`, `serviceConnection.ts`, `app/pages/settings.vue` |
+| Phase 1b         | Backfill 完了の検査スクリプト（`provider_user_id IS NULL AND provider='google'` が 0 件）を回したうえで、1 トランザクションで: ①旧 `unique(user_id, provider)` constraint を drop ②過渡期用 partial index を drop ③§4.1 の 2 本の partial unique index（Google = 3 列 / Oura・Toggl = 2 列）を作成 ④**`upsertServiceConnection` を `upsert({ onConflict })` から explicit な「SELECT → UPDATE or INSERT」に書き換え**（PostgREST の `onConflict` は partial index に推論マッチせず `42P10` で落ちるため。§4.2 末尾参照）。**ここを通過するまで「アカウント追加」UI は出さない**。 | `supabase/migrations/`, `serviceConnection.ts`                                                                                        |
+| Phase 3          | settings UI に「別のアカウントを追加」導線 / `intent=add` フローと `prompt=select_account` 対応                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | `app/pages/settings.vue`, `connections/google/start.get.ts`                                                                           |
+| Phase 4          | `google_calendar_events.connection_id` 追加 / sync ロジックを接続単位ループに変更 / `softDeleteEventsForRemovedCalendars` の絞り込み                                                                                                                                                                                                                                                                                                                                                                                                                                              | `supabase/migrations/`, `syncGoogle.ts`, `getGoogleData.ts`                                                                           |
+| Phase 5          | 除外カレンダー設定を `google_excluded_calendars` テーブルへ移行（接続単位）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `supabase/migrations/`, `connections/google/calendars.get.ts`, `excluded-calendars.put.ts`, `settings.vue`                            |
+| Phase 6          | 切断 API を接続 id 単位へ拡張 / 接続ラベル編集 UI                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | `connections/[provider].delete.ts` 周辺, `settings.vue`                                                                               |
+| Phase 7          | ダッシュボード表示の最終調整（同名カレンダー衝突時のラベル付け、必要なら凡例）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `DailySummaryView.vue`, `summary.get.ts`                                                                                              |
 
 各 Phase は単独 PR で out / merge できる粒度を意識している。Phase 4 が一番重いので、ここを単独でレビューに集中させる想定。
 

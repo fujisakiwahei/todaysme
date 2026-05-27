@@ -25,15 +25,9 @@ const disconnectGoogleParamsSchema = z.object({
 
 export default defineEventHandler(async (event) => {
   const userId = await requireUserId(event);
-  const params = parseOrThrow(
-    disconnectGoogleParamsSchema,
-    getRouterParams(event),
-  );
+  const params = parseOrThrow(disconnectGoogleParamsSchema, getRouterParams(event));
 
-  const result = await disconnectGoogleConnectionById(
-    userId,
-    params.connectionId,
-  );
+  const result = await disconnectGoogleConnectionById(userId, params.connectionId);
   if (!result.found) {
     throw createError({
       statusCode: 404,

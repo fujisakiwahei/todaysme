@@ -30,12 +30,7 @@
         padding: 0;
         background: var(--bg);
         color: var(--text);
-        font-family:
-          -apple-system,
-          "Segoe UI",
-          "Hiragino Sans",
-          "Yu Gothic UI",
-          sans-serif;
+        font-family: -apple-system, "Segoe UI", "Hiragino Sans", "Yu Gothic UI", sans-serif;
         font-size: 13px;
         overflow: hidden;
         height: 100vh;
@@ -69,8 +64,7 @@
         color: var(--text);
       }
       header.app-header .repo-path {
-        font-family:
-          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         font-size: 11.5px;
         color: var(--gold-soft);
       }
@@ -192,17 +186,8 @@
         grid-area: canvas;
         position: relative;
         background:
-          radial-gradient(
-            circle at 20% 18%,
-            rgba(76, 201, 240, 0.04),
-            transparent 50%
-          ),
-          radial-gradient(
-            circle at 80% 70%,
-            rgba(255, 209, 102, 0.035),
-            transparent 50%
-          ),
-          var(--bg);
+          radial-gradient(circle at 20% 18%, rgba(76, 201, 240, 0.04), transparent 50%),
+          radial-gradient(circle at 80% 70%, rgba(255, 209, 102, 0.035), transparent 50%), var(--bg);
         overflow: hidden;
       }
       .canvas-wrap svg {
@@ -410,8 +395,7 @@
         border-color: var(--edge-active);
       }
       .annotations ol li .li-from-to {
-        font-family:
-          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         font-size: 11px;
         color: var(--muted);
         margin-bottom: 4px;
@@ -421,8 +405,7 @@
         border-left: 2px solid var(--gold-soft);
         padding: 4px 9px;
         margin: 3px 0;
-        font-family:
-          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         font-size: 11.5px;
         line-height: 1.45;
         color: var(--text);
@@ -495,8 +478,7 @@
       }
       .node.in-flow .node-rect {
         stroke-width: 2.5;
-        filter:
-          drop-shadow(0 0 6px var(--edge-active-glow))
+        filter: drop-shadow(0 0 6px var(--edge-active-glow))
           drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
       }
       .node.endpoint .node-rect {
@@ -506,14 +488,11 @@
       @keyframes node-glow {
         0%,
         100% {
-          filter:
-            drop-shadow(0 0 6px var(--edge-active-glow))
+          filter: drop-shadow(0 0 6px var(--edge-active-glow))
             drop-shadow(0 0 14px rgba(255, 209, 102, 0.35));
         }
         50% {
-          filter:
-            drop-shadow(0 0 10px #fffae0)
-            drop-shadow(0 0 22px rgba(255, 248, 224, 0.6));
+          filter: drop-shadow(0 0 10px #fffae0) drop-shadow(0 0 22px rgba(255, 248, 224, 0.6));
         }
       }
 
@@ -550,9 +529,7 @@
         50% {
           stroke: #fff8d6;
           stroke-width: 4.2;
-          filter:
-            drop-shadow(0 0 10px #fff8d6)
-            drop-shadow(0 0 18px var(--edge-active-glow));
+          filter: drop-shadow(0 0 10px #fff8d6) drop-shadow(0 0 18px var(--edge-active-glow));
         }
       }
 
@@ -582,8 +559,7 @@
         text-anchor: middle;
         dominant-baseline: middle;
         pointer-events: none;
-        font-family:
-          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         letter-spacing: 0.02em;
       }
       .edge-step-halo {
@@ -619,16 +595,12 @@
         0%,
         100% {
           transform: scale(1);
-          filter:
-            drop-shadow(0 0 3px #fff)
-            drop-shadow(0 0 6px var(--edge-active))
+          filter: drop-shadow(0 0 3px #fff) drop-shadow(0 0 6px var(--edge-active))
             drop-shadow(0 0 12px var(--edge-active-glow));
         }
         50% {
           transform: scale(1.42);
-          filter:
-            drop-shadow(0 0 8px #fff)
-            drop-shadow(0 0 14px var(--edge-active))
+          filter: drop-shadow(0 0 8px #fff) drop-shadow(0 0 14px var(--edge-active))
             drop-shadow(0 0 22px var(--edge-active-glow));
         }
       }
@@ -678,8 +650,7 @@
         padding-top: 8px;
       }
       #tooltip .tt-route {
-        font-family:
-          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         font-size: 11px;
         color: var(--muted);
         margin-bottom: 4px;
@@ -697,8 +668,7 @@
         border-left: 2px solid var(--gold-soft);
         padding: 4px 8px;
         margin: 4px 0;
-        font-family:
-          ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         font-size: 11px;
         word-break: break-word;
       }
@@ -937,11 +907,7 @@
     </aside>
 
     <div class="canvas-wrap">
-      <svg
-        id="canvas"
-        xmlns="http://www.w3.org/2000/svg"
-        preserveAspectRatio="xMidYMid meet"
-      ></svg>
+      <svg id="canvas" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
     </div>
 
     <div class="resizer" id="resizer" title="ドラッグで注釈パネルの高さを調整"></div>
@@ -952,267 +918,994 @@
 
     <!-- Fallback for file:// (embedded copy of flows.json) -->
     <script type="application/json" id="workflow-data">
-{
-  "meta": {
-    "title": "Today's ME — Workflow Map",
-    "subtitle": "Nuxt 4 + Supabase + Oura / Google Calendar / Toggl",
-    "repoPath": "todaysme/",
-    "version": "2026-05-22-r2",
-    "hint": "下のカードをクリック=矢印を表示 / 1〜0=フロー / F=矢印を全部消す / +-=ズーム / Esc=フォーカス解除"
-  },
-  "viewBox": { "w": 1620, "h": 820 },
-  "columns": [
-    { "id": "client",   "label": "CLIENT (browser · Nuxt SSR)", "x": 175,  "divider": 335 },
-    { "id": "api",      "label": "NUXT SERVER · /api",          "x": 495,  "divider": 655 },
-    { "id": "utils",    "label": "SERVER UTILS · server/utils", "x": 815,  "divider": 975 },
-    { "id": "db",       "label": "SUPABASE (Postgres + Auth)",  "x": 1135, "divider": 1295 },
-    { "id": "ext",      "label": "EXTERNAL APIs / CRON",         "x": 1455, "divider": null }
-  ],
-  "groups": [
-    { "id": "client", "label": "Vue pages (app/pages)",                 "stroke": "#4cc9f0", "fill": "#11242e", "sub": "#7cd3ec" },
-    { "id": "api",    "label": "Nuxt server routes (server/api)",       "stroke": "#90e0ef", "fill": "#0f2630", "sub": "#9ad6e6" },
-    { "id": "utils",  "label": "Server utilities (server/utils)",       "stroke": "#ffd166", "fill": "#2c2410", "sub": "#f0c267" },
-    { "id": "auth",   "label": "Auth & Session",                        "stroke": "#a594f9", "fill": "#1e1a30", "sub": "#b9adfc" },
-    { "id": "db",     "label": "Supabase tables",                       "stroke": "#52b788", "fill": "#0f2a1d", "sub": "#74c89f" },
-    { "id": "ext",    "label": "External services",                     "stroke": "#f72585", "fill": "#2a0e1c", "sub": "#f06ea6" },
-    { "id": "cron",   "label": "Scheduler",                             "stroke": "#f4a261", "fill": "#2a1c10", "sub": "#f6b682" }
-  ],
-  "nodes": [
-    { "id": "page-settings", "title": "/settings",        "subtitle": "app/pages/settings.vue",         "group": "client", "x": 40,   "y": 130, "w": 270, "h": 56 },
-    { "id": "page-daily",    "title": "/daily/[date]",    "subtitle": "app/pages/daily/[date].vue",     "group": "client", "x": 40,   "y": 340, "w": 270, "h": 56 },
-    { "id": "page-demo",     "title": "/demo",            "subtitle": "app/pages/demo.vue",             "group": "client", "x": 40,   "y": 550, "w": 270, "h": 56 },
+      {
+        "meta": {
+          "title": "Today's ME — Workflow Map",
+          "subtitle": "Nuxt 4 + Supabase + Oura / Google Calendar / Toggl",
+          "repoPath": "todaysme/",
+          "version": "2026-05-22-r2",
+          "hint": "下のカードをクリック=矢印を表示 / 1〜0=フロー / F=矢印を全部消す / +-=ズーム / Esc=フォーカス解除"
+        },
+        "viewBox": { "w": 1620, "h": 820 },
+        "columns": [
+          { "id": "client", "label": "CLIENT (browser · Nuxt SSR)", "x": 175, "divider": 335 },
+          { "id": "api", "label": "NUXT SERVER · /api", "x": 495, "divider": 655 },
+          { "id": "utils", "label": "SERVER UTILS · server/utils", "x": 815, "divider": 975 },
+          { "id": "db", "label": "SUPABASE (Postgres + Auth)", "x": 1135, "divider": 1295 },
+          { "id": "ext", "label": "EXTERNAL APIs / CRON", "x": 1455, "divider": null }
+        ],
+        "groups": [
+          {
+            "id": "client",
+            "label": "Vue pages (app/pages)",
+            "stroke": "#4cc9f0",
+            "fill": "#11242e",
+            "sub": "#7cd3ec"
+          },
+          {
+            "id": "api",
+            "label": "Nuxt server routes (server/api)",
+            "stroke": "#90e0ef",
+            "fill": "#0f2630",
+            "sub": "#9ad6e6"
+          },
+          {
+            "id": "utils",
+            "label": "Server utilities (server/utils)",
+            "stroke": "#ffd166",
+            "fill": "#2c2410",
+            "sub": "#f0c267"
+          },
+          {
+            "id": "auth",
+            "label": "Auth & Session",
+            "stroke": "#a594f9",
+            "fill": "#1e1a30",
+            "sub": "#b9adfc"
+          },
+          {
+            "id": "db",
+            "label": "Supabase tables",
+            "stroke": "#52b788",
+            "fill": "#0f2a1d",
+            "sub": "#74c89f"
+          },
+          {
+            "id": "ext",
+            "label": "External services",
+            "stroke": "#f72585",
+            "fill": "#2a0e1c",
+            "sub": "#f06ea6"
+          },
+          {
+            "id": "cron",
+            "label": "Scheduler",
+            "stroke": "#f4a261",
+            "fill": "#2a1c10",
+            "sub": "#f6b682"
+          }
+        ],
+        "nodes": [
+          {
+            "id": "page-settings",
+            "title": "/settings",
+            "subtitle": "app/pages/settings.vue",
+            "group": "client",
+            "x": 40,
+            "y": 130,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "page-daily",
+            "title": "/daily/[date]",
+            "subtitle": "app/pages/daily/[date].vue",
+            "group": "client",
+            "x": 40,
+            "y": 340,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "page-demo",
+            "title": "/demo",
+            "subtitle": "app/pages/demo.vue",
+            "group": "client",
+            "x": 40,
+            "y": 550,
+            "w": 270,
+            "h": 56
+          },
 
-    { "id": "api-summary",       "title": "GET /api/summary",                    "subtitle": "server/api/summary.get.ts",                       "group": "api", "x": 360, "y": 80,  "w": 270, "h": 56 },
-    { "id": "api-refresh",       "title": "POST /api/summary/refresh",           "subtitle": "server/api/summary/refresh.post.ts",              "group": "api", "x": 360, "y": 175, "w": 270, "h": 56 },
-    { "id": "api-cron",          "title": "GET /api/cron/daily",                 "subtitle": "server/api/cron/daily.get.ts",                    "group": "api", "x": 360, "y": 270, "w": 270, "h": 56 },
-    { "id": "api-connections",   "title": "/api/connections (GET·POST·DELETE)",  "subtitle": "list · toggl · disconnect · calendars",           "group": "api", "x": 360, "y": 365, "w": 270, "h": 56 },
-    { "id": "api-oauth-start",   "title": "GET /connections/:p/start",           "subtitle": "Oura / Google",                                    "group": "api", "x": 360, "y": 460, "w": 270, "h": 56 },
-    { "id": "api-oauth-cb",      "title": "GET /connections/:p/callback",        "subtitle": "Oura / Google",                                    "group": "api", "x": 360, "y": 555, "w": 270, "h": 56 },
-    { "id": "api-demo",          "title": "GET /api/demo/summary",               "subtitle": "server/api/demo/summary.get.ts",                  "group": "api", "x": 360, "y": 650, "w": 270, "h": 56 },
+          {
+            "id": "api-summary",
+            "title": "GET /api/summary",
+            "subtitle": "server/api/summary.get.ts",
+            "group": "api",
+            "x": 360,
+            "y": 80,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "api-refresh",
+            "title": "POST /api/summary/refresh",
+            "subtitle": "server/api/summary/refresh.post.ts",
+            "group": "api",
+            "x": 360,
+            "y": 175,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "api-cron",
+            "title": "GET /api/cron/daily",
+            "subtitle": "server/api/cron/daily.get.ts",
+            "group": "api",
+            "x": 360,
+            "y": 270,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "api-connections",
+            "title": "/api/connections (GET·POST·DELETE)",
+            "subtitle": "list · toggl · disconnect · calendars",
+            "group": "api",
+            "x": 360,
+            "y": 365,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "api-oauth-start",
+            "title": "GET /connections/:p/start",
+            "subtitle": "Oura / Google",
+            "group": "api",
+            "x": 360,
+            "y": 460,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "api-oauth-cb",
+            "title": "GET /connections/:p/callback",
+            "subtitle": "Oura / Google",
+            "group": "api",
+            "x": 360,
+            "y": 555,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "api-demo",
+            "title": "GET /api/demo/summary",
+            "subtitle": "server/api/demo/summary.get.ts",
+            "group": "api",
+            "x": 360,
+            "y": 650,
+            "w": 270,
+            "h": 56
+          },
 
-    { "id": "util-auth",    "title": "requireUserId",                "subtitle": "server/utils/auth.ts",                                        "group": "utils", "x": 680, "y": 100, "w": 270, "h": 56 },
-    { "id": "util-refresh", "title": "refreshUserDate (orchestrator)", "subtitle": "runRefresh.ts + syncLock.ts + wakeRange.ts",                "group": "utils", "x": 680, "y": 220, "w": 270, "h": 56 },
-    { "id": "util-sync",    "title": "syncOura / syncGoogle / syncToggl", "subtitle": "syncXxx.ts + getXxxData.ts",                              "group": "utils", "x": 680, "y": 340, "w": 270, "h": 56 },
-    { "id": "util-token",   "title": "serviceConnection + crypto",   "subtitle": "AES-256-GCM · refresh on expiry / 401",                       "group": "utils", "x": 680, "y": 460, "w": 270, "h": 56 },
-    { "id": "util-oauth",   "title": "oauthState + oauth/{google,oura}", "subtitle": "HMAC state · authorize/token endpoints",                   "group": "utils", "x": 680, "y": 580, "w": 270, "h": 56 },
+          {
+            "id": "util-auth",
+            "title": "requireUserId",
+            "subtitle": "server/utils/auth.ts",
+            "group": "utils",
+            "x": 680,
+            "y": 100,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "util-refresh",
+            "title": "refreshUserDate (orchestrator)",
+            "subtitle": "runRefresh.ts + syncLock.ts + wakeRange.ts",
+            "group": "utils",
+            "x": 680,
+            "y": 220,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "util-sync",
+            "title": "syncOura / syncGoogle / syncToggl",
+            "subtitle": "syncXxx.ts + getXxxData.ts",
+            "group": "utils",
+            "x": 680,
+            "y": 340,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "util-token",
+            "title": "serviceConnection + crypto",
+            "subtitle": "AES-256-GCM · refresh on expiry / 401",
+            "group": "utils",
+            "x": 680,
+            "y": 460,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "util-oauth",
+            "title": "oauthState + oauth/{google,oura}",
+            "subtitle": "HMAC state · authorize/token endpoints",
+            "group": "utils",
+            "x": 680,
+            "y": 580,
+            "w": 270,
+            "h": 56
+          },
 
-    { "id": "supa-auth",       "title": "Supabase Auth",       "subtitle": "auth.users · JWT verify",                "group": "auth", "x": 1000, "y": 80,  "w": 270, "h": 56 },
-    { "id": "tbl-users",       "title": "users",               "subtitle": "timezone · excluded_google_calendar_ids", "group": "db",  "x": 1000, "y": 195, "w": 270, "h": 56 },
-    { "id": "tbl-connections", "title": "service_connections", "subtitle": "AES-encrypted tokens · status",          "group": "db",  "x": 1000, "y": 310, "w": 270, "h": 56 },
-    { "id": "tbl-status",      "title": "daily_sync_statuses", "subtitle": "lock · status · error_message",          "group": "db",  "x": 1000, "y": 425, "w": 270, "h": 56 },
-    { "id": "tbl-records",     "title": "*_records / *_events / *_time_entries", "subtitle": "oura_sleep · google_calendar · toggl_time", "group": "db", "x": 1000, "y": 540, "w": 270, "h": 56 },
-    { "id": "tbl-demo",        "title": "demo_* (public-read)", "subtitle": "no RLS · no user_id · Asia/Tokyo",       "group": "db",  "x": 1000, "y": 655, "w": 270, "h": 56 },
+          {
+            "id": "supa-auth",
+            "title": "Supabase Auth",
+            "subtitle": "auth.users · JWT verify",
+            "group": "auth",
+            "x": 1000,
+            "y": 80,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "tbl-users",
+            "title": "users",
+            "subtitle": "timezone · excluded_google_calendar_ids",
+            "group": "db",
+            "x": 1000,
+            "y": 195,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "tbl-connections",
+            "title": "service_connections",
+            "subtitle": "AES-encrypted tokens · status",
+            "group": "db",
+            "x": 1000,
+            "y": 310,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "tbl-status",
+            "title": "daily_sync_statuses",
+            "subtitle": "lock · status · error_message",
+            "group": "db",
+            "x": 1000,
+            "y": 425,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "tbl-records",
+            "title": "*_records / *_events / *_time_entries",
+            "subtitle": "oura_sleep · google_calendar · toggl_time",
+            "group": "db",
+            "x": 1000,
+            "y": 540,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "tbl-demo",
+            "title": "demo_* (public-read)",
+            "subtitle": "no RLS · no user_id · Asia/Tokyo",
+            "group": "db",
+            "x": 1000,
+            "y": 655,
+            "w": 270,
+            "h": 56
+          },
 
-    { "id": "ext-cron",   "title": "Vercel Cron",       "subtitle": "0 20 * * * (UTC) · JST 05:00",                "group": "cron", "x": 1320, "y": 80,  "w": 270, "h": 56 },
-    { "id": "ext-oura",   "title": "Oura API v2",       "subtitle": "/usercollection/sleep · /oauth/token",         "group": "ext", "x": 1320, "y": 250, "w": 270, "h": 56 },
-    { "id": "ext-google", "title": "Google Calendar v3", "subtitle": "/calendars · /events · oauth2/token",         "group": "ext", "x": 1320, "y": 410, "w": 270, "h": 56 },
-    { "id": "ext-toggl",  "title": "Toggl Track v9",     "subtitle": "/me/time_entries (Basic Auth)",               "group": "ext", "x": 1320, "y": 570, "w": 270, "h": 56 }
-  ],
-  "flows": [
-    {
-      "id": "auth-session",
-      "icon": "🔐",
-      "name": "1. ログイン & セッション",
-      "sub": "Supabase Auth でログインし、その JWT を全 API リクエストで検証する",
-      "what": "Supabase の OAuth (Google identity provider) でログイン。返ってきた access_token がクライアントに保存され、以降のあらゆる /api/* 呼び出しで Bearer ヘッダとして送信される。サーバ側は requireUserId() がその JWT を Supabase Admin に問い合わせて検証し、不正なら 401 を投げる。",
-      "why": "「誰のデータか」を毎リクエストで突き止めるため。サーバ側は一切セッション状態を持たないので、Bearer JWT がない / 古い / 改ざんされている呼び出しは入口で全部はじけ、他人のサマリや service_connections を間違って読む事故が構造的に起こらない。",
-      "description": "Supabase の OAuth (Google identity provider) でログイン。返ってきた access_token がクライアントに保存され、以降のあらゆる /api/* 呼び出しで Bearer ヘッダとして送信される。サーバ側は requireUserId() でその JWT を Supabase Admin に問い合わせて検証する。",
-      "steps": [
-        { "from": "page-settings", "to": "supa-auth",     "passes": "supabase.auth.signInWithOAuth({ provider: 'google' })", "note": "Supabase の OAuth は Calendar 接続とは別物。アカウント識別だけに使う" },
-        { "from": "supa-auth",     "to": "page-settings", "passes": "session JWT (access_token + refresh_token)",            "note": "@nuxtjs/supabase が保存・自動更新" },
-        { "from": "page-settings", "to": "api-connections", "passes": "Authorization: Bearer <Supabase JWT>",                 "note": "認証必須 API はすべてこのヘッダを要求する" },
-        { "from": "api-connections", "to": "util-auth",   "passes": "requireUserId(event)",                                   "note": "server/utils/auth.ts" },
-        { "from": "util-auth",     "to": "supa-auth",     "passes": "supabaseAdmin.auth.getUser(token)",                       "note": "署名検証 + ユーザー存在確認" },
-        { "from": "supa-auth",     "to": "util-auth",     "passes": "{ user.id }",                                             "note": "不正なら 401 を throw" }
-      ]
-    },
-    {
-      "id": "oauth-connect",
-      "icon": "🔗",
-      "name": "2. Google / Oura OAuth 接続",
-      "sub": "外部サービスのアクセストークンを取得して暗号化保存。Google は id_token も JWKS 検証して複数アカウント識別キーを backfill",
-      "what": "ユーザーが /settings の「接続」ボタンを押すところから、ブラウザが外部サービスへ飛んでコードを持ち帰り、access_token と refresh_token を取得し、AES-256-GCM で暗号化して service_connections に書き込んで /settings へ戻すまで。Google は加えて id_token を JWKS 検証し、sub (= provider_user_id) と email (= account_email) を保存して「どのアカウントの接続行か」を識別できるようにする。「別のアカウントを追加」導線は ?intent=add で開いてアカウントピッカー (prompt=consent select_account) を強制表示する。",
-      "why": "外部サービスのデータを長期的に同期し続けるには refresh_token を握る必要があるが、これは漏れると本人になりすませる強い権限。だから DB には平文で置かず AES-256-GCM で暗号化し、復号鍵 (TOKEN_ENCRYPTION_KEY) は DB の外に置く。CSRF を state 署名 + nonce cookie の二段ガードしているのは、第三者サイトが攻撃者のアカウントとユーザーを結びつける混乱攻撃を防ぐため。Google で id_token を JWKS 検証するのは、token endpoint レスポンス自体は HTTPS 直通だが「id_token の中身が本当に Google が署名したものか」を確認しないと sub をなりすませる余地があるため (Codex review #127 P1)。複数アカウント連携で sub をアカウント識別キーに使う以上、ここの検証は必須。",
-      "description": "ユーザーが /settings の「接続」ボタンを押すところから、ブラウザが外部サービスへ飛んでコードを持ち帰り、access_token と refresh_token を取得し、AES-256-GCM で暗号化して service_connections に書き込んで /settings へ戻すまで。Google は id_token を JWKS 検証して sub / email も埋める (Issue #131)。",
-      "steps": [
-        { "from": "page-settings",  "to": "api-oauth-start", "passes": "GET /api/connections/google/start[?intent=add]",          "note": "Bearer JWT 必須 · intent=add で別アカウント追加" },
-        { "from": "api-oauth-start","to": "util-oauth",      "passes": "createOauthState(userId)",                                "note": "HMAC-SHA256 で署名した state と 10 分 TTL の nonce を生成" },
-        { "from": "util-oauth",    "to": "api-oauth-start",  "passes": "{ state, nonce, authorize_url }",                         "note": "buildGoogleAuthorizeUrl(state, { selectAccount: isAdd }) で URL 組み立て" },
-        { "from": "api-oauth-start","to": "page-settings",   "passes": "{ authorize_url } · Set-Cookie todaysme_oauth_state_google=<nonce>", "note": "httpOnly + SameSite=Lax" },
-        { "from": "page-settings", "to": "ext-google",       "passes": "window.location.href = authorize_url",                    "note": "scope: openid + email + calendar.events.readonly + calendar.calendarlist.readonly · access_type=offline · prompt=consent[ select_account]" },
-        { "from": "ext-google",    "to": "api-oauth-cb",     "passes": "302 → /api/connections/google/callback?code=...&state=...","note": "ユーザーが同意した後のリダイレクト" },
-        { "from": "api-oauth-cb",  "to": "util-oauth",       "passes": "verifyOauthState(state, cookie_nonce)",                    "note": "署名・有効期限・nonce 一致を全部チェック → ダメなら 400" },
-        { "from": "api-oauth-cb",  "to": "ext-google",       "passes": "POST oauth2.googleapis.com/token (code, redirect_uri)",     "note": "認可コードと引き換えに token + id_token を取得" },
-        { "from": "ext-google",    "to": "api-oauth-cb",     "passes": "{ access_token, refresh_token, expires_in, id_token, scope }", "note": "parseExternal(googleTokenResponseSchema) で形を検証 · 失敗時 502" },
-        { "from": "api-oauth-cb",  "to": "util-oauth",       "passes": "verifyGoogleIdToken(id_token, audience=GOOGLE_CLIENT_ID)",  "note": "jose の createRemoteJWKSet (キャッシュ 10 分) · 失敗時 401 · Issue #131 Phase 2" },
-        { "from": "util-oauth",    "to": "api-oauth-cb",     "passes": "{ sub, email, email_verified }",                          "note": "sub = provider_user_id · email = account_email" },
-        { "from": "api-oauth-cb",  "to": "util-token",       "passes": "upsertServiceConnection({ userId, provider:'google', providerUserId:sub, accountEmail:email, tokens })", "note": "(user_id, provider, provider_user_id) の partial unique でヒットすれば UPDATE = 再認可、無ければ INSERT = 別アカウント追加" },
-        { "from": "util-token",    "to": "tbl-connections",  "passes": "UPSERT service_connections (provider_user_id, account_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, status='connected')", "note": "iv / authTag / ciphertext を base64 で格納" },
-        { "from": "api-oauth-cb",  "to": "page-settings",    "passes": "302 Location: /settings?connected=google",                  "note": "nonce cookie は使い切りで削除" }
-      ]
-    },
-    {
-      "id": "toggl-connect",
-      "icon": "🎟️",
-      "name": "3. Toggl API トークン接続",
-      "sub": "OAuth ではなく Toggl ダッシュボードから取った API トークンを貼り付ける方式",
-      "what": "Toggl Track には OAuth フローがないので、ユーザーが Toggl 設定画面から自分の API トークンをコピペし、サーバ側で AES-256-GCM 暗号化してそのまま保存する。refresh の概念はない。",
-      "why": "Toggl は OAuth プロバイダではないため、Flow 2 のような認可コード交換はそもそも組めない。それでもトークンを DB に平文で置けば漏洩リスクがあるので、Google / Oura と同じ暗号化レーンに乗せて扱いを統一する。これにより、UI 側は接続済みかどうか以外に Toggl だけ特別扱いをする必要がない。",
-      "description": "Toggl Track には OAuth フローがないので、ユーザーが Toggl 設定画面から自分の API トークンをコピペし、サーバ側で AES-256-GCM 暗号化してそのまま保存する。refresh の概念はない。",
-      "steps": [
-        { "from": "page-settings",   "to": "api-connections", "passes": "POST /api/connections/toggl · { api_token }",                "note": "togglConnectRequestSchema で parseOrThrow" },
-        { "from": "api-connections", "to": "util-auth",       "passes": "requireUserId(event)",                                       "note": "Bearer JWT 必須" },
-        { "from": "api-connections", "to": "util-token",      "passes": "upsertServiceConnection(userId, 'toggl', { accessToken: api_token, refreshToken: null })", "note": "refresh_token は常に null" },
-        { "from": "util-token",      "to": "tbl-connections", "passes": "UPSERT service_connections (provider='toggl', status='connected')", "note": "AES-256-GCM で暗号化済み" },
-        { "from": "api-connections", "to": "page-settings",   "passes": "{ ok: true }",                                                "note": "UI 側で /api/connections を再取得して状態を反映" }
-      ]
-    },
-    {
-      "id": "connections-list",
-      "icon": "⚙️",
-      "name": "4. /settings 初期化（接続一覧 + 複数 Google アカウント）",
-      "sub": "service_connections の状態を取り出すが、暗号化トークンの中身は絶対にクライアントへ返さない。Google は接続単位で accounts / calendars / excluded を引く",
-      "what": "/settings ページのマウント時に呼ばれる。各 provider について status と has_token と connected_at だけを返し、トークン本体はサーバを出ない。Google は複数アカウント連携を許容するので、追加で /api/connections/google/accounts で 0..N 件の接続行を取り、各接続カードについて /api/connections/google/calendars?connection_id=... を叩いて接続単位のカレンダー一覧 + 除外設定を構成する。除外設定は users 配列ではなく google_excluded_calendars テーブル (Phase 5) を読む。",
-      "why": "「接続済みかどうか」を表示するためだけにトークンをクライアントに返すと、ブラウザ拡張や XSS でトークンを抜かれるリスクが生まれる。だから has_token フラグだけを返し、本物の鍵は絶対サーバの外に出さない (仕様書 §12.1)。Google だけ accounts エンドポイントを別出ししているのは、同一ユーザーが複数 Google アカウントを連携できるようになって provider 単位の集約だけでは UI が組めなくなったため (Issue #131 Phase 3)。除外設定もアカウント間で同じ calendar_id が別物を指す可能性があるため、users.excluded_google_calendar_ids 配列ではなく (connection_id, calendar_id) のテーブルにスコープし直した (Phase 5)。",
-      "description": "/settings ページのマウント時に呼ばれる。Google は接続単位で accounts / calendars / excluded を引いて複数アカウントカードを構成する (Issue #131 Phase 3/5)。",
-      "steps": [
-        { "from": "page-settings",   "to": "api-connections", "passes": "GET /api/connections",                                                  "note": "Bearer JWT" },
-        { "from": "api-connections", "to": "util-auth",       "passes": "requireUserId(event)",                                                   "note": "" },
-        { "from": "api-connections", "to": "tbl-connections", "passes": "SELECT provider, status, account_email, connected_at, token_expires_at WHERE user_id = auth.uid()", "note": "Google は最初の 1 行に集約 (詳細一覧は accounts.get で取り直す)" },
-        { "from": "api-connections", "to": "page-settings",   "passes": "ConnectionListResponse [{ provider, status, has_token, connected_at, account_email }]",  "note": "access_token は never returned · CLAUDE.md §12.1" },
-        { "from": "page-settings",   "to": "api-connections", "passes": "GET /api/connections/google/accounts",                                    "note": "Google が connected な時だけ呼ばれる · Issue #131 Phase 3" },
-        { "from": "api-connections", "to": "tbl-connections", "passes": "SELECT id, provider_user_id, account_email, status, ... WHERE provider='google'", "note": "0..N 件の接続行を返す" },
-        { "from": "api-connections", "to": "page-settings",   "passes": "GoogleAccountsResponse { accounts: [{ connection_id, provider_user_id, account_email, status, ... }] }", "note": "UI は connection_id ごとにカードを描画" },
-        { "from": "page-settings",   "to": "api-connections", "passes": "GET /api/connections/google/calendars?connection_id=<uuid>",              "note": "各接続カードについて 1 リクエスト" },
-        { "from": "api-connections", "to": "util-token",      "passes": "withFreshAccessTokenByConnection(connection_id, fetchCalendarList)",       "note": "接続行を引いて decrypt → 期限近ければ refresh → 呼び出し" },
-        { "from": "util-token",      "to": "ext-google",      "passes": "GET /calendar/v3/users/me/calendarList (Bearer)",                          "note": "pagination 対応" },
-        { "from": "ext-google",      "to": "api-connections", "passes": "{ items: [{ id, summary, primary }] }",                                    "note": "google_excluded_calendars (connection_id 単位) と突き合わせて excluded フラグを付ける" },
-        { "from": "api-connections", "to": "page-settings",   "passes": "GoogleCalendarsResponse { connection_id, calendars: [...] }",              "note": "PUT /api/connections/google/excluded-calendars で接続単位に保存する" }
-      ]
-    },
-    {
-      "id": "summary-read",
-      "icon": "📊",
-      "name": "5. /daily/[date] サマリ取得（SSR + 並列前段クエリ）",
-      "sub": "Wake-based Timeline で 1 日分の sleep / event / time_entry を集める読み取りパス。useAsyncData で SSR、4 前段クエリを並列化",
-      "what": "/daily/[date] は useAsyncData で SSR 時に /api/summary を叩く (Issue #141)。同期は一切起こさず、すでに DB に入っているレコードだけから wake range を計算し、その時間幅にオーバーラップする睡眠 / カレンダー / 作業時間を引いてくる。userId / date だけに依存する 4 前段クエリ (timezone / google_excluded_calendars / connections 一覧 / daily_sync_statuses) を Promise.all で並列に叩く (Issue #143) 。複数 Google アカウントで同名カレンダーが衝突したらラベルに email 接尾辞を付ける (Phase 7)。Toggl は (title, project_name) で集計バケットを分け、各エントリに project_name を持たせる (Issue #112)。会議の集計枠 (meeting_minutes) は本番運用に合わなかったので廃止した (Issue #151)。",
-      "why": "ページ表示と外部 API 同期を分離しないと、外部サービスが遅い / 落ちている日に画面そのものが開かなくなる。表示は DB の最新スナップショットだけで完結させ、新鮮さの担保は Flow 6 (手動 / バックグラウンド更新) と Flow 7 (Cron) に任せる責務分割になっている。SSR で叩くのは First Paint を早めて hydration 待ち / Bearer 取得待ちを消すため。前段クエリを並列化したのは互いに依存しない 4 本の DB roundtrip を連発するとそのまま体感速度に乗るため。target_date 完全一致ではなく wake range のオーバーラップで引くのは「日付の境目をまたぐ睡眠・予定」を Wake-based Timeline 上で正しい場所に置くため。",
-      "description": "/daily/[date] は useAsyncData で SSR 時に /api/summary を叩く (Issue #141)。4 前段クエリを Promise.all で並列実行 (Issue #143)。複数 Google アカウントは email 接尾辞でラベル衝突解決 (Phase 7)。Toggl は project 別バケット (Issue #112)。",
-      "steps": [
-        { "from": "page-daily",   "to": "api-summary",  "passes": "useAsyncData → GET /api/summary?date=YYYY-MM-DD",                                "note": "SSR 中に発火 · Bearer or cookie 認証 · Issue #141" },
-        { "from": "api-summary",  "to": "util-auth",    "passes": "requireUserIdAllowCookie(event)",                                                "note": "Bearer 優先 · SSR 起点の fetch だと Bearer が無いので cookie session にフォールバック" },
-        { "from": "api-summary",  "to": "tbl-users",    "passes": "Promise.all 前段: SELECT users.timezone",                                       "note": "users 行が無ければ 500 (Asia/Tokyo に黙って fallback しない)" },
-        { "from": "api-summary",  "to": "tbl-records",  "passes": "Promise.all 前段: SELECT google_excluded_calendars (connection_id, calendar_id)", "note": "Issue #131 Phase 5 で接続単位のテーブルへ移行" },
-        { "from": "api-summary",  "to": "tbl-connections","passes": "Promise.all 前段: listServiceConnections(userId)",                              "note": "todays_me の各 provider null 判定に使う" },
-        { "from": "api-summary",  "to": "tbl-status",   "passes": "Promise.all 前段: SELECT daily_sync_statuses for (user_id, target_date)",          "note": "last_synced_at と status を UI に渡すため · Issue #143" },
-        { "from": "api-summary",  "to": "tbl-records",  "passes": "SELECT oura_sleep_records (前回 sleep_start_at, wake_at で wake range 計算)",      "note": "wakeRangeOf() が timezone 依存なので前段の後に直列実行" },
-        { "from": "api-summary",  "to": "tbl-records",  "passes": "Promise.all: oura/google/toggl レコードを wake range にオーバーラップ", "note": "google_calendar_events は connection_id も SELECT (除外判定 + ラベル衝突解決に使う)" },
-        { "from": "api-summary",  "to": "tbl-connections","passes": "Google 連携時のみ: SELECT account_email/provider_user_id for (provider='google')","note": "同名カレンダー衝突時の '<name> (<email>)' 接尾辞用 · Phase 7" },
-        { "from": "api-summary",  "to": "page-daily",   "passes": "SummaryResponse { wake_range, todays_me { oura, google { by_calendar }, toggl { by_title with project_name } }, timeline, sync_statuses }", "note": "Zod summaryResponseSchema で出力検証 · meeting_minutes は廃止 (Issue #151)" }
-      ]
-    },
-    {
-      "id": "manual-refresh",
-      "icon": "🔄",
-      "name": "6. 手動リフレッシュ（当日 / Promise.allSettled 並列）",
-      "sub": "Refresh ボタン or 30 分ステイル背景同期 → 3 サービスを Promise.allSettled で並列同期 → Google は接続単位ループ → DB 更新",
-      "what": "ユーザーが /daily/[date] で更新ボタンを押すか、当日のサマリが 30 分以上古いとバックグラウンドで自動発火する。refreshUserDate が 3 provider を Promise.allSettled で並列に回し、それぞれ daily_sync_statuses にロックを取って実行する (Issue #140)。Google は更にその中で listConnectedGoogleConnections() で 0..N 件の接続行を回し、各 connection_id に対して個別に sync する。部分失敗は許容で、Oura が落ちても Google / Toggl は止めない。Toggl は /me/time_entries と /me/projects を両方叩いて project_name を解決する (Issue #112)。",
-      "why": "外部 3 サービスは独立に落ちたりレート制限を返したりするので、どれか 1 つの失敗で全部止めると「ほぼ完成のサマリ」を見せられなくなる。provider 別にロック・成否を別管理し、エラーは記録するだけで他は通す (仕様 §9.2 の「部分失敗を許容」)。さらに provider を並列実行に倒したのは、3 サービスの待ち時間が逐次だと足し算になり Vercel Function の 10 秒級コールドスタートと合わさって体感が悪かったため。Google を接続単位でループするのは複数アカウント連携で 1 接続の障害が他のアカウントを止めないようにするため (Issue #131 Phase 4)。30 分ステイルの自動更新で、ユーザーが画面を開き直すたびに自然と最新化される。",
-      "description": "refreshUserDate が 3 provider を Promise.allSettled で並列同期 (Issue #140)。Google は connection_id 単位でループ (Issue #131 Phase 4)。部分失敗を許容。",
-      "steps": [
-        { "from": "page-daily",    "to": "api-refresh",   "passes": "POST /api/summary/refresh · { date }",                                          "note": "Refresh ボタン or 30 分ステイル自動" },
-        { "from": "api-refresh",   "to": "util-auth",     "passes": "requireUserIdAllowCookie(event)",                                                 "note": "Bearer 優先 · SSR 経由でも fallback で通る (Issue #141)" },
-        { "from": "api-refresh",   "to": "util-refresh",  "passes": "refreshUserDate(userId, date)",                                                  "note": "/api/cron/daily と共通の orchestrator" },
-        { "from": "util-refresh",  "to": "util-refresh",  "passes": "Promise.allSettled([oura, google, toggl])",                                       "note": "Issue #140 で 3 provider を並列化 · 各 provider 内で例外を outcome に詰めて正常 resolve" },
-        { "from": "util-refresh",  "to": "tbl-status",    "passes": "tryAcquireSyncLock — conditional UPDATE status → in_progress",                   "note": "stale lock = 10 分 · ownership key = sync_started_at" },
-        { "from": "util-refresh",  "to": "util-token",    "passes": "Oura/Toggl: getValidAccessToken(userId, provider)",                                "note": "decrypt · 残り 5 分未満なら事前 refresh" },
-        { "from": "util-refresh",  "to": "tbl-connections","passes": "Google: listConnectedGoogleConnections(userId) → 接続行を 0..N 件取得",            "note": "Issue #131 Phase 4 · 各 connection_id でループ" },
-        { "from": "util-token",    "to": "tbl-connections","passes": "SELECT access_token_encrypted, refresh_token_encrypted, token_expires_at",       "note": "TOKEN_ENCRYPTION_KEY で復号" },
-        { "from": "util-refresh",  "to": "util-sync",     "passes": "syncOuraForDate / syncGoogleForDate(connectionId) × N / syncTogglForDate",        "note": "Promise.allSettled の中で · Google は connection_id 単位の sweep" },
-        { "from": "util-sync",     "to": "ext-oura",      "passes": "GET /v2/usercollection/sleep?start_date=&end_date= (Bearer)",                     "note": "target_date±1 · pagination · 429 → 1 リトライ" },
-        { "from": "util-sync",     "to": "ext-google",    "passes": "GET /calendar/v3/calendars/{id}/events (timeMin/timeMax or syncToken)",            "note": "事前に /calendarList も叩く · 410 Gone → 全件再同期" },
-        { "from": "util-sync",     "to": "ext-toggl",     "passes": "GET /api/v9/me/time_entries + /api/v9/me/projects (Basic Auth)",                    "note": "project_id → project_name を解決して time entry 行に貼る (Issue #112)" },
-        { "from": "util-sync",     "to": "tbl-records",   "passes": "UPSERT *_records · 取れなかった ID は is_deleted=true でソフトデリート",            "note": "google_calendar_events unique = (user_id, connection_id, calendar_id, google_event_id) · sweep は connection_id でスコープ" },
-        { "from": "util-sync",     "to": "tbl-status",    "passes": "markSyncSuccess(lockId) / markSyncFailed(lockId, message)",                        "note": "ownership-key が違うロックは上書きしない" },
-        { "from": "util-refresh",  "to": "api-refresh",   "passes": "{ sync_statuses[], errors[] }",                                                   "note": "errors は provider 別" },
-        { "from": "api-refresh",   "to": "page-daily",    "passes": "SummaryRefreshResponse",                                                          "note": "クライアントは続けて /api/summary を再取得して描画更新" }
-      ]
-    },
-    {
-      "id": "cron-batch",
-      "icon": "⏰",
-      "name": "7. Vercel Cron 14 日バッチ同期",
-      "sub": "毎日 UTC 20:00（JST 05:00 翌日）に直近 14 日分を全ユーザー × 3 プロバイダで再同期",
-      "what": "vercel.json の crons で /api/cron/daily が叩かれる。CRON_SECRET の Bearer 認証を通過したら全ユーザーをループし、各ユーザーの TZ で「今日」を割り出して today, today-1, ..., today-13 の 14 日について refreshUserDate を呼ぶ。手動リフレッシュと同じ orchestrator を再利用しているので、ロック取得・部分失敗・ソフトデリートのルールが完全に一致する。",
-      "why": "外部サービスは「過去日のレコードを後から編集 / 削除」できるので、初回同期した内容と今の本当の姿はだんだんズレていく。14 日のスライディングウィンドウで毎朝同期し直すことで、過去 2 週間のサマリは常に外部の最新と一致する保証ができる。手動と同じ orchestrator を使い回しているのは、挙動が二重実装で食い違うとデバッグが地獄になるからで、Cron は「手動の自動連打」と等価になっている。",
-      "description": "vercel.json の crons で /api/cron/daily が叩かれる。CRON_SECRET の Bearer 認証を通過したら全ユーザーをループし、各ユーザーの TZ で「今日」を割り出して today, today-1, ..., today-13 の 14 日について refreshUserDate を呼ぶ。手動リフレッシュと同じ orchestrator を再利用しているので、ロック取得・部分失敗・ソフトデリートのルールが完全に一致する。",
-      "steps": [
-        { "from": "ext-cron",    "to": "api-cron",      "passes": "GET /api/cron/daily · Authorization: Bearer ${CRON_SECRET}", "note": "vercel.json: \"0 20 * * *\"  → UTC 20:00 / JST 05:00 翌日" },
-        { "from": "api-cron",    "to": "tbl-users",     "passes": "SELECT id, timezone FROM users",                              "note": "MVP は単一ユーザーだがループは多人数対応" },
-        { "from": "api-cron",    "to": "tbl-connections","passes": "loadConnectedProviders(userId) — status='connected'",         "note": "disconnected / error な provider は skip" },
-        { "from": "api-cron",    "to": "util-refresh",   "passes": "refreshUserDate(userId, date, { timezone, connected }) × 14日 × Nユーザー", "note": "todayInTimezone(tz) から [today, today-13] を作る" },
-        { "from": "util-refresh","to": "util-sync",      "passes": "Flow 6 と同じ provider 別 sync runner を回す",                 "note": "手動とコードを共有 → 挙動が完全に一致" },
-        { "from": "util-sync",   "to": "tbl-records",    "passes": "UPSERT + soft-delete (Flow 6 と同じ)",                         "note": "14 日ウィンドウなので過去の編集も拾える" },
-        { "from": "util-sync",   "to": "tbl-status",     "passes": "markSyncSuccess / markSyncFailed",                             "note": "" },
-        { "from": "api-cron",    "to": "ext-cron",       "passes": "{ processed_at, users_processed, dates_processed, days_per_user:14, error_count }", "note": "個別の失敗があっても全体は 200 OK で返す" }
-      ]
-    },
-    {
-      "id": "token-refresh",
-      "icon": "🔁",
-      "name": "8. アクセストークンの 401 リカバリ",
-      "sub": "外部 API から 401 が返ったら refresh_token で再発行 → 元の呼び出しを 1 度だけリトライ",
-      "what": "通常の sync 呼び出しの途中で外部 API が 401 を返すと、withFreshAccessToken が OauthUnauthorizedError をキャッチし、強制 refresh をかけて新しい access_token で 1 度だけリトライする。refresh も失敗したら service_connections.status を 'error' に落として、以降の sync は skip 対象になる。",
-      "why": "access_token は寿命が短いが、サーバ側で「いつ切れるか」を完璧に予測することはできない（プロバイダ側で取り消されることもある）。だから「失敗してから直す」自己修復ループが要る。同時に、refresh まで失敗した場合は明示的に status='error' に落とすことで、無効トークンで叩き続けて連続 401 を量産する事故を防ぐ。リトライを 1 度に絞っているのは無限ループ防止。",
-      "description": "通常の sync 呼び出しの途中で外部 API が 401 を返すと、withFreshAccessToken が OauthUnauthorizedError をキャッチし、強制 refresh をかけて新しい access_token で 1 度だけリトライする。refresh も失敗したら service_connections.status を 'error' に落として、以降の sync は skip 対象になる。",
-      "steps": [
-        { "from": "util-sync",   "to": "ext-google",       "passes": "API call with Bearer access_token (例: /events)",          "note": "通常の sync 経路から到達" },
-        { "from": "ext-google",  "to": "util-sync",        "passes": "401 Unauthorized",                                          "note": "OauthUnauthorizedError として raise" },
-        { "from": "util-sync",   "to": "util-token",       "passes": "withFreshAccessToken → forceRefreshAccessToken(userId, 'google')", "note": "expiry 関係なく強制 refresh" },
-        { "from": "util-token",  "to": "tbl-connections",  "passes": "SELECT refresh_token_encrypted",                            "note": "decrypt" },
-        { "from": "util-token",  "to": "ext-google",       "passes": "POST oauth2.googleapis.com/token (grant_type=refresh_token)", "note": "Oura も同じ構造の /oauth/token を持つ。Toggl は refresh 不能なので即 error" },
-        { "from": "ext-google",  "to": "util-token",       "passes": "{ access_token, [refresh_token], expires_in }",            "note": "parseExternal で形を検証 · 不正なら 502 · 失敗なら OauthRefreshError" },
-        { "from": "util-token",  "to": "tbl-connections",  "passes": "UPSERT service_connections (new access_token_encrypted · expires_at) / 失敗時は status='error' で tokens を null",  "note": "refresh_token が返ってこなければ既存のを保持" },
-        { "from": "util-token",  "to": "util-sync",        "passes": "新しい access_token (plain) を返す",                          "note": "fn(newToken) を 1 度だけリトライ" }
-      ]
-    },
-    {
-      "id": "disconnect",
-      "icon": "🚪",
-      "name": "9. サービス連携解除（ソフト + Google ハード削除）",
-      "sub": "Oura/Toggl は provider 単位の soft disconnect。Google は connection_id 単位の soft disconnect + 任意でハード削除",
-      "what": "Oura / Toggl は /settings で「連携解除」を押すと DELETE /api/connections/{provider} で service_connections.status='disconnected' + トークン null にする (旧来通り)。Google は複数アカウント連携を許容するので、接続単位の DELETE /api/connections/google/{connectionId} を叩く (Phase 6)。Google は更に soft disconnect 後の disconnected 行に対して DELETE /api/connections/google/{connectionId}/account で物理削除も可能 (Issue #139)。物理削除すると関連 events / excluded_calendars が FK ON DELETE CASCADE で一緒に消える。",
-      "why": "行ごと DELETE してしまうと過去に同期したレコード (oura_sleep_records 等) の起点情報や connected_at 履歴が失われる。だから普段はソフト切断で「いつ繋いで、いつ外したか」を残し、暗号化トークンだけ NULL にして漏洩経路を閉じる。Google を connection_id 単位にしたのは、同じ user の別アカウントを巻き込まずに 1 接続だけ外せるようにするため。一方でハード削除エンドポイントを別に用意したのは「もうこのアカウントは戻らない」と明示できる導線が UI 上必要で、events / 除外設定の残骸も巻き取って消すため (Issue #139)。soft → hard の 2 段階にしているのは誤操作からの巻き戻しを残すため。",
-      "description": "Oura/Toggl は provider 単位の soft disconnect。Google は connection_id 単位の soft disconnect (Phase 6) + 任意でハード削除 (Issue #139)。",
-      "steps": [
-        { "from": "page-settings",   "to": "api-connections", "passes": "DELETE /api/connections/{oura|toggl}",                                                  "note": "Oura/Toggl の旧来通りの provider 単位 soft disconnect" },
-        { "from": "page-settings",   "to": "api-connections", "passes": "DELETE /api/connections/google/{connectionId}",                                          "note": "Google は接続 ID 単位 (Phase 6)" },
-        { "from": "api-connections", "to": "util-auth",       "passes": "requireUserId(event)",                                                                   "note": "" },
-        { "from": "api-connections", "to": "util-token",      "passes": "disconnectServiceConnection / disconnectGoogleConnectionById",                            "note": "Google 版は events も is_deleted=true に倒す" },
-        { "from": "util-token",      "to": "tbl-connections", "passes": "UPDATE service_connections SET status='disconnected', tokens=NULL [WHERE id=connectionId]","note": "行は残す = connected_at / account_email を保持" },
-        { "from": "util-token",      "to": "tbl-records",     "passes": "Google: UPDATE google_calendar_events SET is_deleted=true WHERE connection_id=...",         "note": "google_excluded_calendars は残す (再認可で同 sub に紐づき直ったら設定を引き継ぐ)" },
-        { "from": "api-connections", "to": "page-settings",   "passes": "{ ok: true }",                                                                          "note": "UI 側は接続一覧 / accounts を再取得して反映" },
-        { "from": "page-settings",   "to": "api-connections", "passes": "(任意) DELETE /api/connections/google/{connectionId}/account",                            "note": "Issue #139 · disconnected 行に対するハード削除" },
-        { "from": "api-connections", "to": "util-token",      "passes": "deleteGoogleConnectionPermanently(userId, connectionId)",                                  "note": "service_connections の該当行を物理 DELETE" },
-        { "from": "util-token",      "to": "tbl-connections", "passes": "DELETE service_connections WHERE id=connectionId AND user_id=auth.uid()",                  "note": "google_calendar_events / google_excluded_calendars は FK ON DELETE CASCADE で巻き取られる" }
-      ]
-    },
-    {
-      "id": "demo-view",
-      "icon": "🧪",
-      "name": "10. デモビュー（公開・認証なし）",
-      "sub": "本番テーブルから完全に隔離された demo_* で固定日付のサマリを返す",
-      "what": "/demo はログインなしでアクセスでき、外部 API も叩かない。demo_oura_sleep_records / demo_google_calendar_events / demo_toggl_time_entries を Asia/Tokyo 固定で読み、本番と同じ summaryResponseSchema の形で返す。RLS は public read (true) で誰でも見られる。",
-      "why": "「ログインしないと何も見えない」状態だと、初見の人にプロダクトの価値を伝えられない。本番テーブルをそのまま public にすると個人データが漏れるので、テーブル自体を分けて『デモ専用の固定データ』を持っておく。レスポンスの形を本番 /api/summary と完全一致させているので、フロント側はデモか本番かを意識せず同じ描画ロジックで動かせる。",
-      "description": "/demo はログインなしでアクセスでき、外部 API も叩かない。demo_oura_sleep_records / demo_google_calendar_events / demo_toggl_time_entries を Asia/Tokyo 固定で読み、本番と同じ summaryResponseSchema の形で返す。RLS は public read (true) で誰でも見られる。",
-      "steps": [
-        { "from": "page-demo",  "to": "api-demo",   "passes": "GET /api/demo/summary?date=YYYY-MM-DD",                       "note": "Bearer 不要 · 認証チェックなし" },
-        { "from": "api-demo",   "to": "tbl-demo",   "passes": "SELECT demo_oura_sleep_records / demo_google_calendar_events / demo_toggl_time_entries", "note": "user_id 列を持たない · Asia/Tokyo 固定" },
-        { "from": "api-demo",   "to": "page-demo",  "passes": "SummaryResponse (sync_statuses は常に [])",                    "note": "本番 /api/summary と同じスキーマだが、外部 API も util-token も介在しない" }
-      ]
-    }
-  ]
-}
+          {
+            "id": "ext-cron",
+            "title": "Vercel Cron",
+            "subtitle": "0 20 * * * (UTC) · JST 05:00",
+            "group": "cron",
+            "x": 1320,
+            "y": 80,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "ext-oura",
+            "title": "Oura API v2",
+            "subtitle": "/usercollection/sleep · /oauth/token",
+            "group": "ext",
+            "x": 1320,
+            "y": 250,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "ext-google",
+            "title": "Google Calendar v3",
+            "subtitle": "/calendars · /events · oauth2/token",
+            "group": "ext",
+            "x": 1320,
+            "y": 410,
+            "w": 270,
+            "h": 56
+          },
+          {
+            "id": "ext-toggl",
+            "title": "Toggl Track v9",
+            "subtitle": "/me/time_entries (Basic Auth)",
+            "group": "ext",
+            "x": 1320,
+            "y": 570,
+            "w": 270,
+            "h": 56
+          }
+        ],
+        "flows": [
+          {
+            "id": "auth-session",
+            "icon": "🔐",
+            "name": "1. ログイン & セッション",
+            "sub": "Supabase Auth でログインし、その JWT を全 API リクエストで検証する",
+            "what": "Supabase の OAuth (Google identity provider) でログイン。返ってきた access_token がクライアントに保存され、以降のあらゆる /api/* 呼び出しで Bearer ヘッダとして送信される。サーバ側は requireUserId() がその JWT を Supabase Admin に問い合わせて検証し、不正なら 401 を投げる。",
+            "why": "「誰のデータか」を毎リクエストで突き止めるため。サーバ側は一切セッション状態を持たないので、Bearer JWT がない / 古い / 改ざんされている呼び出しは入口で全部はじけ、他人のサマリや service_connections を間違って読む事故が構造的に起こらない。",
+            "description": "Supabase の OAuth (Google identity provider) でログイン。返ってきた access_token がクライアントに保存され、以降のあらゆる /api/* 呼び出しで Bearer ヘッダとして送信される。サーバ側は requireUserId() でその JWT を Supabase Admin に問い合わせて検証する。",
+            "steps": [
+              {
+                "from": "page-settings",
+                "to": "supa-auth",
+                "passes": "supabase.auth.signInWithOAuth({ provider: 'google' })",
+                "note": "Supabase の OAuth は Calendar 接続とは別物。アカウント識別だけに使う"
+              },
+              {
+                "from": "supa-auth",
+                "to": "page-settings",
+                "passes": "session JWT (access_token + refresh_token)",
+                "note": "@nuxtjs/supabase が保存・自動更新"
+              },
+              {
+                "from": "page-settings",
+                "to": "api-connections",
+                "passes": "Authorization: Bearer <Supabase JWT>",
+                "note": "認証必須 API はすべてこのヘッダを要求する"
+              },
+              {
+                "from": "api-connections",
+                "to": "util-auth",
+                "passes": "requireUserId(event)",
+                "note": "server/utils/auth.ts"
+              },
+              {
+                "from": "util-auth",
+                "to": "supa-auth",
+                "passes": "supabaseAdmin.auth.getUser(token)",
+                "note": "署名検証 + ユーザー存在確認"
+              },
+              {
+                "from": "supa-auth",
+                "to": "util-auth",
+                "passes": "{ user.id }",
+                "note": "不正なら 401 を throw"
+              }
+            ]
+          },
+          {
+            "id": "oauth-connect",
+            "icon": "🔗",
+            "name": "2. Google / Oura OAuth 接続",
+            "sub": "外部サービスのアクセストークンを取得して暗号化保存。Google は id_token も JWKS 検証して複数アカウント識別キーを backfill",
+            "what": "ユーザーが /settings の「接続」ボタンを押すところから、ブラウザが外部サービスへ飛んでコードを持ち帰り、access_token と refresh_token を取得し、AES-256-GCM で暗号化して service_connections に書き込んで /settings へ戻すまで。Google は加えて id_token を JWKS 検証し、sub (= provider_user_id) と email (= account_email) を保存して「どのアカウントの接続行か」を識別できるようにする。「別のアカウントを追加」導線は ?intent=add で開いてアカウントピッカー (prompt=consent select_account) を強制表示する。",
+            "why": "外部サービスのデータを長期的に同期し続けるには refresh_token を握る必要があるが、これは漏れると本人になりすませる強い権限。だから DB には平文で置かず AES-256-GCM で暗号化し、復号鍵 (TOKEN_ENCRYPTION_KEY) は DB の外に置く。CSRF を state 署名 + nonce cookie の二段ガードしているのは、第三者サイトが攻撃者のアカウントとユーザーを結びつける混乱攻撃を防ぐため。Google で id_token を JWKS 検証するのは、token endpoint レスポンス自体は HTTPS 直通だが「id_token の中身が本当に Google が署名したものか」を確認しないと sub をなりすませる余地があるため (Codex review #127 P1)。複数アカウント連携で sub をアカウント識別キーに使う以上、ここの検証は必須。",
+            "description": "ユーザーが /settings の「接続」ボタンを押すところから、ブラウザが外部サービスへ飛んでコードを持ち帰り、access_token と refresh_token を取得し、AES-256-GCM で暗号化して service_connections に書き込んで /settings へ戻すまで。Google は id_token を JWKS 検証して sub / email も埋める (Issue #131)。",
+            "steps": [
+              {
+                "from": "page-settings",
+                "to": "api-oauth-start",
+                "passes": "GET /api/connections/google/start[?intent=add]",
+                "note": "Bearer JWT 必須 · intent=add で別アカウント追加"
+              },
+              {
+                "from": "api-oauth-start",
+                "to": "util-oauth",
+                "passes": "createOauthState(userId)",
+                "note": "HMAC-SHA256 で署名した state と 10 分 TTL の nonce を生成"
+              },
+              {
+                "from": "util-oauth",
+                "to": "api-oauth-start",
+                "passes": "{ state, nonce, authorize_url }",
+                "note": "buildGoogleAuthorizeUrl(state, { selectAccount: isAdd }) で URL 組み立て"
+              },
+              {
+                "from": "api-oauth-start",
+                "to": "page-settings",
+                "passes": "{ authorize_url } · Set-Cookie todaysme_oauth_state_google=<nonce>",
+                "note": "httpOnly + SameSite=Lax"
+              },
+              {
+                "from": "page-settings",
+                "to": "ext-google",
+                "passes": "window.location.href = authorize_url",
+                "note": "scope: openid + email + calendar.events.readonly + calendar.calendarlist.readonly · access_type=offline · prompt=consent[ select_account]"
+              },
+              {
+                "from": "ext-google",
+                "to": "api-oauth-cb",
+                "passes": "302 → /api/connections/google/callback?code=...&state=...",
+                "note": "ユーザーが同意した後のリダイレクト"
+              },
+              {
+                "from": "api-oauth-cb",
+                "to": "util-oauth",
+                "passes": "verifyOauthState(state, cookie_nonce)",
+                "note": "署名・有効期限・nonce 一致を全部チェック → ダメなら 400"
+              },
+              {
+                "from": "api-oauth-cb",
+                "to": "ext-google",
+                "passes": "POST oauth2.googleapis.com/token (code, redirect_uri)",
+                "note": "認可コードと引き換えに token + id_token を取得"
+              },
+              {
+                "from": "ext-google",
+                "to": "api-oauth-cb",
+                "passes": "{ access_token, refresh_token, expires_in, id_token, scope }",
+                "note": "parseExternal(googleTokenResponseSchema) で形を検証 · 失敗時 502"
+              },
+              {
+                "from": "api-oauth-cb",
+                "to": "util-oauth",
+                "passes": "verifyGoogleIdToken(id_token, audience=GOOGLE_CLIENT_ID)",
+                "note": "jose の createRemoteJWKSet (キャッシュ 10 分) · 失敗時 401 · Issue #131 Phase 2"
+              },
+              {
+                "from": "util-oauth",
+                "to": "api-oauth-cb",
+                "passes": "{ sub, email, email_verified }",
+                "note": "sub = provider_user_id · email = account_email"
+              },
+              {
+                "from": "api-oauth-cb",
+                "to": "util-token",
+                "passes": "upsertServiceConnection({ userId, provider:'google', providerUserId:sub, accountEmail:email, tokens })",
+                "note": "(user_id, provider, provider_user_id) の partial unique でヒットすれば UPDATE = 再認可、無ければ INSERT = 別アカウント追加"
+              },
+              {
+                "from": "util-token",
+                "to": "tbl-connections",
+                "passes": "UPSERT service_connections (provider_user_id, account_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, status='connected')",
+                "note": "iv / authTag / ciphertext を base64 で格納"
+              },
+              {
+                "from": "api-oauth-cb",
+                "to": "page-settings",
+                "passes": "302 Location: /settings?connected=google",
+                "note": "nonce cookie は使い切りで削除"
+              }
+            ]
+          },
+          {
+            "id": "toggl-connect",
+            "icon": "🎟️",
+            "name": "3. Toggl API トークン接続",
+            "sub": "OAuth ではなく Toggl ダッシュボードから取った API トークンを貼り付ける方式",
+            "what": "Toggl Track には OAuth フローがないので、ユーザーが Toggl 設定画面から自分の API トークンをコピペし、サーバ側で AES-256-GCM 暗号化してそのまま保存する。refresh の概念はない。",
+            "why": "Toggl は OAuth プロバイダではないため、Flow 2 のような認可コード交換はそもそも組めない。それでもトークンを DB に平文で置けば漏洩リスクがあるので、Google / Oura と同じ暗号化レーンに乗せて扱いを統一する。これにより、UI 側は接続済みかどうか以外に Toggl だけ特別扱いをする必要がない。",
+            "description": "Toggl Track には OAuth フローがないので、ユーザーが Toggl 設定画面から自分の API トークンをコピペし、サーバ側で AES-256-GCM 暗号化してそのまま保存する。refresh の概念はない。",
+            "steps": [
+              {
+                "from": "page-settings",
+                "to": "api-connections",
+                "passes": "POST /api/connections/toggl · { api_token }",
+                "note": "togglConnectRequestSchema で parseOrThrow"
+              },
+              {
+                "from": "api-connections",
+                "to": "util-auth",
+                "passes": "requireUserId(event)",
+                "note": "Bearer JWT 必須"
+              },
+              {
+                "from": "api-connections",
+                "to": "util-token",
+                "passes": "upsertServiceConnection(userId, 'toggl', { accessToken: api_token, refreshToken: null })",
+                "note": "refresh_token は常に null"
+              },
+              {
+                "from": "util-token",
+                "to": "tbl-connections",
+                "passes": "UPSERT service_connections (provider='toggl', status='connected')",
+                "note": "AES-256-GCM で暗号化済み"
+              },
+              {
+                "from": "api-connections",
+                "to": "page-settings",
+                "passes": "{ ok: true }",
+                "note": "UI 側で /api/connections を再取得して状態を反映"
+              }
+            ]
+          },
+          {
+            "id": "connections-list",
+            "icon": "⚙️",
+            "name": "4. /settings 初期化（接続一覧 + 複数 Google アカウント）",
+            "sub": "service_connections の状態を取り出すが、暗号化トークンの中身は絶対にクライアントへ返さない。Google は接続単位で accounts / calendars / excluded を引く",
+            "what": "/settings ページのマウント時に呼ばれる。各 provider について status と has_token と connected_at だけを返し、トークン本体はサーバを出ない。Google は複数アカウント連携を許容するので、追加で /api/connections/google/accounts で 0..N 件の接続行を取り、各接続カードについて /api/connections/google/calendars?connection_id=... を叩いて接続単位のカレンダー一覧 + 除外設定を構成する。除外設定は users 配列ではなく google_excluded_calendars テーブル (Phase 5) を読む。",
+            "why": "「接続済みかどうか」を表示するためだけにトークンをクライアントに返すと、ブラウザ拡張や XSS でトークンを抜かれるリスクが生まれる。だから has_token フラグだけを返し、本物の鍵は絶対サーバの外に出さない (仕様書 §12.1)。Google だけ accounts エンドポイントを別出ししているのは、同一ユーザーが複数 Google アカウントを連携できるようになって provider 単位の集約だけでは UI が組めなくなったため (Issue #131 Phase 3)。除外設定もアカウント間で同じ calendar_id が別物を指す可能性があるため、users.excluded_google_calendar_ids 配列ではなく (connection_id, calendar_id) のテーブルにスコープし直した (Phase 5)。",
+            "description": "/settings ページのマウント時に呼ばれる。Google は接続単位で accounts / calendars / excluded を引いて複数アカウントカードを構成する (Issue #131 Phase 3/5)。",
+            "steps": [
+              {
+                "from": "page-settings",
+                "to": "api-connections",
+                "passes": "GET /api/connections",
+                "note": "Bearer JWT"
+              },
+              {
+                "from": "api-connections",
+                "to": "util-auth",
+                "passes": "requireUserId(event)",
+                "note": ""
+              },
+              {
+                "from": "api-connections",
+                "to": "tbl-connections",
+                "passes": "SELECT provider, status, account_email, connected_at, token_expires_at WHERE user_id = auth.uid()",
+                "note": "Google は最初の 1 行に集約 (詳細一覧は accounts.get で取り直す)"
+              },
+              {
+                "from": "api-connections",
+                "to": "page-settings",
+                "passes": "ConnectionListResponse [{ provider, status, has_token, connected_at, account_email }]",
+                "note": "access_token は never returned · CLAUDE.md §12.1"
+              },
+              {
+                "from": "page-settings",
+                "to": "api-connections",
+                "passes": "GET /api/connections/google/accounts",
+                "note": "Google が connected な時だけ呼ばれる · Issue #131 Phase 3"
+              },
+              {
+                "from": "api-connections",
+                "to": "tbl-connections",
+                "passes": "SELECT id, provider_user_id, account_email, status, ... WHERE provider='google'",
+                "note": "0..N 件の接続行を返す"
+              },
+              {
+                "from": "api-connections",
+                "to": "page-settings",
+                "passes": "GoogleAccountsResponse { accounts: [{ connection_id, provider_user_id, account_email, status, ... }] }",
+                "note": "UI は connection_id ごとにカードを描画"
+              },
+              {
+                "from": "page-settings",
+                "to": "api-connections",
+                "passes": "GET /api/connections/google/calendars?connection_id=<uuid>",
+                "note": "各接続カードについて 1 リクエスト"
+              },
+              {
+                "from": "api-connections",
+                "to": "util-token",
+                "passes": "withFreshAccessTokenByConnection(connection_id, fetchCalendarList)",
+                "note": "接続行を引いて decrypt → 期限近ければ refresh → 呼び出し"
+              },
+              {
+                "from": "util-token",
+                "to": "ext-google",
+                "passes": "GET /calendar/v3/users/me/calendarList (Bearer)",
+                "note": "pagination 対応"
+              },
+              {
+                "from": "ext-google",
+                "to": "api-connections",
+                "passes": "{ items: [{ id, summary, primary }] }",
+                "note": "google_excluded_calendars (connection_id 単位) と突き合わせて excluded フラグを付ける"
+              },
+              {
+                "from": "api-connections",
+                "to": "page-settings",
+                "passes": "GoogleCalendarsResponse { connection_id, calendars: [...] }",
+                "note": "PUT /api/connections/google/excluded-calendars で接続単位に保存する"
+              }
+            ]
+          },
+          {
+            "id": "summary-read",
+            "icon": "📊",
+            "name": "5. /daily/[date] サマリ取得（SSR + 並列前段クエリ）",
+            "sub": "Wake-based Timeline で 1 日分の sleep / event / time_entry を集める読み取りパス。useAsyncData で SSR、4 前段クエリを並列化",
+            "what": "/daily/[date] は useAsyncData で SSR 時に /api/summary を叩く (Issue #141)。同期は一切起こさず、すでに DB に入っているレコードだけから wake range を計算し、その時間幅にオーバーラップする睡眠 / カレンダー / 作業時間を引いてくる。userId / date だけに依存する 4 前段クエリ (timezone / google_excluded_calendars / connections 一覧 / daily_sync_statuses) を Promise.all で並列に叩く (Issue #143) 。複数 Google アカウントで同名カレンダーが衝突したらラベルに email 接尾辞を付ける (Phase 7)。Toggl は (title, project_name) で集計バケットを分け、各エントリに project_name を持たせる (Issue #112)。会議の集計枠 (meeting_minutes) は本番運用に合わなかったので廃止した (Issue #151)。",
+            "why": "ページ表示と外部 API 同期を分離しないと、外部サービスが遅い / 落ちている日に画面そのものが開かなくなる。表示は DB の最新スナップショットだけで完結させ、新鮮さの担保は Flow 6 (手動 / バックグラウンド更新) と Flow 7 (Cron) に任せる責務分割になっている。SSR で叩くのは First Paint を早めて hydration 待ち / Bearer 取得待ちを消すため。前段クエリを並列化したのは互いに依存しない 4 本の DB roundtrip を連発するとそのまま体感速度に乗るため。target_date 完全一致ではなく wake range のオーバーラップで引くのは「日付の境目をまたぐ睡眠・予定」を Wake-based Timeline 上で正しい場所に置くため。",
+            "description": "/daily/[date] は useAsyncData で SSR 時に /api/summary を叩く (Issue #141)。4 前段クエリを Promise.all で並列実行 (Issue #143)。複数 Google アカウントは email 接尾辞でラベル衝突解決 (Phase 7)。Toggl は project 別バケット (Issue #112)。",
+            "steps": [
+              {
+                "from": "page-daily",
+                "to": "api-summary",
+                "passes": "useAsyncData → GET /api/summary?date=YYYY-MM-DD",
+                "note": "SSR 中に発火 · Bearer or cookie 認証 · Issue #141"
+              },
+              {
+                "from": "api-summary",
+                "to": "util-auth",
+                "passes": "requireUserIdAllowCookie(event)",
+                "note": "Bearer 優先 · SSR 起点の fetch だと Bearer が無いので cookie session にフォールバック"
+              },
+              {
+                "from": "api-summary",
+                "to": "tbl-users",
+                "passes": "Promise.all 前段: SELECT users.timezone",
+                "note": "users 行が無ければ 500 (Asia/Tokyo に黙って fallback しない)"
+              },
+              {
+                "from": "api-summary",
+                "to": "tbl-records",
+                "passes": "Promise.all 前段: SELECT google_excluded_calendars (connection_id, calendar_id)",
+                "note": "Issue #131 Phase 5 で接続単位のテーブルへ移行"
+              },
+              {
+                "from": "api-summary",
+                "to": "tbl-connections",
+                "passes": "Promise.all 前段: listServiceConnections(userId)",
+                "note": "todays_me の各 provider null 判定に使う"
+              },
+              {
+                "from": "api-summary",
+                "to": "tbl-status",
+                "passes": "Promise.all 前段: SELECT daily_sync_statuses for (user_id, target_date)",
+                "note": "last_synced_at と status を UI に渡すため · Issue #143"
+              },
+              {
+                "from": "api-summary",
+                "to": "tbl-records",
+                "passes": "SELECT oura_sleep_records (前回 sleep_start_at, wake_at で wake range 計算)",
+                "note": "wakeRangeOf() が timezone 依存なので前段の後に直列実行"
+              },
+              {
+                "from": "api-summary",
+                "to": "tbl-records",
+                "passes": "Promise.all: oura/google/toggl レコードを wake range にオーバーラップ",
+                "note": "google_calendar_events は connection_id も SELECT (除外判定 + ラベル衝突解決に使う)"
+              },
+              {
+                "from": "api-summary",
+                "to": "tbl-connections",
+                "passes": "Google 連携時のみ: SELECT account_email/provider_user_id for (provider='google')",
+                "note": "同名カレンダー衝突時の '<name> (<email>)' 接尾辞用 · Phase 7"
+              },
+              {
+                "from": "api-summary",
+                "to": "page-daily",
+                "passes": "SummaryResponse { wake_range, todays_me { oura, google { by_calendar }, toggl { by_title with project_name } }, timeline, sync_statuses }",
+                "note": "Zod summaryResponseSchema で出力検証 · meeting_minutes は廃止 (Issue #151)"
+              }
+            ]
+          },
+          {
+            "id": "manual-refresh",
+            "icon": "🔄",
+            "name": "6. 手動リフレッシュ（当日 / Promise.allSettled 並列）",
+            "sub": "Refresh ボタン or 30 分ステイル背景同期 → 3 サービスを Promise.allSettled で並列同期 → Google は接続単位ループ → DB 更新",
+            "what": "ユーザーが /daily/[date] で更新ボタンを押すか、当日のサマリが 30 分以上古いとバックグラウンドで自動発火する。refreshUserDate が 3 provider を Promise.allSettled で並列に回し、それぞれ daily_sync_statuses にロックを取って実行する (Issue #140)。Google は更にその中で listConnectedGoogleConnections() で 0..N 件の接続行を回し、各 connection_id に対して個別に sync する。部分失敗は許容で、Oura が落ちても Google / Toggl は止めない。Toggl は /me/time_entries と /me/projects を両方叩いて project_name を解決する (Issue #112)。",
+            "why": "外部 3 サービスは独立に落ちたりレート制限を返したりするので、どれか 1 つの失敗で全部止めると「ほぼ完成のサマリ」を見せられなくなる。provider 別にロック・成否を別管理し、エラーは記録するだけで他は通す (仕様 §9.2 の「部分失敗を許容」)。さらに provider を並列実行に倒したのは、3 サービスの待ち時間が逐次だと足し算になり Vercel Function の 10 秒級コールドスタートと合わさって体感が悪かったため。Google を接続単位でループするのは複数アカウント連携で 1 接続の障害が他のアカウントを止めないようにするため (Issue #131 Phase 4)。30 分ステイルの自動更新で、ユーザーが画面を開き直すたびに自然と最新化される。",
+            "description": "refreshUserDate が 3 provider を Promise.allSettled で並列同期 (Issue #140)。Google は connection_id 単位でループ (Issue #131 Phase 4)。部分失敗を許容。",
+            "steps": [
+              {
+                "from": "page-daily",
+                "to": "api-refresh",
+                "passes": "POST /api/summary/refresh · { date }",
+                "note": "Refresh ボタン or 30 分ステイル自動"
+              },
+              {
+                "from": "api-refresh",
+                "to": "util-auth",
+                "passes": "requireUserIdAllowCookie(event)",
+                "note": "Bearer 優先 · SSR 経由でも fallback で通る (Issue #141)"
+              },
+              {
+                "from": "api-refresh",
+                "to": "util-refresh",
+                "passes": "refreshUserDate(userId, date)",
+                "note": "/api/cron/daily と共通の orchestrator"
+              },
+              {
+                "from": "util-refresh",
+                "to": "util-refresh",
+                "passes": "Promise.allSettled([oura, google, toggl])",
+                "note": "Issue #140 で 3 provider を並列化 · 各 provider 内で例外を outcome に詰めて正常 resolve"
+              },
+              {
+                "from": "util-refresh",
+                "to": "tbl-status",
+                "passes": "tryAcquireSyncLock — conditional UPDATE status → in_progress",
+                "note": "stale lock = 10 分 · ownership key = sync_started_at"
+              },
+              {
+                "from": "util-refresh",
+                "to": "util-token",
+                "passes": "Oura/Toggl: getValidAccessToken(userId, provider)",
+                "note": "decrypt · 残り 5 分未満なら事前 refresh"
+              },
+              {
+                "from": "util-refresh",
+                "to": "tbl-connections",
+                "passes": "Google: listConnectedGoogleConnections(userId) → 接続行を 0..N 件取得",
+                "note": "Issue #131 Phase 4 · 各 connection_id でループ"
+              },
+              {
+                "from": "util-token",
+                "to": "tbl-connections",
+                "passes": "SELECT access_token_encrypted, refresh_token_encrypted, token_expires_at",
+                "note": "TOKEN_ENCRYPTION_KEY で復号"
+              },
+              {
+                "from": "util-refresh",
+                "to": "util-sync",
+                "passes": "syncOuraForDate / syncGoogleForDate(connectionId) × N / syncTogglForDate",
+                "note": "Promise.allSettled の中で · Google は connection_id 単位の sweep"
+              },
+              {
+                "from": "util-sync",
+                "to": "ext-oura",
+                "passes": "GET /v2/usercollection/sleep?start_date=&end_date= (Bearer)",
+                "note": "target_date±1 · pagination · 429 → 1 リトライ"
+              },
+              {
+                "from": "util-sync",
+                "to": "ext-google",
+                "passes": "GET /calendar/v3/calendars/{id}/events (timeMin/timeMax or syncToken)",
+                "note": "事前に /calendarList も叩く · 410 Gone → 全件再同期"
+              },
+              {
+                "from": "util-sync",
+                "to": "ext-toggl",
+                "passes": "GET /api/v9/me/time_entries + /api/v9/me/projects (Basic Auth)",
+                "note": "project_id → project_name を解決して time entry 行に貼る (Issue #112)"
+              },
+              {
+                "from": "util-sync",
+                "to": "tbl-records",
+                "passes": "UPSERT *_records · 取れなかった ID は is_deleted=true でソフトデリート",
+                "note": "google_calendar_events unique = (user_id, connection_id, calendar_id, google_event_id) · sweep は connection_id でスコープ"
+              },
+              {
+                "from": "util-sync",
+                "to": "tbl-status",
+                "passes": "markSyncSuccess(lockId) / markSyncFailed(lockId, message)",
+                "note": "ownership-key が違うロックは上書きしない"
+              },
+              {
+                "from": "util-refresh",
+                "to": "api-refresh",
+                "passes": "{ sync_statuses[], errors[] }",
+                "note": "errors は provider 別"
+              },
+              {
+                "from": "api-refresh",
+                "to": "page-daily",
+                "passes": "SummaryRefreshResponse",
+                "note": "クライアントは続けて /api/summary を再取得して描画更新"
+              }
+            ]
+          },
+          {
+            "id": "cron-batch",
+            "icon": "⏰",
+            "name": "7. Vercel Cron 14 日バッチ同期",
+            "sub": "毎日 UTC 20:00（JST 05:00 翌日）に直近 14 日分を全ユーザー × 3 プロバイダで再同期",
+            "what": "vercel.json の crons で /api/cron/daily が叩かれる。CRON_SECRET の Bearer 認証を通過したら全ユーザーをループし、各ユーザーの TZ で「今日」を割り出して today, today-1, ..., today-13 の 14 日について refreshUserDate を呼ぶ。手動リフレッシュと同じ orchestrator を再利用しているので、ロック取得・部分失敗・ソフトデリートのルールが完全に一致する。",
+            "why": "外部サービスは「過去日のレコードを後から編集 / 削除」できるので、初回同期した内容と今の本当の姿はだんだんズレていく。14 日のスライディングウィンドウで毎朝同期し直すことで、過去 2 週間のサマリは常に外部の最新と一致する保証ができる。手動と同じ orchestrator を使い回しているのは、挙動が二重実装で食い違うとデバッグが地獄になるからで、Cron は「手動の自動連打」と等価になっている。",
+            "description": "vercel.json の crons で /api/cron/daily が叩かれる。CRON_SECRET の Bearer 認証を通過したら全ユーザーをループし、各ユーザーの TZ で「今日」を割り出して today, today-1, ..., today-13 の 14 日について refreshUserDate を呼ぶ。手動リフレッシュと同じ orchestrator を再利用しているので、ロック取得・部分失敗・ソフトデリートのルールが完全に一致する。",
+            "steps": [
+              {
+                "from": "ext-cron",
+                "to": "api-cron",
+                "passes": "GET /api/cron/daily · Authorization: Bearer ${CRON_SECRET}",
+                "note": "vercel.json: \"0 20 * * *\"  → UTC 20:00 / JST 05:00 翌日"
+              },
+              {
+                "from": "api-cron",
+                "to": "tbl-users",
+                "passes": "SELECT id, timezone FROM users",
+                "note": "MVP は単一ユーザーだがループは多人数対応"
+              },
+              {
+                "from": "api-cron",
+                "to": "tbl-connections",
+                "passes": "loadConnectedProviders(userId) — status='connected'",
+                "note": "disconnected / error な provider は skip"
+              },
+              {
+                "from": "api-cron",
+                "to": "util-refresh",
+                "passes": "refreshUserDate(userId, date, { timezone, connected }) × 14日 × Nユーザー",
+                "note": "todayInTimezone(tz) から [today, today-13] を作る"
+              },
+              {
+                "from": "util-refresh",
+                "to": "util-sync",
+                "passes": "Flow 6 と同じ provider 別 sync runner を回す",
+                "note": "手動とコードを共有 → 挙動が完全に一致"
+              },
+              {
+                "from": "util-sync",
+                "to": "tbl-records",
+                "passes": "UPSERT + soft-delete (Flow 6 と同じ)",
+                "note": "14 日ウィンドウなので過去の編集も拾える"
+              },
+              {
+                "from": "util-sync",
+                "to": "tbl-status",
+                "passes": "markSyncSuccess / markSyncFailed",
+                "note": ""
+              },
+              {
+                "from": "api-cron",
+                "to": "ext-cron",
+                "passes": "{ processed_at, users_processed, dates_processed, days_per_user:14, error_count }",
+                "note": "個別の失敗があっても全体は 200 OK で返す"
+              }
+            ]
+          },
+          {
+            "id": "token-refresh",
+            "icon": "🔁",
+            "name": "8. アクセストークンの 401 リカバリ",
+            "sub": "外部 API から 401 が返ったら refresh_token で再発行 → 元の呼び出しを 1 度だけリトライ",
+            "what": "通常の sync 呼び出しの途中で外部 API が 401 を返すと、withFreshAccessToken が OauthUnauthorizedError をキャッチし、強制 refresh をかけて新しい access_token で 1 度だけリトライする。refresh も失敗したら service_connections.status を 'error' に落として、以降の sync は skip 対象になる。",
+            "why": "access_token は寿命が短いが、サーバ側で「いつ切れるか」を完璧に予測することはできない（プロバイダ側で取り消されることもある）。だから「失敗してから直す」自己修復ループが要る。同時に、refresh まで失敗した場合は明示的に status='error' に落とすことで、無効トークンで叩き続けて連続 401 を量産する事故を防ぐ。リトライを 1 度に絞っているのは無限ループ防止。",
+            "description": "通常の sync 呼び出しの途中で外部 API が 401 を返すと、withFreshAccessToken が OauthUnauthorizedError をキャッチし、強制 refresh をかけて新しい access_token で 1 度だけリトライする。refresh も失敗したら service_connections.status を 'error' に落として、以降の sync は skip 対象になる。",
+            "steps": [
+              {
+                "from": "util-sync",
+                "to": "ext-google",
+                "passes": "API call with Bearer access_token (例: /events)",
+                "note": "通常の sync 経路から到達"
+              },
+              {
+                "from": "ext-google",
+                "to": "util-sync",
+                "passes": "401 Unauthorized",
+                "note": "OauthUnauthorizedError として raise"
+              },
+              {
+                "from": "util-sync",
+                "to": "util-token",
+                "passes": "withFreshAccessToken → forceRefreshAccessToken(userId, 'google')",
+                "note": "expiry 関係なく強制 refresh"
+              },
+              {
+                "from": "util-token",
+                "to": "tbl-connections",
+                "passes": "SELECT refresh_token_encrypted",
+                "note": "decrypt"
+              },
+              {
+                "from": "util-token",
+                "to": "ext-google",
+                "passes": "POST oauth2.googleapis.com/token (grant_type=refresh_token)",
+                "note": "Oura も同じ構造の /oauth/token を持つ。Toggl は refresh 不能なので即 error"
+              },
+              {
+                "from": "ext-google",
+                "to": "util-token",
+                "passes": "{ access_token, [refresh_token], expires_in }",
+                "note": "parseExternal で形を検証 · 不正なら 502 · 失敗なら OauthRefreshError"
+              },
+              {
+                "from": "util-token",
+                "to": "tbl-connections",
+                "passes": "UPSERT service_connections (new access_token_encrypted · expires_at) / 失敗時は status='error' で tokens を null",
+                "note": "refresh_token が返ってこなければ既存のを保持"
+              },
+              {
+                "from": "util-token",
+                "to": "util-sync",
+                "passes": "新しい access_token (plain) を返す",
+                "note": "fn(newToken) を 1 度だけリトライ"
+              }
+            ]
+          },
+          {
+            "id": "disconnect",
+            "icon": "🚪",
+            "name": "9. サービス連携解除（ソフト + Google ハード削除）",
+            "sub": "Oura/Toggl は provider 単位の soft disconnect。Google は connection_id 単位の soft disconnect + 任意でハード削除",
+            "what": "Oura / Toggl は /settings で「連携解除」を押すと DELETE /api/connections/{provider} で service_connections.status='disconnected' + トークン null にする (旧来通り)。Google は複数アカウント連携を許容するので、接続単位の DELETE /api/connections/google/{connectionId} を叩く (Phase 6)。Google は更に soft disconnect 後の disconnected 行に対して DELETE /api/connections/google/{connectionId}/account で物理削除も可能 (Issue #139)。物理削除すると関連 events / excluded_calendars が FK ON DELETE CASCADE で一緒に消える。",
+            "why": "行ごと DELETE してしまうと過去に同期したレコード (oura_sleep_records 等) の起点情報や connected_at 履歴が失われる。だから普段はソフト切断で「いつ繋いで、いつ外したか」を残し、暗号化トークンだけ NULL にして漏洩経路を閉じる。Google を connection_id 単位にしたのは、同じ user の別アカウントを巻き込まずに 1 接続だけ外せるようにするため。一方でハード削除エンドポイントを別に用意したのは「もうこのアカウントは戻らない」と明示できる導線が UI 上必要で、events / 除外設定の残骸も巻き取って消すため (Issue #139)。soft → hard の 2 段階にしているのは誤操作からの巻き戻しを残すため。",
+            "description": "Oura/Toggl は provider 単位の soft disconnect。Google は connection_id 単位の soft disconnect (Phase 6) + 任意でハード削除 (Issue #139)。",
+            "steps": [
+              {
+                "from": "page-settings",
+                "to": "api-connections",
+                "passes": "DELETE /api/connections/{oura|toggl}",
+                "note": "Oura/Toggl の旧来通りの provider 単位 soft disconnect"
+              },
+              {
+                "from": "page-settings",
+                "to": "api-connections",
+                "passes": "DELETE /api/connections/google/{connectionId}",
+                "note": "Google は接続 ID 単位 (Phase 6)"
+              },
+              {
+                "from": "api-connections",
+                "to": "util-auth",
+                "passes": "requireUserId(event)",
+                "note": ""
+              },
+              {
+                "from": "api-connections",
+                "to": "util-token",
+                "passes": "disconnectServiceConnection / disconnectGoogleConnectionById",
+                "note": "Google 版は events も is_deleted=true に倒す"
+              },
+              {
+                "from": "util-token",
+                "to": "tbl-connections",
+                "passes": "UPDATE service_connections SET status='disconnected', tokens=NULL [WHERE id=connectionId]",
+                "note": "行は残す = connected_at / account_email を保持"
+              },
+              {
+                "from": "util-token",
+                "to": "tbl-records",
+                "passes": "Google: UPDATE google_calendar_events SET is_deleted=true WHERE connection_id=...",
+                "note": "google_excluded_calendars は残す (再認可で同 sub に紐づき直ったら設定を引き継ぐ)"
+              },
+              {
+                "from": "api-connections",
+                "to": "page-settings",
+                "passes": "{ ok: true }",
+                "note": "UI 側は接続一覧 / accounts を再取得して反映"
+              },
+              {
+                "from": "page-settings",
+                "to": "api-connections",
+                "passes": "(任意) DELETE /api/connections/google/{connectionId}/account",
+                "note": "Issue #139 · disconnected 行に対するハード削除"
+              },
+              {
+                "from": "api-connections",
+                "to": "util-token",
+                "passes": "deleteGoogleConnectionPermanently(userId, connectionId)",
+                "note": "service_connections の該当行を物理 DELETE"
+              },
+              {
+                "from": "util-token",
+                "to": "tbl-connections",
+                "passes": "DELETE service_connections WHERE id=connectionId AND user_id=auth.uid()",
+                "note": "google_calendar_events / google_excluded_calendars は FK ON DELETE CASCADE で巻き取られる"
+              }
+            ]
+          },
+          {
+            "id": "demo-view",
+            "icon": "🧪",
+            "name": "10. デモビュー（公開・認証なし）",
+            "sub": "本番テーブルから完全に隔離された demo_* で固定日付のサマリを返す",
+            "what": "/demo はログインなしでアクセスでき、外部 API も叩かない。demo_oura_sleep_records / demo_google_calendar_events / demo_toggl_time_entries を Asia/Tokyo 固定で読み、本番と同じ summaryResponseSchema の形で返す。RLS は public read (true) で誰でも見られる。",
+            "why": "「ログインしないと何も見えない」状態だと、初見の人にプロダクトの価値を伝えられない。本番テーブルをそのまま public にすると個人データが漏れるので、テーブル自体を分けて『デモ専用の固定データ』を持っておく。レスポンスの形を本番 /api/summary と完全一致させているので、フロント側はデモか本番かを意識せず同じ描画ロジックで動かせる。",
+            "description": "/demo はログインなしでアクセスでき、外部 API も叩かない。demo_oura_sleep_records / demo_google_calendar_events / demo_toggl_time_entries を Asia/Tokyo 固定で読み、本番と同じ summaryResponseSchema の形で返す。RLS は public read (true) で誰でも見られる。",
+            "steps": [
+              {
+                "from": "page-demo",
+                "to": "api-demo",
+                "passes": "GET /api/demo/summary?date=YYYY-MM-DD",
+                "note": "Bearer 不要 · 認証チェックなし"
+              },
+              {
+                "from": "api-demo",
+                "to": "tbl-demo",
+                "passes": "SELECT demo_oura_sleep_records / demo_google_calendar_events / demo_toggl_time_entries",
+                "note": "user_id 列を持たない · Asia/Tokyo 固定"
+              },
+              {
+                "from": "api-demo",
+                "to": "page-demo",
+                "passes": "SummaryResponse (sync_statuses は常に [])",
+                "note": "本番 /api/summary と同じスキーマだが、外部 API も util-token も介在しない"
+              }
+            ]
+          }
+        ]
+      }
     </script>
 
     <script>
@@ -1253,7 +1946,7 @@
           }
         }
         throw new Error(
-          "flows.json も埋め込み JSON も読めなかった。flows.json と同じディレクトリで開くか、`python -m http.server` 経由でアクセスしてください。",
+          "flows.json も埋め込み JSON も読めなかった。flows.json と同じディレクトリで開くか、`python -m http.server` 経由でアクセスしてください。"
         );
       }
 
@@ -1298,10 +1991,7 @@
         // Build arrow markers per group color + active
         const markers = new Map();
         markers.set("__edge__", makeArrowMarker(defs, "arrow-edge", "var(--edge)"));
-        markers.set(
-          "__active__",
-          makeArrowMarker(defs, "arrow-active", "var(--edge-active)", 1.6),
-        );
+        markers.set("__active__", makeArrowMarker(defs, "arrow-active", "var(--edge-active)", 1.6));
 
         // Render columns
         for (const col of data.columns) {
@@ -1504,8 +2194,7 @@
         // Within same multi-status, prefer shorter paths first to keep them near midpoint
         badges.sort((a, b) => {
           if (b.isMulti !== a.isMulti) return b.isMulti ? 1 : -1;
-          if (b.stepIdxs.length !== a.stepIdxs.length)
-            return b.stepIdxs.length - a.stepIdxs.length;
+          if (b.stepIdxs.length !== a.stepIdxs.length) return b.stepIdxs.length - a.stepIdxs.length;
           return a.pathLen - b.pathLen;
         });
 
@@ -1530,8 +2219,7 @@
           const pillH = HEIGHT;
 
           const candidates = [
-            0.5, 0.44, 0.56, 0.38, 0.62, 0.32, 0.68, 0.26, 0.74, 0.2, 0.8, 0.15,
-            0.85, 0.1, 0.9,
+            0.5, 0.44, 0.56, 0.38, 0.62, 0.32, 0.68, 0.26, 0.74, 0.2, 0.8, 0.15, 0.85, 0.1, 0.9,
           ];
 
           let best = null;
@@ -1743,12 +2431,14 @@
             <span class="anno-sub">${escapeHtml(flow.sub || "")}</span>
           </div>
           <div class="anno-desc">${escapeHtml(whatText)}</div>
-          ${whyText
-            ? `<div class="anno-why">
+          ${
+            whyText
+              ? `<div class="anno-why">
                  <div class="anno-why-label">なぜ必要か</div>
                  <div class="anno-why-body">${escapeHtml(whyText)}</div>
                </div>`
-            : ""}
+              : ""
+          }
         `;
         const items = flow.steps
           .map((s, i) => {
@@ -1805,9 +2495,7 @@
         state.focusedStep = null;
         state.focusCycleIdx = 0;
 
-        const flow = flowId
-          ? state.data.flows.find((f) => f.id === flowId)
-          : null;
+        const flow = flowId ? state.data.flows.find((f) => f.id === flowId) : null;
 
         // sidebar buttons
         document.querySelectorAll(".flow-btn").forEach((b) => {
@@ -1970,10 +2658,7 @@
 
         // Badge focus — find badge whose stepIdxs include this step (flow + edge)
         const matchBadge = (state.badges || []).find(
-          (b) =>
-            b.flowId === flowId &&
-            b.edge.key === edgeKey &&
-            b.stepIdxs.includes(stepIdx + 1),
+          (b) => b.flowId === flowId && b.edge.key === edgeKey && b.stepIdxs.includes(stepIdx + 1)
         );
         if (matchBadge && matchBadge.el) {
           matchBadge.el.classList.add("focused");
@@ -1981,11 +2666,11 @@
 
         // Anno li flash — remove+reflow+add to allow restart
         const lis = document.querySelectorAll(
-          `#annotations ol li[data-flow="${cssEscape(flowId)}"]`,
+          `#annotations ol li[data-flow="${cssEscape(flowId)}"]`
         );
         lis.forEach((li) => li.classList.remove("focused"));
         const targetLi = document.querySelector(
-          `#annotations ol li[data-flow="${cssEscape(flowId)}"][data-step="${stepIdx}"]`,
+          `#annotations ol li[data-flow="${cssEscape(flowId)}"][data-step="${stepIdx}"]`
         );
         if (targetLi) {
           // force reflow to restart animation
@@ -2005,7 +2690,7 @@
         const toNode = state.nodeById.get(b.edge.to);
         const parts = [];
         parts.push(
-          `<div class="tt-flow">${escapeHtml(flow.icon || "")} ${escapeHtml(flow.name)}</div>`,
+          `<div class="tt-flow">${escapeHtml(flow.icon || "")} ${escapeHtml(flow.name)}</div>`
         );
         for (const idx of b.stepIdxs) {
           const step = flow.steps[idx - 1];
@@ -2071,23 +2756,27 @@
       function wireGlobalEvents() {
         const svg = document.getElementById("canvas");
 
-        svg.addEventListener("wheel", (e) => {
-          e.preventDefault();
-          const rect = svg.getBoundingClientRect();
-          const cx = (e.clientX - rect.left) / rect.width;
-          const cy = (e.clientY - rect.top) / rect.height;
-          const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
-          const v = state.viewBox;
-          const newW = Math.max(200, Math.min(8000, v.w * factor));
-          const newH = Math.max(150, Math.min(5500, v.h * factor));
-          state.viewBox = {
-            x: v.x + (v.w - newW) * cx,
-            y: v.y + (v.h - newH) * cy,
-            w: newW,
-            h: newH,
-          };
-          applyViewBox();
-        }, { passive: false });
+        svg.addEventListener(
+          "wheel",
+          (e) => {
+            e.preventDefault();
+            const rect = svg.getBoundingClientRect();
+            const cx = (e.clientX - rect.left) / rect.width;
+            const cy = (e.clientY - rect.top) / rect.height;
+            const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
+            const v = state.viewBox;
+            const newW = Math.max(200, Math.min(8000, v.w * factor));
+            const newH = Math.max(150, Math.min(5500, v.h * factor));
+            state.viewBox = {
+              x: v.x + (v.w - newW) * cx,
+              y: v.y + (v.h - newH) * cy,
+              w: newW,
+              h: newH,
+            };
+            applyViewBox();
+          },
+          { passive: false }
+        );
 
         svg.addEventListener("mousedown", (e) => {
           if (e.target.closest(".edge-step-badge")) return;
@@ -2135,17 +2824,14 @@
               const t2 = e.touches[1];
               touchState = {
                 mode: "pinch",
-                startDist: Math.hypot(
-                  t1.clientX - t2.clientX,
-                  t1.clientY - t2.clientY,
-                ),
+                startDist: Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY),
                 cx: (t1.clientX + t2.clientX) / 2,
                 cy: (t1.clientY + t2.clientY) / 2,
                 vb: { ...state.viewBox },
               };
             }
           },
-          { passive: true },
+          { passive: true }
         );
         svg.addEventListener(
           "touchmove",
@@ -2154,12 +2840,8 @@
             if (touchState.mode === "pan" && e.touches.length === 1) {
               e.preventDefault();
               const rect = svg.getBoundingClientRect();
-              const dx =
-                ((e.touches[0].clientX - touchState.x) / rect.width) *
-                state.viewBox.w;
-              const dy =
-                ((e.touches[0].clientY - touchState.y) / rect.height) *
-                state.viewBox.h;
+              const dx = ((e.touches[0].clientX - touchState.x) / rect.width) * state.viewBox.w;
+              const dy = ((e.touches[0].clientY - touchState.y) / rect.height) * state.viewBox.h;
               state.viewBox.x = touchState.vbX - dx;
               state.viewBox.y = touchState.vbY - dy;
               applyViewBox();
@@ -2167,10 +2849,7 @@
               e.preventDefault();
               const t1 = e.touches[0];
               const t2 = e.touches[1];
-              const dist = Math.hypot(
-                t1.clientX - t2.clientX,
-                t1.clientY - t2.clientY,
-              );
+              const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
               const factor = touchState.startDist / Math.max(dist, 1);
               const rect = svg.getBoundingClientRect();
               const cx = (touchState.cx - rect.left) / rect.width;
@@ -2187,21 +2866,21 @@
               applyViewBox();
             }
           },
-          { passive: false },
+          { passive: false }
         );
         svg.addEventListener(
           "touchend",
           (e) => {
             if (e.touches.length === 0) touchState = null;
           },
-          { passive: true },
+          { passive: true }
         );
         svg.addEventListener(
           "touchcancel",
           () => {
             touchState = null;
           },
-          { passive: true },
+          { passive: true }
         );
 
         document.addEventListener("keydown", (e) => {
@@ -2229,9 +2908,7 @@
               document
                 .querySelectorAll(".edge")
                 .forEach((el) => el.classList.remove("focused-edge"));
-              document
-                .querySelectorAll(".node")
-                .forEach((el) => el.classList.remove("endpoint"));
+              document.querySelectorAll(".node").forEach((el) => el.classList.remove("endpoint"));
               document
                 .querySelectorAll(".edge-step-badge")
                 .forEach((el) => el.classList.remove("focused"));
@@ -2268,7 +2945,7 @@
             try {
               localStorage.setItem(
                 "todaysme.flows.annoH",
-                document.documentElement.style.getPropertyValue("--anno-h"),
+                document.documentElement.style.getPropertyValue("--anno-h")
               );
             } catch (_) {}
           }
@@ -2341,8 +3018,7 @@
           // restore anno height
           try {
             const saved = localStorage.getItem("todaysme.flows.annoH");
-            if (saved)
-              document.documentElement.style.setProperty("--anno-h", saved);
+            if (saved) document.documentElement.style.setProperty("--anno-h", saved);
           } catch (_) {}
 
           const data = await loadData();

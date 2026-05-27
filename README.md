@@ -34,28 +34,28 @@ cp .env.example .env
 
 主な変数:
 
-| 変数 | 用途 |
-| --- | --- |
-| `SUPABASE_URL` / `SUPABASE_ANON_KEY` | Supabase 接続 |
-| `TOKEN_ENCRYPTION_KEY` | 外部サービストークン暗号化キー（base64 encoded 32 bytes） |
-| `OURA_CLIENT_ID` / `OURA_CLIENT_SECRET` | Oura OAuth2 |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Calendar OAuth2 |
-| `TOGGL_API_TOKEN` | Toggl Track API token |
-| `SENTRY_AUTH_TOKEN` | Sentry source map アップロード用 |
+| 変数                                        | 用途                                                      |
+| ------------------------------------------- | --------------------------------------------------------- |
+| `SUPABASE_URL` / `SUPABASE_ANON_KEY`        | Supabase 接続                                             |
+| `TOKEN_ENCRYPTION_KEY`                      | 外部サービストークン暗号化キー（base64 encoded 32 bytes） |
+| `OURA_CLIENT_ID` / `OURA_CLIENT_SECRET`     | Oura OAuth2                                               |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google Calendar OAuth2                                    |
+| `TOGGL_API_TOKEN`                           | Toggl Track API token                                     |
+| `SENTRY_AUTH_TOKEN`                         | Sentry source map アップロード用                          |
 
 詳細は `.env.example` を参照。
 
 ## スクリプト
 
-| コマンド | 用途 |
-| --- | --- |
-| `pnpm dev` | 開発サーバ起動 |
-| `pnpm build` | 本番ビルド |
-| `pnpm preview` | ビルド結果のプレビュー |
-| `pnpm typecheck` | 型チェック |
-| `pnpm lint` | ESLint |
+| コマンド          | 用途                    |
+| ----------------- | ----------------------- |
+| `pnpm dev`        | 開発サーバ起動          |
+| `pnpm build`      | 本番ビルド              |
+| `pnpm preview`    | ビルド結果のプレビュー  |
+| `pnpm typecheck`  | 型チェック              |
+| `pnpm lint`       | ESLint                  |
 | `pnpm lint:style` | Stylelint（SCSS / Vue） |
-| `pnpm format` | Prettier フォーマット |
+| `pnpm format`     | Prettier フォーマット   |
 
 ## ドキュメント
 

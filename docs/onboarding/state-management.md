@@ -7,15 +7,15 @@
 
 ## 状態のカテゴリ
 
-| 種類 | 置き場所 | 例 |
-| --- | --- | --- |
-| **認証セッション** | Supabase SDK の内部状態 + cookie | `useSupabaseUser()` / `useSupabaseClient()` |
-| **サマリーデータ（API 取得結果）** | ページコンポーネントの `ref` | `/daily/[date].vue` の `summary` |
-| **連携状況** | `/settings` ページの `ref` | `connections` 配列 |
-| **フォーム入力** | ページの `ref` | `togglToken` / `excludedDraft` |
-| **UI 一時状態** | ページの `ref` | `loading` / `refreshing` / `errorMessage` |
-| **「Wake-based today」の解決** | 関数呼び出しのローカル変数 | `fetchWakeBasedToday()` の戻り値 |
-| **クロスページ共有状態** | **無い**（現状） | — |
+| 種類                               | 置き場所                         | 例                                          |
+| ---------------------------------- | -------------------------------- | ------------------------------------------- |
+| **認証セッション**                 | Supabase SDK の内部状態 + cookie | `useSupabaseUser()` / `useSupabaseClient()` |
+| **サマリーデータ（API 取得結果）** | ページコンポーネントの `ref`     | `/daily/[date].vue` の `summary`            |
+| **連携状況**                       | `/settings` ページの `ref`       | `connections` 配列                          |
+| **フォーム入力**                   | ページの `ref`                   | `togglToken` / `excludedDraft`              |
+| **UI 一時状態**                    | ページの `ref`                   | `loading` / `refreshing` / `errorMessage`   |
+| **「Wake-based today」の解決**     | 関数呼び出しのローカル変数       | `fetchWakeBasedToday()` の戻り値            |
+| **クロスページ共有状態**           | **無い**（現状）                 | —                                           |
 
 ---
 
@@ -33,12 +33,14 @@
 ### 2. SDK 提供の composable
 
 Supabase の `useSupabaseUser` / `useSupabaseClient` は **SDK 内部のセッション** を reactive にラップしている。
+
 - ページ間で「同じ user」が見えるのは SDK が cookie + メモリで保持しているから。
 - アプリ側で別に user store を作る必要は無い（その分依存が減る）。
 
 ### 3. Server state（API 取得結果）
 
 `$fetch` の戻り値を `ref` に入れているだけで、**SWR / TanStack Query 的なキャッシュは入れていない**。
+
 - 日付遷移したら再フェッチ。
 - 連続フェッチでレースが起きないよう `activeRequestId` 連番で「自分が最新でなければ書かない」防御を入れている。
 
@@ -57,6 +59,7 @@ Supabase の `useSupabaseUser` / `useSupabaseClient` は **SDK 内部のセッ�
 > `@pinia/nuxt` は将来の状態管理用に SPEC に記載されているが、現状ストアが無いため一旦除外する。pinia v3.0.4 が SSR バンドル時に `dist/pinia.prod.cjs` を取り込み、Vue の ESM に default export が無いことで起動時 SyntaxError → 本番が全ルート 500 になる回避（Issue #99）。再導入時は `defineStore` を実際に使い始めるタイミングで合わせて検証する。
 
 要点:
+
 - ストアが本当に必要な状態が **現時点で無い**。
 - 過去に Pinia 起因で本番が全ルート 500 になった事故がある（Issue #99）。
 - 「**使う時に再導入して本番でも一度検証する**」が現方針。
@@ -79,6 +82,7 @@ Supabase の `useSupabaseUser` / `useSupabaseClient` は **SDK 内部のセッ�
    - 現状 `/settings` で一画面に収まっている。
 
 導入する時は **必ず**:
+
 - Issue #99 を読む。
 - Preview 環境で SSR バンドルが壊れていないか確認する。
 
@@ -121,11 +125,11 @@ async function fetchSummary() {
 
 ## 状態の境界（責務）
 
-| 状態 | 持つ責務 |
-| --- | --- |
-| `useSupabaseUser` | 「ログインしているか」「user.id は何か」だけ |
-| ページの `summary ref` | 「いま画面に表示しているデータ」 |
-| ページの `errorMessage` | 「ユーザーに見せたいエラーメッセージ」 |
+| 状態                        | 持つ責務                                                                       |
+| --------------------------- | ------------------------------------------------------------------------------ |
+| `useSupabaseUser`           | 「ログインしているか」「user.id は何か」だけ                                   |
+| ページの `summary ref`      | 「いま画面に表示しているデータ」                                               |
+| ページの `errorMessage`     | 「ユーザーに見せたいエラーメッセージ」                                         |
 | `daily_sync_statuses`（DB） | 「最後にいつ同期されたか / 同期中か」 — UI はここを source of truth として読む |
 
 「同期中かどうか」を UI 側の `ref` だけで持つと、別タブから refresh された時に detect できない。`daily_sync_statuses` を DB の source of truth として `/api/summary` のレスポンスに含めることで、UI は **取得時の状態** を表示できる（厳密にはポーリングは入れていないので、最新ではないが「30 分以内なら stale 判定で裏で再取得する」で十分な精度を保っている）。

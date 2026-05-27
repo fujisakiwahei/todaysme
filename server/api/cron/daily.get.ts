@@ -19,15 +19,8 @@ import type { H3Event } from "h3";
 import { createError, getRequestHeader } from "h3";
 
 import type { ServiceProvider } from "../../../shared/schemas";
-import {
-  PURGE_TARGETS,
-  purgeSoftDeleted,
-  type PurgeResult,
-} from "../../utils/purgeSoftDeleted";
-import {
-  loadConnectedProviders,
-  refreshUserDate,
-} from "../../utils/runRefresh";
+import { PURGE_TARGETS, purgeSoftDeleted, type PurgeResult } from "../../utils/purgeSoftDeleted";
+import { loadConnectedProviders, refreshUserDate } from "../../utils/runRefresh";
 import { getSupabaseAdmin } from "../../utils/supabaseAdmin";
 
 // 直近 14 日 (today を含む) を対象にする (SPEC §10.4)。
@@ -106,9 +99,7 @@ export default defineEventHandler(async (event) => {
   const admin = getSupabaseAdmin();
 
   // MVP は単一ユーザー前提だが、users テーブルから引いて汎用化しておく。
-  const { data: users, error: usersErr } = await admin
-    .from("users")
-    .select("id, timezone");
+  const { data: users, error: usersErr } = await admin.from("users").select("id, timezone");
   if (usersErr) {
     throw createError({
       statusCode: 500,
@@ -177,9 +168,7 @@ export default defineEventHandler(async (event) => {
     // 実行されていないので、全件 fail 扱いで error_count に計上する。0 のままだと
     // 運用上の失敗が cron レスポンスから検知できなくなる。
     const message = e instanceof Error ? e.message : String(e);
-    console.error(
-      `[cron/daily] purgeSoftDeleted threw unexpectedly: ${message}`,
-    );
+    console.error(`[cron/daily] purgeSoftDeleted threw unexpectedly: ${message}`);
     purgeResults = [];
     purgeErrorCount = PURGE_TARGETS.length;
   }

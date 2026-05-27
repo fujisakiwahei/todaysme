@@ -77,9 +77,7 @@ export default defineEventHandler(async (event) => {
       connection_id: connectionId,
       calendar_id: calendarId,
     }));
-    const { error: insertError } = await admin
-      .from("google_excluded_calendars")
-      .insert(rows);
+    const { error: insertError } = await admin.from("google_excluded_calendars").insert(rows);
     if (insertError) {
       throw createError({
         statusCode: 500,

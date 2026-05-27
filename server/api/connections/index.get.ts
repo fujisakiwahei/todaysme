@@ -9,10 +9,7 @@ import {
   type ServiceProvider,
 } from "../../../shared/schemas";
 import { requireUserId } from "../../utils/auth";
-import {
-  pickPrimaryConnectionRow,
-  listServiceConnections,
-} from "../../utils/serviceConnection";
+import { pickPrimaryConnectionRow, listServiceConnections } from "../../utils/serviceConnection";
 import { parseOrThrow } from "../../utils/validation";
 
 const PROVIDERS: ServiceProvider[] = ["oura", "google", "toggl"];

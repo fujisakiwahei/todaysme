@@ -61,7 +61,7 @@ const {
       query: { date: dateParam.value },
       headers: summaryFetchHeaders(),
     }),
-  { default: () => null, watch: [dateParam] },
+  { default: () => null, watch: [dateParam] }
 );
 
 const refreshing = ref(false);
@@ -75,9 +75,7 @@ const errorMessage = computed<string | null>(() => {
   if (manualErrorMessage.value) return manualErrorMessage.value;
   if (!summaryError.value) return null;
   const msg =
-    summaryError.value instanceof Error
-      ? summaryError.value.message
-      : "failed to load summary";
+    summaryError.value instanceof Error ? summaryError.value.message : "failed to load summary";
   return `サマリー取得に失敗しました: ${msg}`;
 });
 
@@ -178,7 +176,7 @@ onMounted(() => {
       checkedDates.add(date);
       void backgroundRefreshIfStale();
     },
-    { immediate: true },
+    { immediate: true }
   );
 });
 </script>
@@ -209,10 +207,7 @@ onMounted(() => {
         <span v-else>更新</span>
       </button>
       <NuxtLink to="/settings" class="daily-settings-btn" aria-label="設定">
-        <span
-          class="material-symbols-outlined daily-settings-btn__icon"
-          aria-hidden="true"
-        >
+        <span class="material-symbols-outlined daily-settings-btn__icon" aria-hidden="true">
           settings
         </span>
       </NuxtLink>

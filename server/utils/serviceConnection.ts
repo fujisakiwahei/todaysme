@@ -82,7 +82,7 @@ interface ExistingConnectionRow {
 async function selectExistingConnection(
   userId: string,
   provider: ServiceProvider,
-  providerUserId: string | undefined,
+  providerUserId: string | undefined
 ): Promise<ExistingConnectionRow | null> {
   const admin = getSupabaseAdmin();
   const baseColumns =
@@ -101,9 +101,7 @@ async function selectExistingConnection(
       .eq("provider_user_id", providerUserId)
       .maybeSingle();
     if (error) {
-      throw new Error(
-        `failed to read existing service_connection: ${error.message}`,
-      );
+      throw new Error(`failed to read existing service_connection: ${error.message}`);
     }
     if (data) {
       return data as ExistingConnectionRow;
@@ -131,9 +129,7 @@ async function selectExistingConnection(
       .in("status", ["connected", "needs_reauth"])
       .maybeSingle();
     if (legacyErr) {
-      throw new Error(
-        `failed to read legacy service_connection: ${legacyErr.message}`,
-      );
+      throw new Error(`failed to read legacy service_connection: ${legacyErr.message}`);
     }
     return (legacy ?? null) as ExistingConnectionRow | null;
   }
@@ -145,9 +141,7 @@ async function selectExistingConnection(
     .eq("provider", provider)
     .maybeSingle();
   if (error) {
-    throw new Error(
-      `failed to read existing service_connection: ${error.message}`,
-    );
+    throw new Error(`failed to read existing service_connection: ${error.message}`);
   }
   return (data ?? null) as ExistingConnectionRow | null;
 }
@@ -160,9 +154,7 @@ async function selectExistingConnection(
 // 並走 INSERT 衝突 (2 ブラウザタブ等で再認可コールバックが同時に走ったケース) は
 // PostgreSQL の `23505 (unique_violation)` を 1 度だけ拾い、SELECT → UPDATE 経路を
 // 再試行する。
-export async function upsertServiceConnection(
-  input: UpsertServiceConnectionInput,
-): Promise<void> {
+export async function upsertServiceConnection(input: UpsertServiceConnectionInput): Promise<void> {
   const providerUserIdHint =
     typeof input.providerUserId === "string" ? input.providerUserId : undefined;
 
@@ -175,16 +167,14 @@ export async function upsertServiceConnection(
   if (await tryUpsertOnce(input, providerUserIdHint)) {
     return;
   }
-  throw new Error(
-    "failed to upsert service_connections after retry on unique_violation",
-  );
+  throw new Error("failed to upsert service_connections after retry on unique_violation");
 }
 
 // 戻り値: true なら成功 (= 完了)。false なら unique_violation に当たって
 // リトライ可能と判断した場合。それ以外のエラーは throw する。
 async function tryUpsertOnce(
   input: UpsertServiceConnectionInput,
-  providerUserIdHint: string | undefined,
+  providerUserIdHint: string | undefined
 ): Promise<boolean> {
   const admin = getSupabaseAdmin();
   const now = new Date();
@@ -193,11 +183,7 @@ async function tryUpsertOnce(
   // account_email を undefined 保持仕様で扱うのに加え、connected_at は
   // 「初回接続時刻」を保持するため (refresh のたびに上書きされると
   // /api/connections の表示が常に「今接続した」になってしまう)。
-  const existing = await selectExistingConnection(
-    input.userId,
-    input.provider,
-    providerUserIdHint,
-  );
+  const existing = await selectExistingConnection(input.userId, input.provider, providerUserIdHint);
 
   const accessEnc = packEncrypted(encrypt(input.accessToken));
 
@@ -232,9 +218,7 @@ async function tryUpsertOnce(
       : input.providerUserId;
 
   const accountEmail =
-    input.accountEmail === undefined
-      ? (existing?.account_email ?? null)
-      : input.accountEmail;
+    input.accountEmail === undefined ? (existing?.account_email ?? null) : input.accountEmail;
 
   if (existing) {
     // UPDATE 経路: 既存行を id で特定して書き換える。WHERE id を使うことで
@@ -254,29 +238,25 @@ async function tryUpsertOnce(
       .eq("id", existing.id);
 
     if (updateErr) {
-      throw new Error(
-        `failed to update service_connections: ${updateErr.message}`,
-      );
+      throw new Error(`failed to update service_connections: ${updateErr.message}`);
     }
     return true;
   }
 
   // INSERT 経路: 新規行を作成。connected_at は now で初期化。
-  const { error: insertErr } = await admin
-    .from(SERVICE_CONNECTIONS_TABLE)
-    .insert({
-      user_id: input.userId,
-      provider: input.provider,
-      status: "connected",
-      provider_user_id: providerUserId,
-      account_email: accountEmail,
-      access_token_encrypted: accessEnc,
-      refresh_token_encrypted: refreshEnc,
-      token_expires_at: tokenExpiresAt,
-      scopes,
-      connected_at: now.toISOString(),
-      updated_at: now.toISOString(),
-    });
+  const { error: insertErr } = await admin.from(SERVICE_CONNECTIONS_TABLE).insert({
+    user_id: input.userId,
+    provider: input.provider,
+    status: "connected",
+    provider_user_id: providerUserId,
+    account_email: accountEmail,
+    access_token_encrypted: accessEnc,
+    refresh_token_encrypted: refreshEnc,
+    token_expires_at: tokenExpiresAt,
+    scopes,
+    connected_at: now.toISOString(),
+    updated_at: now.toISOString(),
+  });
 
   if (insertErr) {
     // 並走 INSERT で partial unique に当たった場合は 23505。リトライ可能。
@@ -284,9 +264,7 @@ async function tryUpsertOnce(
     if (code === PG_UNIQUE_VIOLATION) {
       return false;
     }
-    throw new Error(
-      `failed to insert service_connections: ${insertErr.message}`,
-    );
+    throw new Error(`failed to insert service_connections: ${insertErr.message}`);
   }
   return true;
 }
@@ -304,10 +282,7 @@ async function tryUpsertOnce(
 // 「provider あたり 1 行」を返す経路は必ず本関数を通すこと。
 // Map にそのまま投げると挿入順 (= 上流 query の並び依存) で結果が
 // 非決定的になる (Codex review #136 P2)。
-const CONNECTION_STATUS_PRIORITY: Record<
-  ServiceConnectionRow["status"],
-  number
-> = {
+const CONNECTION_STATUS_PRIORITY: Record<ServiceConnectionRow["status"], number> = {
   connected: 0,
   needs_reauth: 1,
   error: 2,
@@ -316,7 +291,7 @@ const CONNECTION_STATUS_PRIORITY: Record<
 
 export function pickPrimaryConnectionRow(
   rows: readonly ServiceConnectionRow[],
-  provider: ServiceProvider,
+  provider: ServiceProvider
 ): ServiceConnectionRow | undefined {
   let best: ServiceConnectionRow | undefined;
   for (const r of rows) {
@@ -325,9 +300,7 @@ export function pickPrimaryConnectionRow(
       best = r;
       continue;
     }
-    const sp =
-      CONNECTION_STATUS_PRIORITY[r.status] -
-      CONNECTION_STATUS_PRIORITY[best.status];
+    const sp = CONNECTION_STATUS_PRIORITY[r.status] - CONNECTION_STATUS_PRIORITY[best.status];
     if (sp < 0) {
       best = r;
     } else if (sp === 0 && r.connected_at < best.connected_at) {
@@ -337,14 +310,12 @@ export function pickPrimaryConnectionRow(
   return best;
 }
 
-export async function listServiceConnections(
-  userId: string,
-): Promise<ServiceConnectionRow[]> {
+export async function listServiceConnections(userId: string): Promise<ServiceConnectionRow[]> {
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
     .from(SERVICE_CONNECTIONS_TABLE)
     .select(
-      "id, user_id, provider, status, provider_user_id, account_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, connected_at, updated_at",
+      "id, user_id, provider, status, provider_user_id, account_email, access_token_encrypted, refresh_token_encrypted, token_expires_at, scopes, connected_at, updated_at"
     )
     .eq("user_id", userId);
 
@@ -356,7 +327,7 @@ export async function listServiceConnections(
 
 export async function disconnectServiceConnection(
   userId: string,
-  provider: ServiceProvider,
+  provider: ServiceProvider
 ): Promise<void> {
   const admin = getSupabaseAdmin();
   // ソフトに切断: status を disconnected に更新し、暗号化トークンを破棄する。
@@ -401,7 +372,7 @@ export interface DisconnectByIdResult {
 
 export async function disconnectGoogleConnectionById(
   userId: string,
-  connectionId: string,
+  connectionId: string
 ): Promise<DisconnectByIdResult> {
   const admin = getSupabaseAdmin();
 
@@ -463,7 +434,7 @@ export async function disconnectGoogleConnectionById(
 //   - 戻り値は disconnect 版と同じく { found } のみ。404 判定は呼び出し元責務。
 export async function deleteGoogleConnectionPermanently(
   userId: string,
-  connectionId: string,
+  connectionId: string
 ): Promise<DisconnectByIdResult> {
   const admin = getSupabaseAdmin();
 
@@ -565,7 +536,7 @@ const SERVICE_CONNECTION_TOKEN_COLUMNS =
 // `.maybeSingle()` の「多重行」エラーになる)。
 async function loadConnectionForToken(
   userId: string,
-  provider: ServiceProvider,
+  provider: ServiceProvider
 ): Promise<ServiceConnectionTokenRow> {
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
@@ -588,7 +559,7 @@ async function loadConnectionForToken(
 // 対応の sync ループ (syncGoogleForDate) や接続単位の calendarList 取得
 // (Phase 5 の calendars.get) から使う。
 async function loadConnectionForTokenById(
-  connectionId: string,
+  connectionId: string
 ): Promise<ServiceConnectionTokenRow> {
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
@@ -604,8 +575,7 @@ async function loadConnectionForTokenById(
     // 行が引けない / status が不適合 → 未接続扱い。provider が分からなく
     // ても呼び出し側 (Phase 4 の sync ループ) は接続行 list を持ったうえで
     // ループに入るので、provider は data?.provider にフォールバックで載せる。
-    const provider =
-      (data?.provider as ServiceProvider | undefined) ?? "google";
+    const provider = (data?.provider as ServiceProvider | undefined) ?? "google";
     throw new ServiceNotConnectedError(provider);
   }
   return data as ServiceConnectionTokenRow;
@@ -619,7 +589,7 @@ async function loadConnectionForTokenById(
 //   - order: connected_at 昇順。Google 複数アカウント sync ループの決定的順序を
 //     維持する (旧 listConnectedGoogleConnections と同じ並び)。
 export async function loadServiceConnectionsForUser(
-  userId: string,
+  userId: string
 ): Promise<ServiceConnectionTokenRow[]> {
   const admin = getSupabaseAdmin();
   const { data, error } = await admin
@@ -637,14 +607,10 @@ export async function loadServiceConnectionsForUser(
 // access_token_encrypted まで揃っている行のみ返し、揃わなければ ServiceNotConnected。
 export function pickConnectedRow(
   rows: readonly ServiceConnectionTokenRow[],
-  provider: ServiceProvider,
+  provider: ServiceProvider
 ): ServiceConnectionTokenRow | undefined {
   for (const row of rows) {
-    if (
-      row.provider === provider &&
-      row.status === "connected" &&
-      row.access_token_encrypted
-    ) {
+    if (row.provider === provider && row.status === "connected" && row.access_token_encrypted) {
       return row;
     }
   }
@@ -657,13 +623,10 @@ export function pickConnectedRow(
 // withFreshAccessTokenFromRow に渡す前提なら早めに弾いた方が安全)。
 export function pickConnectedRows(
   rows: readonly ServiceConnectionTokenRow[],
-  provider: ServiceProvider,
+  provider: ServiceProvider
 ): ServiceConnectionTokenRow[] {
   return rows.filter(
-    (row) =>
-      row.provider === provider &&
-      row.status === "connected" &&
-      row.access_token_encrypted,
+    (row) => row.provider === provider && row.status === "connected" && row.access_token_encrypted
   );
 }
 
@@ -677,10 +640,7 @@ function decryptStoredToken(packed: string, label: string): string {
   return decrypt(payload);
 }
 
-async function markConnectionError(
-  connectionId: string,
-  expectedUpdatedAt: string,
-): Promise<void> {
+async function markConnectionError(connectionId: string, expectedUpdatedAt: string): Promise<void> {
   // status="error" にすると次回 loadConnectionForToken が ServiceNotConnectedError を
   // 投げるため、settings 画面で再接続を促す導線につながる。
   //
@@ -701,7 +661,7 @@ async function markConnectionError(
 
 async function callProviderRefresh(
   provider: ServiceProvider,
-  refreshToken: string,
+  refreshToken: string
 ): Promise<{
   accessToken: string;
   refreshToken: string | undefined;
@@ -759,14 +719,11 @@ async function performRefresh(row: ServiceConnectionTokenRow): Promise<string> {
   try {
     refreshTokenPlain = decryptStoredToken(
       refreshTokenEncrypted,
-      `${provider} refresh_token_encrypted`,
+      `${provider} refresh_token_encrypted`
     );
   } catch (e) {
     await markConnectionError(connectionId, expectedUpdatedAt);
-    throw new OauthRefreshError(
-      provider,
-      e instanceof Error ? e.message : "decrypt failed",
-    );
+    throw new OauthRefreshError(provider, e instanceof Error ? e.message : "decrypt failed");
   }
 
   let refreshed: Awaited<ReturnType<typeof callProviderRefresh>>;
@@ -774,10 +731,7 @@ async function performRefresh(row: ServiceConnectionTokenRow): Promise<string> {
     refreshed = await callProviderRefresh(provider, refreshTokenPlain);
   } catch (e) {
     await markConnectionError(connectionId, expectedUpdatedAt);
-    throw new OauthRefreshError(
-      provider,
-      e instanceof Error ? e.message : "token endpoint error",
-    );
+    throw new OauthRefreshError(provider, e instanceof Error ? e.message : "token endpoint error");
   }
 
   // Issue #131 Phase 4: 接続 id を指定して直接 UPDATE する。
@@ -794,7 +748,7 @@ async function performRefresh(row: ServiceConnectionTokenRow): Promise<string> {
 // 確定するケース) 用、こちらは refresh 専用。
 async function rotateConnectionTokensById(
   connectionId: string,
-  refreshed: Awaited<ReturnType<typeof callProviderRefresh>>,
+  refreshed: Awaited<ReturnType<typeof callProviderRefresh>>
 ): Promise<void> {
   const admin = getSupabaseAdmin();
   const now = new Date();
@@ -810,9 +764,7 @@ async function rotateConnectionTokensById(
 
   const tokenExpiresAt =
     refreshed.expiresInSeconds != null && refreshed.expiresInSeconds > 0
-      ? new Date(
-          now.getTime() + refreshed.expiresInSeconds * 1000,
-        ).toISOString()
+      ? new Date(now.getTime() + refreshed.expiresInSeconds * 1000).toISOString()
       : null;
 
   const update: Record<string, unknown> = {
@@ -833,9 +785,7 @@ async function rotateConnectionTokensById(
     .update(update)
     .eq("id", connectionId);
   if (error) {
-    throw new Error(
-      `failed to rotate service_connection tokens: ${error.message}`,
-    );
+    throw new Error(`failed to rotate service_connection tokens: ${error.message}`);
   }
 }
 
@@ -847,7 +797,7 @@ async function rotateConnectionTokensById(
 // 強制リフレッシュ → 再試行する責務を負う。
 export async function getValidAccessToken(
   userId: string,
-  provider: ServiceProvider,
+  provider: ServiceProvider
 ): Promise<string> {
   const row = await loadConnectionForToken(userId, provider);
   return getValidAccessTokenFromRow(row);
@@ -855,43 +805,28 @@ export async function getValidAccessToken(
 
 // Issue #131 Phase 4: 接続行 id を指定して有効な access_token を取得する。
 // Google の複数アカウント sync ループから呼ぶ。
-export async function getValidAccessTokenByConnectionId(
-  connectionId: string,
-): Promise<string> {
+export async function getValidAccessTokenByConnectionId(connectionId: string): Promise<string> {
   const row = await loadConnectionForTokenById(connectionId);
   return getValidAccessTokenFromRow(row);
 }
 
-async function getValidAccessTokenFromRow(
-  row: ServiceConnectionTokenRow,
-): Promise<string> {
+async function getValidAccessTokenFromRow(row: ServiceConnectionTokenRow): Promise<string> {
   if (row.provider === "toggl") {
-    return decryptStoredToken(
-      row.access_token_encrypted!,
-      "toggl access_token_encrypted",
-    );
+    return decryptStoredToken(row.access_token_encrypted!, "toggl access_token_encrypted");
   }
 
-  const expiresAt = row.token_expires_at
-    ? new Date(row.token_expires_at).getTime()
-    : null;
-  const needsRefresh =
-    expiresAt !== null && expiresAt - Date.now() < TOKEN_REFRESH_LEEWAY_MS;
+  const expiresAt = row.token_expires_at ? new Date(row.token_expires_at).getTime() : null;
+  const needsRefresh = expiresAt !== null && expiresAt - Date.now() < TOKEN_REFRESH_LEEWAY_MS;
 
   if (needsRefresh) {
     return performRefresh(row);
   }
 
-  return decryptStoredToken(
-    row.access_token_encrypted!,
-    `${row.provider} access_token_encrypted`,
-  );
+  return decryptStoredToken(row.access_token_encrypted!, `${row.provider} access_token_encrypted`);
 }
 
 // 401 が来た直後など、保存中の expires に関係なく必ず refresh したいときに使う。
-async function forceRefreshAccessToken(
-  row: ServiceConnectionTokenRow,
-): Promise<string> {
+async function forceRefreshAccessToken(row: ServiceConnectionTokenRow): Promise<string> {
   if (row.provider === "toggl") {
     // Toggl には refresh が無いので、これ以上できることがない。
     throw new OauthRefreshError(row.provider, "refresh is not supported");
@@ -908,7 +843,7 @@ async function forceRefreshAccessToken(
 export async function withFreshAccessToken<T>(
   userId: string,
   provider: ServiceProvider,
-  fn: (accessToken: string) => Promise<T>,
+  fn: (accessToken: string) => Promise<T>
 ): Promise<T> {
   const row = await loadConnectionForToken(userId, provider);
   return runWithRetry(row, fn);
@@ -918,7 +853,7 @@ export async function withFreshAccessToken<T>(
 // sync ループ等から使う。withFreshAccessToken と同じ 401 リトライ挙動。
 export async function withFreshAccessTokenByConnectionId<T>(
   connectionId: string,
-  fn: (accessToken: string) => Promise<T>,
+  fn: (accessToken: string) => Promise<T>
 ): Promise<T> {
   const row = await loadConnectionForTokenById(connectionId);
   return runWithRetry(row, fn);
@@ -931,7 +866,7 @@ export async function withFreshAccessTokenByConnectionId<T>(
 // 受け取った row が refresh で stale になっても整合性は保たれる。
 export async function withFreshAccessTokenFromRow<T>(
   row: ServiceConnectionTokenRow,
-  fn: (accessToken: string) => Promise<T>,
+  fn: (accessToken: string) => Promise<T>
 ): Promise<T> {
   if (row.status !== "connected" || !row.access_token_encrypted) {
     throw new ServiceNotConnectedError(row.provider);
@@ -941,7 +876,7 @@ export async function withFreshAccessTokenFromRow<T>(
 
 async function runWithRetry<T>(
   row: ServiceConnectionTokenRow,
-  fn: (accessToken: string) => Promise<T>,
+  fn: (accessToken: string) => Promise<T>
 ): Promise<T> {
   const initialToken = await getValidAccessTokenFromRow(row);
   try {

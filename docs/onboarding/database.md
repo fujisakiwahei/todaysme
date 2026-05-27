@@ -259,6 +259,7 @@ update <table> set is_deleted = true where ...;
 - read 側は **必ず** `eq("is_deleted", false)` で絞る。
 
 理由:
+
 - 外部 API 一時障害で「取れなかった = 削除された」と誤判定するのを防ぐ（厳密にはこちらは差分同期 + ソフトデリートで対応している）。
 - 過去日の表示が空に化けるのを防ぐ。
 - 必要なら admin が手動で復元できる。
@@ -287,6 +288,7 @@ read 側は `start_at` / `end_at` の overlap で wake range と照合する設�
 ## 容量設計の考え方
 
 MVP は単一ユーザー前提のため、大容量は想定していない:
+
 - 14 日 × 1 ユーザー × 各サービス数十レコード程度。
 - index は (user_id, target_date) と (user_id, start_at, end_at) の 2 種類。
 - 将来マルチユーザー化する時は partition / archive を検討する。

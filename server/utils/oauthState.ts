@@ -31,9 +31,7 @@ function loadSecret(): Buffer {
   // 別のラベルで HMAC をかけて分離する。
   const fallback = process.env.TOKEN_ENCRYPTION_KEY;
   if (!fallback) {
-    throw new Error(
-      "OAUTH_STATE_SECRET (or TOKEN_ENCRYPTION_KEY fallback) is not set",
-    );
+    throw new Error("OAUTH_STATE_SECRET (or TOKEN_ENCRYPTION_KEY fallback) is not set");
   }
   return createHmac(SIGN_ALGO, Buffer.from(fallback, "base64"))
     .update("todaysme:oauth-state:v1")
@@ -42,11 +40,7 @@ function loadSecret(): Buffer {
 
 function base64UrlEncode(buf: Buffer | string): string {
   const b = typeof buf === "string" ? Buffer.from(buf, "utf8") : buf;
-  return b
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  return b.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 function base64UrlDecode(str: string): Buffer {
@@ -56,17 +50,14 @@ function base64UrlDecode(str: string): Buffer {
 
 function sign(payload: string): string {
   const secret = loadSecret();
-  return base64UrlEncode(
-    createHmac(SIGN_ALGO, secret).update(payload).digest(),
-  );
+  return base64UrlEncode(createHmac(SIGN_ALGO, secret).update(payload).digest());
 }
 
 export function createOauthState(
   uid: string,
-  options: { ttlSeconds?: number } = {},
+  options: { ttlSeconds?: number } = {}
 ): { state: string; nonce: string; exp: number } {
-  const exp =
-    Math.floor(Date.now() / 1000) + (options.ttlSeconds ?? DEFAULT_TTL_SECONDS);
+  const exp = Math.floor(Date.now() / 1000) + (options.ttlSeconds ?? DEFAULT_TTL_SECONDS);
   const nonce = randomBytes(16).toString("hex");
   const payload: OauthStatePayload = { uid, nonce, exp };
   const encoded = base64UrlEncode(JSON.stringify(payload));
@@ -81,10 +72,7 @@ export class OauthStateError extends Error {
   }
 }
 
-export function verifyOauthState(
-  state: string,
-  expectedNonce: string,
-): OauthStatePayload {
+export function verifyOauthState(state: string, expectedNonce: string): OauthStatePayload {
   const dot = state.indexOf(".");
   if (dot === -1) throw new OauthStateError("malformed state");
   const encoded = state.slice(0, dot);

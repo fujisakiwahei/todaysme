@@ -31,9 +31,7 @@ export interface PurgeResult {
   error: string | null;
 }
 
-export async function purgeSoftDeleted(
-  now: Date = new Date(),
-): Promise<PurgeResult[]> {
+export async function purgeSoftDeleted(now: Date = new Date()): Promise<PurgeResult[]> {
   const admin = getSupabaseAdmin();
   const cutoffMs = now.getTime() - PURGE_RETENTION_DAYS * 24 * 60 * 60 * 1000;
   const cutoffIso = new Date(cutoffMs).toISOString();

@@ -65,11 +65,7 @@ interface TogglRow {
 
 // wake range と [start, end] の重なり部分の長さ (ミリ秒)。
 // end が null (進行中の Toggl エントリ) のときは range.end までで打ち切る。
-function overlappingMs(
-  range: InternalWakeRange,
-  start: string,
-  end: string | null,
-): number {
+function overlappingMs(range: InternalWakeRange, start: string, end: string | null): number {
   const s = Math.max(new Date(start).getTime(), range.start.getTime());
   const eMs = end == null ? range.end.getTime() : new Date(end).getTime();
   const e = Math.min(eMs, range.end.getTime());
@@ -103,11 +99,9 @@ export default defineEventHandler(async (event) => {
     .lte("wake_at", toIsoForWake);
   if (wakeSleepErr) throw wakeSleepErr;
 
-  const internalRange = computeWakeRange(
-    date,
-    (wakeSleepRows ?? []) as SleepRecordLike[],
-    { timezone },
-  );
+  const internalRange = computeWakeRange(date, (wakeSleepRows ?? []) as SleepRecordLike[], {
+    timezone,
+  });
 
   // -- records (wake range と重なるもの) -----------------------------------
   let sleepRows: SleepRow[] = [];
@@ -137,9 +131,7 @@ export default defineEventHandler(async (event) => {
       // end_at >= fromIso のものだけを DB 側で絞り込み、JS の overlaps() で最終判定する。
       admin
         .from("demo_toggl_time_entries")
-        .select(
-          "id, toggl_entry_id, title, project_id, project_name, start_at, end_at",
-        )
+        .select("id, toggl_entry_id, title, project_id, project_name, start_at, end_at")
         .eq("is_deleted", false)
         .lte("start_at", toIso)
         .or(`end_at.gte.${fromIso},end_at.is.null`)
@@ -161,10 +153,10 @@ export default defineEventHandler(async (event) => {
       return s < rangeEndMs && e >= rangeStartMs;
     });
     calendarRows = ((calendarRes.data ?? []) as CalendarRow[]).filter((r) =>
-      overlaps(internalRange, r.start_at, r.end_at),
+      overlaps(internalRange, r.start_at, r.end_at)
     );
     togglRows = ((togglRes.data ?? []) as TogglRow[]).filter((r) =>
-      overlaps(internalRange, r.start_at, r.end_at),
+      overlaps(internalRange, r.start_at, r.end_at)
     );
   }
 
@@ -220,9 +212,8 @@ export default defineEventHandler(async (event) => {
     // wake_at − sleep_start_at の「ベッドにいた時間」(dashboard Oura)。
     const timeInBedMinutes = todayWake
       ? Math.round(
-          (new Date(todayWake.wake_at).getTime() -
-            new Date(todayWake.sleep_start_at).getTime()) /
-            60000,
+          (new Date(todayWake.wake_at).getTime() - new Date(todayWake.sleep_start_at).getTime()) /
+            60000
         )
       : null;
     oura = {
@@ -249,12 +240,10 @@ export default defineEventHandler(async (event) => {
     }
     google = {
       total_minutes: msToMinutes(totalMs),
-      by_calendar: Array.from(byCalendarMs.entries()).map(
-        ([calendar_name, ms]) => ({
-          calendar_name,
-          minutes: msToMinutes(ms),
-        }),
-      ),
+      by_calendar: Array.from(byCalendarMs.entries()).map(([calendar_name, ms]) => ({
+        calendar_name,
+        minutes: msToMinutes(ms),
+      })),
     };
   }
 
@@ -262,10 +251,7 @@ export default defineEventHandler(async (event) => {
   // (Issue #112)。本番 /api/summary と同じバケット方式。
   let toggl: TodaysMe["toggl"];
   {
-    const byKey = new Map<
-      string,
-      { title: string; project_name: string | null; ms: number }
-    >();
+    const byKey = new Map<string, { title: string; project_name: string | null; ms: number }>();
     let totalMs = 0;
     if (internalRange) {
       for (const t of togglRows) {

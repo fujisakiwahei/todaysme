@@ -221,16 +221,16 @@ DB クエリ時:
 
 ### 主なテーブル
 
-| テーブル | 責務 |
-| --- | --- |
-| `public.users` | アプリ固有のユーザープロファイル。`auth.users` と 1:1（INSERT トリガで自動生成）。`timezone` を持つ（旧 `excluded_google_calendar_ids` は Phase 5 で `google_excluded_calendars` 表へ移行、列は廃止予定） |
-| `service_connections` | 外部サービストークンと連携状態。`access_token` / `refresh_token` は AES-256-GCM 暗号化保存。Google は `(user_id, provider, provider_user_id)` の partial unique で複数アカウント連携を許容（Issue #131）|
-| `daily_sync_statuses` | (user_id, target_date, source) 単位の同期状態。`unique` を使って同期ロックを実装 |
-| `oura_sleep_records` | Oura 睡眠データ。`target_date = wake_at の日付` (Issue #24) |
-| `google_calendar_events` | Google Calendar 予定。`connection_id` を持ち (user_id, connection_id, calendar_id, google_event_id) で unique（Issue #131 Phase 4）|
-| `google_excluded_calendars` | Google カレンダー除外設定（接続単位 / Issue #131 Phase 5）|
-| `toggl_time_entries` | Toggl Track 作業ログ。`project_id` / `project_name` を含む（Issue #112）|
-| `demo_*` テーブル群 | 公開デモ用。本番テーブルと完全分離 |
+| テーブル                    | 責務                                                                                                                                                                                                      |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `public.users`              | アプリ固有のユーザープロファイル。`auth.users` と 1:1（INSERT トリガで自動生成）。`timezone` を持つ（旧 `excluded_google_calendar_ids` は Phase 5 で `google_excluded_calendars` 表へ移行、列は廃止予定） |
+| `service_connections`       | 外部サービストークンと連携状態。`access_token` / `refresh_token` は AES-256-GCM 暗号化保存。Google は `(user_id, provider, provider_user_id)` の partial unique で複数アカウント連携を許容（Issue #131）  |
+| `daily_sync_statuses`       | (user_id, target_date, source) 単位の同期状態。`unique` を使って同期ロックを実装                                                                                                                          |
+| `oura_sleep_records`        | Oura 睡眠データ。`target_date = wake_at の日付` (Issue #24)                                                                                                                                               |
+| `google_calendar_events`    | Google Calendar 予定。`connection_id` を持ち (user_id, connection_id, calendar_id, google_event_id) で unique（Issue #131 Phase 4）                                                                       |
+| `google_excluded_calendars` | Google カレンダー除外設定（接続単位 / Issue #131 Phase 5）                                                                                                                                                |
+| `toggl_time_entries`        | Toggl Track 作業ログ。`project_id` / `project_name` を含む（Issue #112）                                                                                                                                  |
+| `demo_*` テーブル群         | 公開デモ用。本番テーブルと完全分離                                                                                                                                                                        |
 
 詳細は [database.md](./database.md) を参照。
 
@@ -306,12 +306,12 @@ Promise.allSettled([oura, google, toggl])  // Issue #140 で 3 provider を並�
 
 ### 設計判断
 
-| 種類 | どこに置くか |
-| --- | --- |
-| **認証セッション** | Supabase SDK の内部状態 + cookie（`useSupabaseUser` / `useSupabaseClient`） |
-| **サマリーデータ** | ページコンポーネントの `ref`（`/daily/[date].vue`） |
-| **フォーム入力** | ページの `ref` |
-| **API 取得後のキャッシュ** | 現状なし。同じページを開き直すと再フェッチする |
+| 種類                       | どこに置くか                                                                |
+| -------------------------- | --------------------------------------------------------------------------- |
+| **認証セッション**         | Supabase SDK の内部状態 + cookie（`useSupabaseUser` / `useSupabaseClient`） |
+| **サマリーデータ**         | ページコンポーネントの `ref`（`/daily/[date].vue`）                         |
+| **フォーム入力**           | ページの `ref`                                                              |
+| **API 取得後のキャッシュ** | 現状なし。同じページを開き直すと再フェッチする                              |
 
 ### なぜ Pinia が無いのか
 
@@ -331,11 +331,11 @@ Promise.allSettled([oura, google, toggl])  // Issue #140 で 3 provider を並�
 
 ### ルール（SPEC §10.2）
 
-| トリガー | 対象 | タイミング |
-| --- | --- | --- |
-| 手動更新ボタン | 表示中の日 | `/daily/[date]` でクリック |
+| トリガー                 | 対象         | タイミング                                                  |
+| ------------------------ | ------------ | ----------------------------------------------------------- |
+| 手動更新ボタン           | 表示中の日   | `/daily/[date]` でクリック                                  |
 | バックグラウンド自動更新 | **当日のみ** | `last_synced_at` が 30 分以上古ければ表示直後に背後で投げる |
-| Vercel Cron | 直近 14 日 | 毎朝 05:00 JST（`vercel.json`） |
+| Vercel Cron              | 直近 14 日   | 毎朝 05:00 JST（`vercel.json`）                             |
 
 15 日以前は **自動同期しない**。手動更新のみ。
 
@@ -367,14 +367,14 @@ Promise.allSettled([oura, google, toggl])  // Issue #140 で 3 provider を並�
 
 ## なぜこの分割なのか（要点）
 
-| 境界 | 理由 |
-| --- | --- |
-| **画面 / サーバ** | 外部 API トークンを画面に出さないため。Bearer 認証 + Server API で「機密に触る責務」をサーバに閉じ込める |
-| **`server/api` / `server/utils`** | HTTP の境界と「DB / 外部 API の編成」を分離。HTTP に依存しないユーティリティは再利用しやすく、テストもしやすい（実際 cron と `/api/summary/refresh` で `refreshUserDate` を共有している）|
-| **個別サービスエンドポイントを公開しない** | `/api/oura` のような窓口を増やすと認証 / レート / 暗号化 / 検証の責務が散らかる。`get<Provider>Data` を内部関数化することで、外側からは `summary` / `refresh` の 2 つの責務だけ見えるようにしている（SPEC §9.1 注釈）|
-| **`shared/schemas` を画面とサーバで共有** | 「クライアント側で型を再宣言」「サーバ側だけ Zod で検証」のズレを防ぐ。Zod スキーマと推論型を必ずペアで named export することで、型と検証の source of truth を 1 つにする |
-| **デモテーブルを本番と分離** | 公開デモは「ログイン不要・外部 API 不要」の前提。本番テーブルに混ぜると RLS / トークンの責務が崩れる |
-| **タイムゾーンを `users` に持つ** | 「Wake-based Timeline の起点をどう決めるか」が user 属性。フロントで Date を弄ると `Intl.DateTimeFormat` の ICU データ差で挙動が変わるため、サーバが userTimezone を持って整形する責務を負う |
+| 境界                                       | 理由                                                                                                                                                                                                                  |
+| ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **画面 / サーバ**                          | 外部 API トークンを画面に出さないため。Bearer 認証 + Server API で「機密に触る責務」をサーバに閉じ込める                                                                                                              |
+| **`server/api` / `server/utils`**          | HTTP の境界と「DB / 外部 API の編成」を分離。HTTP に依存しないユーティリティは再利用しやすく、テストもしやすい（実際 cron と `/api/summary/refresh` で `refreshUserDate` を共有している）                             |
+| **個別サービスエンドポイントを公開しない** | `/api/oura` のような窓口を増やすと認証 / レート / 暗号化 / 検証の責務が散らかる。`get<Provider>Data` を内部関数化することで、外側からは `summary` / `refresh` の 2 つの責務だけ見えるようにしている（SPEC §9.1 注釈） |
+| **`shared/schemas` を画面とサーバで共有**  | 「クライアント側で型を再宣言」「サーバ側だけ Zod で検証」のズレを防ぐ。Zod スキーマと推論型を必ずペアで named export することで、型と検証の source of truth を 1 つにする                                             |
+| **デモテーブルを本番と分離**               | 公開デモは「ログイン不要・外部 API 不要」の前提。本番テーブルに混ぜると RLS / トークンの責務が崩れる                                                                                                                  |
+| **タイムゾーンを `users` に持つ**          | 「Wake-based Timeline の起点をどう決めるか」が user 属性。フロントで Date を弄ると `Intl.DateTimeFormat` の ICU データ差で挙動が変わるため、サーバが userTimezone を持って整形する責務を負う                          |
 
 ---
 

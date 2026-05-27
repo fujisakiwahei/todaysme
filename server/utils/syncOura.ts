@@ -15,10 +15,7 @@
 //     accessToken を直接受け取る形に統一した (getGoogleData と同様)。
 // =============================================================================
 import { getOuraData } from "./getOuraData";
-import {
-  withFreshAccessTokenFromRow,
-  type ServiceConnectionTokenRow,
-} from "./serviceConnection";
+import { withFreshAccessTokenFromRow, type ServiceConnectionTokenRow } from "./serviceConnection";
 import { getSupabaseAdmin } from "./supabaseAdmin";
 
 const OURA_SLEEP_RECORDS = "oura_sleep_records";
@@ -33,20 +30,18 @@ export async function syncOuraForDate(
   userId: string,
   targetDate: string,
   timezone: string,
-  connectionRow: ServiceConnectionTokenRow,
+  connectionRow: ServiceConnectionTokenRow
 ): Promise<void> {
   const startDate = shiftDate(targetDate, -1);
   const endDate = shiftDate(targetDate, 1);
 
-  const fetched = await withFreshAccessTokenFromRow(
-    connectionRow,
-    (accessToken) =>
-      getOuraData({
-        accessToken,
-        startDate,
-        endDate,
-        timezone,
-      }),
+  const fetched = await withFreshAccessTokenFromRow(connectionRow, (accessToken) =>
+    getOuraData({
+      accessToken,
+      startDate,
+      endDate,
+      timezone,
+    })
   );
 
   const admin = getSupabaseAdmin();
@@ -68,9 +63,7 @@ export async function syncOuraForDate(
       .from(OURA_SLEEP_RECORDS)
       .upsert(rows, { onConflict: "user_id,oura_sleep_id" });
     if (upsertError) {
-      throw new Error(
-        `failed to upsert ${OURA_SLEEP_RECORDS}: ${upsertError.message}`,
-      );
+      throw new Error(`failed to upsert ${OURA_SLEEP_RECORDS}: ${upsertError.message}`);
     }
   }
 
@@ -94,9 +87,7 @@ interface SoftDeleteMissingInput {
   keepIds: Set<string>;
 }
 
-export async function softDeleteMissing(
-  input: SoftDeleteMissingInput,
-): Promise<void> {
+export async function softDeleteMissing(input: SoftDeleteMissingInput): Promise<void> {
   const admin = getSupabaseAdmin();
 
   const { data: existing, error: readError } = await admin
@@ -129,8 +120,6 @@ export async function softDeleteMissing(
     .in(input.externalIdCol, toDelete);
 
   if (updateError) {
-    throw new Error(
-      `failed to soft-delete ${input.table}: ${updateError.message}`,
-    );
+    throw new Error(`failed to soft-delete ${input.table}: ${updateError.message}`);
   }
 }

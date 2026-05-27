@@ -17,6 +17,14 @@ export default defineNuxtConfig({
   //   実際に使い始めるタイミングで合わせて検証する。
   modules: ["@sentry/nuxt/module", "@nuxt/eslint", "@nuxtjs/supabase"],
 
+  // Prettier との二重整形を避けるため Nuxt ESLint の stylistic ルールは明示的に OFF
+  // （v1.15.2 時点ではデフォルトで OFF だが、将来のバージョンで ON に倒れた場合の予防）
+  eslint: {
+    config: {
+      stylistic: false,
+    },
+  },
+
   supabase: {
     url: process.env.NUXT_PUBLIC_SUPABASE_URL,
     key: process.env.NUXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY,

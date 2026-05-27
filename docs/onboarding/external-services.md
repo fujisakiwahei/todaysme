@@ -7,20 +7,20 @@
 
 ## サービス一覧
 
-| サービス | API | 認証 | 取得対象 | refresh の有無 |
-| --- | --- | --- | --- | --- |
-| **Oura** | API v2（`https://api.ouraring.com/v2`）| OAuth2 / Bearer | 睡眠 / 起床時刻 / readiness 等 | あり |
-| **Google Calendar** | API v3 | OAuth2 / Bearer | 予定 + カレンダー一覧 | あり（refresh_token は初回認可だけ）|
-| **Toggl Track** | API v9（`https://api.track.toggl.com/api/v9`）| API token を Basic Auth で | 作業ログ | なし（個人用 MVP） |
+| サービス            | API                                            | 認証                       | 取得対象                       | refresh の有無                       |
+| ------------------- | ---------------------------------------------- | -------------------------- | ------------------------------ | ------------------------------------ |
+| **Oura**            | API v2（`https://api.ouraring.com/v2`）        | OAuth2 / Bearer            | 睡眠 / 起床時刻 / readiness 等 | あり                                 |
+| **Google Calendar** | API v3                                         | OAuth2 / Bearer            | 予定 + カレンダー一覧          | あり（refresh_token は初回認可だけ） |
+| **Toggl Track**     | API v9（`https://api.track.toggl.com/api/v9`） | API token を Basic Auth で | 作業ログ                       | なし（個人用 MVP）                   |
 
 各サービスの実装ファイル:
 
-| 責務 | Oura | Google | Toggl |
-| --- | --- | --- | --- |
-| OAuth クライアント | `server/utils/oauth/oura.ts` | `server/utils/oauth/google.ts` | （無し / API token） |
-| API クライアント | `server/utils/getOuraData.ts` | `server/utils/getGoogleData.ts` | `server/utils/getTogglData.ts` |
-| 同期 + upsert | `server/utils/syncOura.ts` | `server/utils/syncGoogle.ts` | `server/utils/syncToggl.ts` |
-| Zod スキーマ | `shared/schemas/oura.ts` | `shared/schemas/google.ts` | `shared/schemas/toggl.ts` |
+| 責務                   | Oura                               | Google                               | Toggl                                  |
+| ---------------------- | ---------------------------------- | ------------------------------------ | -------------------------------------- |
+| OAuth クライアント     | `server/utils/oauth/oura.ts`       | `server/utils/oauth/google.ts`       | （無し / API token）                   |
+| API クライアント       | `server/utils/getOuraData.ts`      | `server/utils/getGoogleData.ts`      | `server/utils/getTogglData.ts`         |
+| 同期 + upsert          | `server/utils/syncOura.ts`         | `server/utils/syncGoogle.ts`         | `server/utils/syncToggl.ts`            |
+| Zod スキーマ           | `shared/schemas/oura.ts`           | `shared/schemas/google.ts`           | `shared/schemas/toggl.ts`              |
 | OAuth start / callback | `server/api/connections/oura/*.ts` | `server/api/connections/google/*.ts` | `server/api/connections/toggl.post.ts` |
 
 ---
@@ -51,6 +51,7 @@ Oura API v2 の標準スコープ。Bearer トークンで API を叩く。Rate 
 - 取得期間: `target_date ± 1 日` を `start_date` / `end_date` パラメータで投げる。
 
 **なぜ ±1 日**:
+
 - ユーザータイムゾーンと Oura 側の `day` がズレるケース。
 - `wake_at` の補正で target_date が移動するケース。
 - 取りこぼし防止のため広めに取る。upsert 時は `oura_sleep_id` で吸収できる。
@@ -58,6 +59,7 @@ Oura API v2 の標準スコープ。Bearer トークンで API を叩く。Rate 
 ### target_date の決め方
 
 Oura の `day` をそのまま使わず、**`wake_at` をユーザータイムゾーンに変換した日付** を `target_date` にする（SPEC §2 / Issue #24）。
+
 - `targetDateOf(wakeAt, timezone)` を server / app の両方に同じ実装で持つ。
 - `Intl.DateTimeFormat("en-CA").format()` は ICU 依存で必ずしも ISO 形式を保証しないため、`formatToParts()` から `year` / `month` / `day` を取り出して自前で組み立てる（決定論性）。
 
@@ -72,6 +74,7 @@ Oura の `day` をそのまま使わず、**`wake_at` をユーザータイム�
 ### スコープ
 
 最小権限:
+
 - `openid` … `id_token` を token endpoint レスポンスに含めるために必須。
 - `email` … `id_token` に `email` / `email_verified` claim を入れるため。
 - `https://www.googleapis.com/auth/calendar.events.readonly` … イベント取得
@@ -104,6 +107,7 @@ exchangeGoogleCode(code, redirectUri)
 ### 取得
 
 `getGoogleData({ token, timezone, timeMin, timeMax, syncTokens?, calendarIds? })`:
+
 1. `calendarList.list` で対象カレンダー一覧を取得（呼び出し側が `calendarIds` で限定可能）。
 2. 各カレンダーに対して `events.list` を pagination + 必要に応じて `syncToken` 差分同期。
 3. 410 Gone が返ったら syncToken を破棄して `timeMin`/`timeMax` で全件再取得（`resyncedFromFullFetch = true`）。
@@ -127,11 +131,13 @@ exchangeGoogleCode(code, redirectUri)
 ### Refresh
 
 `refreshGoogleToken(refreshToken)` で access_token を再発行。
+
 - **Google は通常 refresh レスポンスで `refresh_token` を返さない**。`upsertServiceConnection` に `undefined` で渡すと既存値を保持する（3 状態仕様）。
 
 ### Calendar 除外設定（Issue #108 → Issue #131 Phase 5）
 
 **現行**: `google_excluded_calendars` テーブル（`(connection_id, calendar_id)` 主キー）に保存。複数 Google アカウント連携で「同じ calendar_id がアカウント間で別物を指す」可能性があるため、`connection_id` でスコープする。
+
 - 除外イベントは Timeline には出すが（`is_excluded: true` でマーキング）、稼働時間集計から外す。
 - `/settings` で接続カードごとのチェックボックス UI、`PUT /api/connections/google/excluded-calendars`（body に `connection_id` + `excluded_calendar_ids`）で保存。
 
@@ -144,6 +150,7 @@ exchangeGoogleCode(code, redirectUri)
 ### 認証
 
 OAuth ではなく **API token を Basic Auth で**:
+
 ```
 Authorization: Basic base64(<api_token>:api_token)
 ```
@@ -173,15 +180,16 @@ API token は手動で再発行する仕様。`withFreshAccessToken` は Toggl �
 
 詳細は [auth.md](./auth.md) を参照。要点:
 
-| 操作 | どの関数 |
-| --- | --- |
-| 暗号化保存 | `upsertServiceConnection({ accessToken, refreshToken?, ... })` |
-| 通常の取得 | `withFreshAccessToken(provider, async (token) => fn(token))` |
-| 期限近傍での自動 refresh | `getValidAccessToken` 内部で `performRefresh` |
-| 401 retry | `withFreshAccessToken` が `OauthUnauthorizedError` をキャッチ → 強制 refresh → 1 回再試行 |
-| 切断 | `disconnectServiceConnection`（status を `disconnected` に / トークン null）|
+| 操作                     | どの関数                                                                                  |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| 暗号化保存               | `upsertServiceConnection({ accessToken, refreshToken?, ... })`                            |
+| 通常の取得               | `withFreshAccessToken(provider, async (token) => fn(token))`                              |
+| 期限近傍での自動 refresh | `getValidAccessToken` 内部で `performRefresh`                                             |
+| 401 retry                | `withFreshAccessToken` が `OauthUnauthorizedError` をキャッチ → 強制 refresh → 1 回再試行 |
+| 切断                     | `disconnectServiceConnection`（status を `disconnected` に / トークン null）              |
 
 **`refresh_token` の 3 状態仕様**:
+
 - `undefined` → 既存 DB 値を保持（Google の通常 refresh）。
 - `null` → 明示的に null に。
 - `string` → 新しい値で上書き。
@@ -227,11 +235,11 @@ flowchart TD
 
 ## レート制限の扱い
 
-| サービス | レート | 現状の対応 |
-| --- | --- | --- |
-| Oura | 5000 req / 5 min | MVP の単一ユーザー × 14 日では到達しない |
-| Google Calendar | プロジェクトクオータ | 同上 |
-| Toggl | 公開仕様は緩い | 同上 |
+| サービス        | レート               | 現状の対応                               |
+| --------------- | -------------------- | ---------------------------------------- |
+| Oura            | 5000 req / 5 min     | MVP の単一ユーザー × 14 日では到達しない |
+| Google Calendar | プロジェクトクオータ | 同上                                     |
+| Toggl           | 公開仕様は緩い       | 同上                                     |
 
 将来マルチユーザー化したら exponential backoff / queue を検討する。
 
@@ -240,6 +248,7 @@ flowchart TD
 ## サービス追加時の checklist
 
 新しい外部サービスを統合する場合:
+
 - [ ] `server/utils/oauth/<provider>.ts` で authorize / token / refresh URL とクライアント関数を定義
 - [ ] `server/utils/get<Provider>Data.ts` で API クライアント + Zod 検証
 - [ ] `server/utils/sync<Provider>.ts` で upsert + ソフトデリート

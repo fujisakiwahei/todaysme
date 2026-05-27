@@ -16,10 +16,7 @@ import { parseOrThrow } from "../../../utils/validation";
 
 const OURA_STATE_COOKIE = "todaysme_oauth_state_oura";
 
-function redirectToSettings(
-  event: import("h3").H3Event,
-  params: Record<string, string>,
-) {
+function redirectToSettings(event: import("h3").H3Event, params: Record<string, string>) {
   const search = new URLSearchParams(params).toString();
   return sendRedirect(event, `/settings?${search}`, 302);
 }

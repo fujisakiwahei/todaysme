@@ -24,10 +24,7 @@ import {
   getTogglData,
   getTogglProjects,
 } from "./getTogglData";
-import {
-  withFreshAccessTokenFromRow,
-  type ServiceConnectionTokenRow,
-} from "./serviceConnection";
+import { withFreshAccessTokenFromRow, type ServiceConnectionTokenRow } from "./serviceConnection";
 import { getSupabaseAdmin } from "./supabaseAdmin";
 import { softDeleteMissing } from "./syncOura";
 
@@ -43,7 +40,7 @@ export async function syncTogglForDate(
   userId: string,
   targetDate: string,
   timezone: string,
-  connectionRow: ServiceConnectionTokenRow,
+  connectionRow: ServiceConnectionTokenRow
 ): Promise<void> {
   // 対象日 ± 1 日のウィンドウ。Toggl の end_date は exclusive のため、
   // 「target_date + 1 日を含めたい」場合は target_date + 2 を渡す。
@@ -51,27 +48,24 @@ export async function syncTogglForDate(
   // end_date は exclusive なので target_date + 1 までを含めるには +2
   const endDate = shiftDate(targetDate, 2);
 
-  const fetched = await withFreshAccessTokenFromRow(
-    connectionRow,
-    async (apiToken) => {
-      // time entries と projects を並列取得し、project_id → name を解決する
-      // (Issue #112)。projects 取得が失敗した場合でも、entry 自体は表示できる
-      // ようにしたいが、ここでは「整合性の取れた状態」を優先してハードエラーに
-      // する (entry 同期は成功 / project 名だけ NULL より、全体 retry の方が
-      // 単純で予測可能)。MVP の規模では projects API はほぼ常に成功する想定。
-      const [entries, projects] = await Promise.all([
-        getTogglData({
-          apiToken,
-          timezone,
-          startDate,
-          endDate,
-        }),
-        getTogglProjects(apiToken),
-      ]);
-      const projectNameById = buildProjectNameMap(projects);
-      return enrichWithProjectNames(entries, projectNameById);
-    },
-  );
+  const fetched = await withFreshAccessTokenFromRow(connectionRow, async (apiToken) => {
+    // time entries と projects を並列取得し、project_id → name を解決する
+    // (Issue #112)。projects 取得が失敗した場合でも、entry 自体は表示できる
+    // ようにしたいが、ここでは「整合性の取れた状態」を優先してハードエラーに
+    // する (entry 同期は成功 / project 名だけ NULL より、全体 retry の方が
+    // 単純で予測可能)。MVP の規模では projects API はほぼ常に成功する想定。
+    const [entries, projects] = await Promise.all([
+      getTogglData({
+        apiToken,
+        timezone,
+        startDate,
+        endDate,
+      }),
+      getTogglProjects(apiToken),
+    ]);
+    const projectNameById = buildProjectNameMap(projects);
+    return enrichWithProjectNames(entries, projectNameById);
+  });
 
   const admin = getSupabaseAdmin();
   const nowIso = new Date().toISOString();
@@ -98,9 +92,7 @@ export async function syncTogglForDate(
       .from(TOGGL_TIME_ENTRIES)
       .upsert(rows, { onConflict: "user_id,toggl_entry_id" });
     if (upsertError) {
-      throw new Error(
-        `failed to upsert ${TOGGL_TIME_ENTRIES}: ${upsertError.message}`,
-      );
+      throw new Error(`failed to upsert ${TOGGL_TIME_ENTRIES}: ${upsertError.message}`);
     }
   }
 
@@ -109,9 +101,7 @@ export async function syncTogglForDate(
   // 入れてしまうと、上で is_deleted=true にしたばかりの行を「生存とみなして
   // ソフトデリート対象から外す」ことになり整合性が崩れるため除外する。
   const keepIds = new Set(
-    fetched
-      .filter((e) => e.server_deleted_at === null)
-      .map((e) => e.toggl_entry_id),
+    fetched.filter((e) => e.server_deleted_at === null).map((e) => e.toggl_entry_id)
   );
   await softDeleteMissing({
     table: TOGGL_TIME_ENTRIES,

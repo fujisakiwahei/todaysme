@@ -50,14 +50,12 @@ const SELECT_COLS = "status, sync_started_at, last_synced_at, error_message";
 export async function tryAcquireSyncLock(
   userId: string,
   targetDate: string,
-  source: ServiceProvider,
+  source: ServiceProvider
 ): Promise<AcquireLockResult> {
   const admin = getSupabaseAdmin();
   const now = new Date();
   const nowIso = now.toISOString();
-  const staleCutoff = new Date(
-    now.getTime() - STALE_LOCK_MINUTES * 60 * 1000,
-  ).toISOString();
+  const staleCutoff = new Date(now.getTime() - STALE_LOCK_MINUTES * 60 * 1000).toISOString();
 
   // 行が無い場合に備えて idle で先に INSERT する (既にあれば ignore)。
   const { error: upsertError } = await admin.from(DAILY_SYNC_STATUSES).upsert(
@@ -68,7 +66,7 @@ export async function tryAcquireSyncLock(
       status: "idle",
       updated_at: nowIso,
     },
-    { onConflict: "user_id,target_date,source", ignoreDuplicates: true },
+    { onConflict: "user_id,target_date,source", ignoreDuplicates: true }
   );
   if (upsertError) {
     throw new Error(`failed to ensure sync status row: ${upsertError.message}`);
@@ -136,7 +134,7 @@ export async function markSyncSuccess(
   userId: string,
   targetDate: string,
   source: ServiceProvider,
-  lockId: string,
+  lockId: string
 ): Promise<SyncStatusRow | null> {
   const admin = getSupabaseAdmin();
   const nowIso = new Date().toISOString();
@@ -172,7 +170,7 @@ export async function markSyncFailed(
   targetDate: string,
   source: ServiceProvider,
   lockId: string,
-  message: string,
+  message: string
 ): Promise<SyncStatusRow | null> {
   const admin = getSupabaseAdmin();
   const nowIso = new Date().toISOString();

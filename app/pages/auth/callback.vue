@@ -42,8 +42,7 @@ onMounted(async () => {
 
     await navigateTo(resolveNext(), { replace: true });
   } catch (e) {
-    errorMessage.value =
-      e instanceof Error ? e.message : "サインインに失敗しました";
+    errorMessage.value = e instanceof Error ? e.message : "サインインに失敗しました";
   }
 });
 </script>
@@ -52,9 +51,7 @@ onMounted(async () => {
   <main class="auth-callback">
     <template v-if="errorMessage">
       <p class="auth-callback__error" role="alert">{{ errorMessage }}</p>
-      <NuxtLink to="/login" class="auth-callback__link">
-        ログイン画面へ戻る
-      </NuxtLink>
+      <NuxtLink to="/login" class="auth-callback__link"> ログイン画面へ戻る </NuxtLink>
     </template>
     <p v-else class="auth-callback__loading">サインインを完了しています...</p>
   </main>

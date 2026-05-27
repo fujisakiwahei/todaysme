@@ -61,11 +61,7 @@ async function fetchCalendarList(accessToken: string): Promise<RawCalendar[]> {
       });
     }
     const json: unknown = await res.json();
-    const parsed = parseExternal(
-      googleCalendarListResponseSchema,
-      json,
-      "google",
-    );
+    const parsed = parseExternal(googleCalendarListResponseSchema, json, "google");
     for (const item of parsed.items) {
       if (item.deleted) continue;
       out.push({
@@ -84,7 +80,7 @@ export default defineEventHandler(async (event) => {
   const userId = await requireUserId(event);
   const { connection_id: connectionId } = parseOrThrow(
     googleCalendarsRequestSchema,
-    getQuery(event),
+    getQuery(event)
   );
   const admin = getSupabaseAdmin();
 
@@ -123,14 +119,13 @@ export default defineEventHandler(async (event) => {
     });
   }
   const excludedSet = new Set<string>(
-    (excludedRows ?? []).map((r) => (r as { calendar_id: string }).calendar_id),
+    (excludedRows ?? []).map((r) => (r as { calendar_id: string }).calendar_id)
   );
 
   let calendars: RawCalendar[];
   try {
-    calendars = await withFreshAccessTokenByConnectionId(
-      connectionId,
-      (accessToken) => fetchCalendarList(accessToken),
+    calendars = await withFreshAccessTokenByConnectionId(connectionId, (accessToken) =>
+      fetchCalendarList(accessToken)
     );
   } catch (e) {
     if (e instanceof ServiceNotConnectedError) {
