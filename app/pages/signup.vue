@@ -67,8 +67,7 @@ async function signUpWithEmail() {
       return;
     }
 
-    successMessage.value =
-      "確認メールを送信しました。メール内のリンクから登録を完了してください。";
+    successMessage.value = "確認メールを送信しました。メール内のリンクから登録を完了してください。";
     email.value = "";
     password.value = "";
     passwordConfirm.value = "";
@@ -114,12 +113,7 @@ onMounted(async () => {
         {{ successMessage }}
       </p>
 
-      <button
-        type="button"
-        class="signup__google"
-        :disabled="submitting"
-        @click="signUpWithGoogle"
-      >
+      <button type="button" class="signup__google" :disabled="submitting" @click="signUpWithGoogle">
         <span class="signup__google-mark" aria-hidden="true">
           <svg
             width="20"
@@ -128,14 +122,7 @@ onMounted(async () => {
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
           >
-            <rect
-              x="0.5"
-              y="0.5"
-              width="39"
-              height="39"
-              rx="19.5"
-              fill="white"
-            />
+            <rect x="0.5" y="0.5" width="39" height="39" rx="19.5" fill="white" />
             <g clip-path="url(#signup-google-clip)">
               <path
                 d="M29.6 20.2273C29.6 19.5182 29.5364 18.8364 29.4182 18.1818H20V22.05H25.3818C25.15 23.3 24.4455 24.3591 23.3864 25.0682V27.5773H26.6182C28.5091 25.8364 29.6 23.2727 29.6 20.2273Z"
@@ -154,22 +141,10 @@ onMounted(async () => {
                 fill="#E94235"
               />
             </g>
-            <rect
-              x="0.5"
-              y="0.5"
-              width="39"
-              height="39"
-              rx="19.5"
-              stroke="#747775"
-            />
+            <rect x="0.5" y="0.5" width="39" height="39" rx="19.5" stroke="#747775" />
             <defs>
               <clipPath id="signup-google-clip">
-                <rect
-                  width="20"
-                  height="20"
-                  fill="white"
-                  transform="translate(10 10)"
-                />
+                <rect width="20" height="20" fill="white" transform="translate(10 10)" />
               </clipPath>
             </defs>
           </svg>
@@ -221,9 +196,7 @@ onMounted(async () => {
         <button
           type="submit"
           class="signup__submit"
-          :disabled="
-            submitting || !email.trim() || !password || !passwordConfirm
-          "
+          :disabled="submitting || !email.trim() || !password || !passwordConfirm"
         >
           アカウントを作成 →
         </button>
@@ -271,16 +244,8 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
     position: absolute;
     inset: 0;
     background-image:
-      radial-gradient(
-        circle at 25% 30%,
-        rgba(59, 79, 134, 0.05),
-        transparent 45%
-      ),
-      radial-gradient(
-        circle at 75% 70%,
-        rgba(194, 104, 58, 0.04),
-        transparent 45%
-      );
+      radial-gradient(circle at 25% 30%, rgba(59, 79, 134, 0.05), transparent 45%),
+      radial-gradient(circle at 75% 70%, rgba(194, 104, 58, 0.04), transparent 45%);
     pointer-events: none;
   }
 

@@ -28,8 +28,7 @@ async function loginWithGoogle() {
     });
     if (error) throw error;
   } catch (e) {
-    const msg =
-      e instanceof Error ? e.message : "Google ログインに失敗しました";
+    const msg = e instanceof Error ? e.message : "Google ログインに失敗しました";
     errorMessage.value = msg;
     submitting.value = false;
   }
@@ -47,8 +46,7 @@ async function loginWithEmail() {
     if (error) throw error;
     await navigateTo(resolveRedirect());
   } catch (e) {
-    const msg =
-      e instanceof Error ? e.message : "メールアドレスログインに失敗しました";
+    const msg = e instanceof Error ? e.message : "メールアドレスログインに失敗しました";
     errorMessage.value = msg;
   } finally {
     submitting.value = false;
@@ -86,12 +84,7 @@ onMounted(async () => {
         {{ errorMessage }}
       </p>
 
-      <button
-        type="button"
-        class="login__google"
-        :disabled="submitting"
-        @click="loginWithGoogle"
-      >
+      <button type="button" class="login__google" :disabled="submitting" @click="loginWithGoogle">
         <span class="login__google-mark" aria-hidden="true">
           <svg
             width="20"
@@ -100,14 +93,7 @@ onMounted(async () => {
             fill="none"
             xmlns="http://www.w3.org/2000/svg"
           >
-            <rect
-              x="0.5"
-              y="0.5"
-              width="39"
-              height="39"
-              rx="19.5"
-              fill="white"
-            />
+            <rect x="0.5" y="0.5" width="39" height="39" rx="19.5" fill="white" />
             <g clip-path="url(#login-google-clip)">
               <path
                 d="M29.6 20.2273C29.6 19.5182 29.5364 18.8364 29.4182 18.1818H20V22.05H25.3818C25.15 23.3 24.4455 24.3591 23.3864 25.0682V27.5773H26.6182C28.5091 25.8364 29.6 23.2727 29.6 20.2273Z"
@@ -126,22 +112,10 @@ onMounted(async () => {
                 fill="#E94235"
               />
             </g>
-            <rect
-              x="0.5"
-              y="0.5"
-              width="39"
-              height="39"
-              rx="19.5"
-              stroke="#747775"
-            />
+            <rect x="0.5" y="0.5" width="39" height="39" rx="19.5" stroke="#747775" />
             <defs>
               <clipPath id="login-google-clip">
-                <rect
-                  width="20"
-                  height="20"
-                  fill="white"
-                  transform="translate(10 10)"
-                />
+                <rect width="20" height="20" fill="white" transform="translate(10 10)" />
               </clipPath>
             </defs>
           </svg>
@@ -187,9 +161,7 @@ onMounted(async () => {
 
       <p class="login__footer">
         初回の方は
-        <NuxtLink to="/signup" class="login__footer-link">
-          アカウントを作成
-        </NuxtLink>
+        <NuxtLink to="/signup" class="login__footer-link"> アカウントを作成 </NuxtLink>
       </p>
     </div>
   </main>
@@ -227,16 +199,8 @@ $font-mono: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
     position: absolute;
     inset: 0;
     background-image:
-      radial-gradient(
-        circle at 25% 30%,
-        rgba(59, 79, 134, 0.05),
-        transparent 45%
-      ),
-      radial-gradient(
-        circle at 75% 70%,
-        rgba(194, 104, 58, 0.04),
-        transparent 45%
-      );
+      radial-gradient(circle at 25% 30%, rgba(59, 79, 134, 0.05), transparent 45%),
+      radial-gradient(circle at 75% 70%, rgba(194, 104, 58, 0.04), transparent 45%);
     pointer-events: none;
   }
 

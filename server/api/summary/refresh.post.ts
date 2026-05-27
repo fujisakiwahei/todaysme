@@ -7,10 +7,7 @@
 //     GET /api/cron/daily (Issue #40) と同じロジックを共有する。
 //   - 平文の access_token はクライアントに返さない / ログに出さない (SPEC §12.1)。
 // =============================================================================
-import {
-  summaryRefreshRequestSchema,
-  summaryRefreshResponseSchema,
-} from "../../../shared/schemas";
+import { summaryRefreshRequestSchema, summaryRefreshResponseSchema } from "../../../shared/schemas";
 import { requireUserIdAllowCookie } from "../../utils/auth";
 import { refreshUserDate } from "../../utils/runRefresh";
 import { parseOrThrow } from "../../utils/validation";

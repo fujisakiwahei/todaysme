@@ -39,23 +39,16 @@ onMounted(async () => {
         <p class="top__lede">
           Oura / Google Calendar / Toggl Track を
           <b>起床を 0 時間目とする</b>
-          1
-          つのタイムラインに統合。「今日やること」「今日やったこと」「今日の身体状態」を
-          1 画面で把握できます。
+          1 つのタイムラインに統合。「今日やること」「今日やったこと」「今日の身体状態」を 1
+          画面で把握できます。
         </p>
         <div class="top__cta">
           <NuxtLink to="/demo" class="top__cta-primary">デモを見る</NuxtLink>
           <template v-if="!checkingSession">
-            <NuxtLink
-              v-if="hasSession"
-              to="/daily/today"
-              class="top__cta-secondary"
-            >
+            <NuxtLink v-if="hasSession" to="/daily/today" class="top__cta-secondary">
               ダッシュボードへ →
             </NuxtLink>
-            <NuxtLink v-else to="/login" class="top__cta-secondary">
-              ログイン
-            </NuxtLink>
+            <NuxtLink v-else to="/login" class="top__cta-secondary"> ログイン </NuxtLink>
           </template>
         </div>
       </div>
@@ -66,24 +59,16 @@ onMounted(async () => {
           <span class="top__concept-date">2026-05-17</span>
         </div>
         <div class="top__concept-axis">
-          <span>0h</span><span>3h</span><span>6h</span><span>9h</span
-          ><span>+11.5</span>
+          <span>0h</span><span>3h</span><span>6h</span><span>9h</span><span>+11.5</span>
         </div>
         <div class="top__concept-lane">
-          <span class="top__concept-label top__concept-label--sleep"
-            >Sleep</span
-          >
+          <span class="top__concept-label top__concept-label--sleep">Sleep</span>
           <div class="top__concept-track">
-            <div
-              class="top__concept-bar top__concept-bar--sleep"
-              style="left: 0; width: 2px"
-            />
+            <div class="top__concept-bar top__concept-bar--sleep" style="left: 0; width: 2px" />
           </div>
         </div>
         <div class="top__concept-lane">
-          <span class="top__concept-label top__concept-label--calendar">
-            Calendar
-          </span>
+          <span class="top__concept-label top__concept-label--calendar"> Calendar </span>
           <div class="top__concept-track">
             <div
               class="top__concept-bar top__concept-bar--calendar"
@@ -106,18 +91,12 @@ onMounted(async () => {
               class="top__concept-bar top__concept-bar--work"
               style="left: 8.33%; width: 12.5%"
             />
-            <div
-              class="top__concept-bar top__concept-bar--work"
-              style="left: 25%; width: 20.83%"
-            />
+            <div class="top__concept-bar top__concept-bar--work" style="left: 25%; width: 20.83%" />
             <div
               class="top__concept-bar top__concept-bar--work"
               style="left: 58.33%; width: 8.33%"
             />
-            <div
-              class="top__concept-bar top__concept-bar--work"
-              style="left: 75%; width: 8.33%"
-            />
+            <div class="top__concept-bar top__concept-bar--work" style="left: 75%; width: 8.33%" />
           </div>
         </div>
         <div class="top__concept-overlay">

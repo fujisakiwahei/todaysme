@@ -26,8 +26,7 @@ const isDemoDailyReady = false;
       </h1>
       <p class="demo-top__lede">
         実際の 1 日（<b>{{ demoDate }}</b
-        >）の睡眠・予定・作業データを、
-        <b>デモ専用テーブル</b>から読んで表示します。<br />
+        >）の睡眠・予定・作業データを、 <b>デモ専用テーブル</b>から読んで表示します。<br />
         ログイン不要・外部 API は呼びません。
       </p>
       <div class="demo-top__cta">
