@@ -19,10 +19,7 @@ import type {
   SummaryResponse,
   TogglTimelineEntry,
 } from "~~/shared/schemas";
-import {
-  fetchWakeBasedToday,
-  targetDateInTimezone,
-} from "~/utils/wakeBasedToday";
+import { fetchWakeBasedToday, targetDateInTimezone } from "~/utils/wakeBasedToday";
 import ouraIcon from "~/assets/styles/images/oura.webp";
 import googleCalendarIcon from "~/assets/styles/images/google-calendar.webp";
 import togglIcon from "~/assets/styles/images/toggl-track.webp";
@@ -37,7 +34,7 @@ const props = withDefaults(
   }>(),
   {
     basePath: "/daily",
-  },
+  }
 );
 
 const now = ref(new Date());
@@ -166,8 +163,7 @@ const meAggregate = computed(() => {
   }
   const activeMin = Math.min(elapsedMin, Math.round(activeMs / 60000));
   const unrecordedMin = Math.max(0, elapsedMin - activeMin);
-  const activeRatio =
-    elapsedMin > 0 ? Math.round((activeMin / elapsedMin) * 100) : 0;
+  const activeRatio = elapsedMin > 0 ? Math.round((activeMin / elapsedMin) * 100) : 0;
   return { elapsedMin, activeMin, unrecordedMin, activeRatio };
 });
 
@@ -230,7 +226,7 @@ const preWakeSleep = computed<SleepTimelineEntry | null>(() => {
   const rangeStart = new Date(props.summary.wake_range.start).getTime();
   return (
     props.summary.timeline.sleep.find(
-      (s) => Math.abs(new Date(s.wake_at).getTime() - rangeStart) < 60_000,
+      (s) => Math.abs(new Date(s.wake_at).getTime() - rangeStart) < 60_000
     ) ?? null
   );
 });
@@ -243,11 +239,9 @@ const inRangeSleep = computed<SleepTimelineEntry[]>(() => {
 });
 
 const calendarEvents = computed<CalendarTimelineEntry[]>(
-  () => props.summary?.timeline.calendar ?? [],
+  () => props.summary?.timeline.calendar ?? []
 );
-const togglEntries = computed<TogglTimelineEntry[]>(
-  () => props.summary?.timeline.toggl ?? [],
-);
+const togglEntries = computed<TogglTimelineEntry[]>(() => props.summary?.timeline.toggl ?? []);
 
 // =============================================================================
 // Free-time hover (Issue #110)
@@ -389,7 +383,7 @@ watch(
   () => props.summary,
   () => {
     freeHover.value = null;
-  },
+  }
 );
 
 function formatGap(min: number): string {
@@ -484,7 +478,7 @@ watch(
   () => [props.summary?.timezone, props.dateParam] as const,
   () => {
     void refreshWakeBasedToday();
-  },
+  }
 );
 
 onBeforeUnmount(() => {
@@ -514,7 +508,7 @@ onBeforeUnmount(() => {
 
         <div class="daily__nav-group">
           <NuxtLink
-            :to="`${basePath}/${todayDate}`"
+            :to="`${basePath}/today`"
             class="daily__today-btn"
             :class="{ 'daily__today-btn--active': isOnToday }"
             :aria-disabled="isOnToday || undefined"
@@ -523,19 +517,11 @@ onBeforeUnmount(() => {
             Today
           </NuxtLink>
           <nav class="daily__date-nav" aria-label="日付ナビゲーション">
-            <NuxtLink
-              :to="`${basePath}/${prevDate}`"
-              class="daily__date-btn"
-              aria-label="前日"
-            >
+            <NuxtLink :to="`${basePath}/${prevDate}`" class="daily__date-btn" aria-label="前日">
               ‹
             </NuxtLink>
             <div class="daily__date-current">{{ dateLabel }}</div>
-            <NuxtLink
-              :to="`${basePath}/${nextDate}`"
-              class="daily__date-btn"
-              aria-label="翌日"
-            >
+            <NuxtLink :to="`${basePath}/${nextDate}`" class="daily__date-btn" aria-label="翌日">
               ›
             </NuxtLink>
           </nav>
@@ -551,9 +537,7 @@ onBeforeUnmount(() => {
 
       <p v-if="errorMessage" class="daily__error">{{ errorMessage }}</p>
 
-      <section v-if="loading && !summary" class="daily__loading">
-        読み込み中...
-      </section>
+      <section v-if="loading && !summary" class="daily__loading">読み込み中...</section>
 
       <template v-else-if="summary">
         <!-- Metric cards -->
@@ -577,16 +561,14 @@ onBeforeUnmount(() => {
             </header>
             <template v-if="summary.todays_me.oura">
               <div class="metric__value">
-                <template
-                  v-if="formatMinutes(summary.todays_me.oura.sleep_minutes)"
-                >
+                <template v-if="formatMinutes(summary.todays_me.oura.sleep_minutes)">
                   {{ formatMinutes(summary.todays_me.oura.sleep_minutes)!.hours
                   }}<span class="unit">h</span
                   >{{
-                    String(
-                      formatMinutes(summary.todays_me.oura.sleep_minutes)!
-                        .minutes,
-                    ).padStart(2, "0")
+                    String(formatMinutes(summary.todays_me.oura.sleep_minutes)!.minutes).padStart(
+                      2,
+                      "0"
+                    )
                   }}<span class="unit">m</span>
                 </template>
                 <template v-else>—</template>
@@ -595,31 +577,17 @@ onBeforeUnmount(() => {
                 <div>
                   <dt>起床</dt>
                   <dd>
-                    {{
-                      formatHourMinute(summary.todays_me.oura.wake_at, timezone)
-                    }}
+                    {{ formatHourMinute(summary.todays_me.oura.wake_at, timezone) }}
                   </dd>
                 </div>
                 <div>
                   <dt>ベッドにいた時間</dt>
                   <dd>
-                    <template
-                      v-if="
-                        formatMinutes(
-                          summary.todays_me.oura.time_in_bed_minutes,
-                        )
-                      "
-                    >
-                      {{
-                        formatMinutes(
-                          summary.todays_me.oura.time_in_bed_minutes,
-                        )!.hours
-                      }}h
+                    <template v-if="formatMinutes(summary.todays_me.oura.time_in_bed_minutes)">
+                      {{ formatMinutes(summary.todays_me.oura.time_in_bed_minutes)!.hours }}h
                       {{
                         String(
-                          formatMinutes(
-                            summary.todays_me.oura.time_in_bed_minutes,
-                          )!.minutes,
+                          formatMinutes(summary.todays_me.oura.time_in_bed_minutes)!.minutes
                         ).padStart(2, "0")
                       }}m
                     </template>
@@ -655,25 +623,18 @@ onBeforeUnmount(() => {
                 {{ formatMinutes(summary.todays_me.google.total_minutes)!.hours
                 }}<span class="unit">h</span
                 >{{
-                  String(
-                    formatMinutes(summary.todays_me.google.total_minutes)!
-                      .minutes,
-                  ).padStart(2, "0")
+                  String(formatMinutes(summary.todays_me.google.total_minutes)!.minutes).padStart(
+                    2,
+                    "0"
+                  )
                 }}<span class="unit">m</span>
               </div>
               <dl class="metric__sub">
-                <div
-                  v-for="item in summary.todays_me.google.by_calendar"
-                  :key="item.calendar_name"
-                >
+                <div v-for="item in summary.todays_me.google.by_calendar" :key="item.calendar_name">
                   <dt>{{ item.calendar_name || "（未分類）" }}</dt>
                   <dd>
                     {{ formatMinutes(item.minutes)?.hours }}h
-                    {{
-                      String(
-                        formatMinutes(item.minutes)?.minutes ?? 0,
-                      ).padStart(2, "0")
-                    }}m
+                    {{ String(formatMinutes(item.minutes)?.minutes ?? 0).padStart(2, "0") }}m
                   </dd>
                 </div>
               </dl>
@@ -705,10 +666,10 @@ onBeforeUnmount(() => {
                 {{ formatMinutes(summary.todays_me.toggl.total_minutes)!.hours
                 }}<span class="unit">h</span
                 >{{
-                  String(
-                    formatMinutes(summary.todays_me.toggl.total_minutes)!
-                      .minutes,
-                  ).padStart(2, "0")
+                  String(formatMinutes(summary.todays_me.toggl.total_minutes)!.minutes).padStart(
+                    2,
+                    "0"
+                  )
                 }}<span class="unit">m</span>
               </div>
               <dl class="metric__sub">
@@ -724,11 +685,7 @@ onBeforeUnmount(() => {
                   </dt>
                   <dd>
                     {{ formatMinutes(item.minutes)?.hours }}h
-                    {{
-                      String(
-                        formatMinutes(item.minutes)?.minutes ?? 0,
-                      ).padStart(2, "0")
-                    }}m
+                    {{ String(formatMinutes(item.minutes)?.minutes ?? 0).padStart(2, "0") }}m
                   </dd>
                 </div>
               </dl>
@@ -749,12 +706,8 @@ onBeforeUnmount(() => {
             <div class="metric--me__row">
               <div class="metric--me__value">
                 <div class="metric__value">
-                  {{ formatMinutes(meAggregate.elapsedMin)!.hours
-                  }}<span class="unit">h</span
-                  >{{
-                    String(
-                      formatMinutes(meAggregate.elapsedMin)!.minutes,
-                    ).padStart(2, "0")
+                  {{ formatMinutes(meAggregate.elapsedMin)!.hours }}<span class="unit">h</span
+                  >{{ String(formatMinutes(meAggregate.elapsedMin)!.minutes).padStart(2, "0")
                   }}<span class="unit">m</span>
                 </div>
                 <p class="metric--me__caption">起床経過</p>
@@ -767,9 +720,7 @@ onBeforeUnmount(() => {
                     <span>
                       ({{ formatMinutes(meAggregate.activeMin)?.hours }}h
                       {{
-                        String(
-                          formatMinutes(meAggregate.activeMin)?.minutes ?? 0,
-                        ).padStart(2, "0")
+                        String(formatMinutes(meAggregate.activeMin)?.minutes ?? 0).padStart(2, "0")
                       }}m)
                     </span>
                   </dd>
@@ -780,10 +731,10 @@ onBeforeUnmount(() => {
                     <b class="warn">
                       {{ formatMinutes(meAggregate.unrecordedMin)?.hours }}h
                       {{
-                        String(
-                          formatMinutes(meAggregate.unrecordedMin)?.minutes ??
-                            0,
-                        ).padStart(2, "0")
+                        String(formatMinutes(meAggregate.unrecordedMin)?.minutes ?? 0).padStart(
+                          2,
+                          "0"
+                        )
                       }}m
                     </b>
                   </dd>
@@ -825,12 +776,7 @@ onBeforeUnmount(() => {
               >
                 {{ tick.label }}
               </span>
-              <div
-                v-if="nowLineStyle"
-                class="tl-now"
-                :style="nowLineStyle"
-                aria-label="現在時刻"
-              >
+              <div v-if="nowLineStyle" class="tl-now" :style="nowLineStyle" aria-label="現在時刻">
                 <span class="tl-now__label">
                   NOW {{ formatHourMinute(now.toISOString(), timezone) }}
                 </span>
@@ -859,29 +805,16 @@ onBeforeUnmount(() => {
                       空き {{ formatGap(freeHover.gapMinutes) }}
                     </span>
                     <span class="tl-free__tooltip-time">
-                      {{
-                        formatHourMinute(
-                          new Date(freeHover.rangeStart).toISOString(),
-                          timezone,
-                        )
-                      }}
+                      {{ formatHourMinute(new Date(freeHover.rangeStart).toISOString(), timezone) }}
                       →
-                      {{
-                        formatHourMinute(
-                          new Date(freeHover.rangeEnd).toISOString(),
-                          timezone,
-                        )
-                      }}
+                      {{ formatHourMinute(new Date(freeHover.rangeEnd).toISOString(), timezone) }}
                     </span>
                     <span
                       v-if="freeHover.nextTitle && freeHover.nextLane"
                       class="tl-free__tooltip-next"
                     >
                       次:
-                      <span
-                        class="tl-free__tooltip-lane"
-                        :data-lane="freeHover.nextLane"
-                      >
+                      <span class="tl-free__tooltip-lane" :data-lane="freeHover.nextLane">
                         {{ laneLabels[freeHover.nextLane] }}
                       </span>
                       {{ freeHover.nextTitle }}
@@ -893,12 +826,7 @@ onBeforeUnmount(() => {
                   {{ formatHourMinute(preWakeSleep.sleep_start_at, timezone) }}
                   → 起床
                   {{ formatHourMinute(preWakeSleep.wake_at, timezone) }} ·
-                  {{
-                    formatDuration(
-                      preWakeSleep.sleep_start_at,
-                      preWakeSleep.wake_at,
-                    )
-                  }}
+                  {{ formatDuration(preWakeSleep.sleep_start_at, preWakeSleep.wake_at) }}
                 </span>
                 <div
                   v-for="s in inRangeSleep"
@@ -912,11 +840,7 @@ onBeforeUnmount(() => {
                   @click="toggleTooltip(`sleep-${s.id}`, $event)"
                 >
                   <span class="tl-bar__text">仮眠</span>
-                  <span
-                    class="tl-bar__tooltip"
-                    role="tooltip"
-                    aria-hidden="true"
-                  >
+                  <span class="tl-bar__tooltip" role="tooltip" aria-hidden="true">
                     <span class="tl-bar__tooltip-title">仮眠</span>
                     <span class="tl-bar__tooltip-time">
                       {{ formatHourMinute(s.sleep_start_at, timezone) }} –
@@ -949,38 +873,23 @@ onBeforeUnmount(() => {
                       空き {{ formatGap(freeHover.gapMinutes) }}
                     </span>
                     <span class="tl-free__tooltip-time">
-                      {{
-                        formatHourMinute(
-                          new Date(freeHover.rangeStart).toISOString(),
-                          timezone,
-                        )
-                      }}
+                      {{ formatHourMinute(new Date(freeHover.rangeStart).toISOString(), timezone) }}
                       →
-                      {{
-                        formatHourMinute(
-                          new Date(freeHover.rangeEnd).toISOString(),
-                          timezone,
-                        )
-                      }}
+                      {{ formatHourMinute(new Date(freeHover.rangeEnd).toISOString(), timezone) }}
                     </span>
                     <span
                       v-if="freeHover.nextTitle && freeHover.nextLane"
                       class="tl-free__tooltip-next"
                     >
                       次:
-                      <span
-                        class="tl-free__tooltip-lane"
-                        :data-lane="freeHover.nextLane"
-                      >
+                      <span class="tl-free__tooltip-lane" :data-lane="freeHover.nextLane">
                         {{ laneLabels[freeHover.nextLane] }}
                       </span>
                       {{ freeHover.nextTitle }}
                     </span>
                   </span>
                 </div>
-                <span v-if="calendarEvents.length === 0" class="tl-row__empty">
-                  予定なし
-                </span>
+                <span v-if="calendarEvents.length === 0" class="tl-row__empty"> 予定なし </span>
                 <div
                   v-for="ev in calendarEvents"
                   :key="ev.id"
@@ -996,11 +905,7 @@ onBeforeUnmount(() => {
                   <span class="tl-bar__text">
                     {{ ev.title || ev.calendar_name || "(無題)" }}
                   </span>
-                  <span
-                    class="tl-bar__tooltip"
-                    role="tooltip"
-                    aria-hidden="true"
-                  >
+                  <span class="tl-bar__tooltip" role="tooltip" aria-hidden="true">
                     <span class="tl-bar__tooltip-title">
                       {{ ev.title || ev.calendar_name || "(無題)" }}
                     </span>
@@ -1035,38 +940,23 @@ onBeforeUnmount(() => {
                       空き {{ formatGap(freeHover.gapMinutes) }}
                     </span>
                     <span class="tl-free__tooltip-time">
-                      {{
-                        formatHourMinute(
-                          new Date(freeHover.rangeStart).toISOString(),
-                          timezone,
-                        )
-                      }}
+                      {{ formatHourMinute(new Date(freeHover.rangeStart).toISOString(), timezone) }}
                       →
-                      {{
-                        formatHourMinute(
-                          new Date(freeHover.rangeEnd).toISOString(),
-                          timezone,
-                        )
-                      }}
+                      {{ formatHourMinute(new Date(freeHover.rangeEnd).toISOString(), timezone) }}
                     </span>
                     <span
                       v-if="freeHover.nextTitle && freeHover.nextLane"
                       class="tl-free__tooltip-next"
                     >
                       次:
-                      <span
-                        class="tl-free__tooltip-lane"
-                        :data-lane="freeHover.nextLane"
-                      >
+                      <span class="tl-free__tooltip-lane" :data-lane="freeHover.nextLane">
                         {{ laneLabels[freeHover.nextLane] }}
                       </span>
                       {{ freeHover.nextTitle }}
                     </span>
                   </span>
                 </div>
-                <span v-if="togglEntries.length === 0" class="tl-row__empty">
-                  作業ログなし
-                </span>
+                <span v-if="togglEntries.length === 0" class="tl-row__empty"> 作業ログなし </span>
                 <div
                   v-for="t in togglEntries"
                   :key="t.id"
@@ -1082,11 +972,7 @@ onBeforeUnmount(() => {
                     {{ t.title || "(タイトル無し)" }}
                   </span>
                   <span v-if="t.end_at == null" class="tl-bar__live">●</span>
-                  <span
-                    class="tl-bar__tooltip"
-                    role="tooltip"
-                    aria-hidden="true"
-                  >
+                  <span class="tl-bar__tooltip" role="tooltip" aria-hidden="true">
                     <span class="tl-bar__tooltip-title">
                       {{ t.title || "(タイトル無し)" }}
                     </span>
@@ -1095,11 +981,7 @@ onBeforeUnmount(() => {
                     </span>
                     <span class="tl-bar__tooltip-time">
                       {{ formatHourMinute(t.start_at, timezone) }} –
-                      {{
-                        t.end_at
-                          ? formatHourMinute(t.end_at, timezone)
-                          : "進行中"
-                      }}
+                      {{ t.end_at ? formatHourMinute(t.end_at, timezone) : "進行中" }}
                     </span>
                   </span>
                 </div>
@@ -1119,16 +1001,9 @@ onBeforeUnmount(() => {
               :aria-expanded="openAccordions.sleep"
               @click="openAccordions.sleep = !openAccordions.sleep"
             >
-              <img
-                :src="ouraIcon"
-                alt=""
-                class="acc__icon acc__icon--img"
-                aria-hidden="true"
-              />
+              <img :src="ouraIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" />
               <span class="acc__title">Sleep — Oura</span>
-              <span class="acc__meta">
-                {{ summary.timeline.sleep.length }} records
-              </span>
+              <span class="acc__meta"> {{ summary.timeline.sleep.length }} records </span>
               <span class="acc__chev" aria-hidden="true">
                 {{ openAccordions.sleep ? "▾" : "▸" }}
               </span>
@@ -1138,11 +1013,7 @@ onBeforeUnmount(() => {
                 睡眠データはありません。
               </p>
               <ul v-else class="entry-list">
-                <li
-                  v-for="s in summary.timeline.sleep"
-                  :key="s.id"
-                  class="entry"
-                >
+                <li v-for="s in summary.timeline.sleep" :key="s.id" class="entry">
                   <span class="entry__time">
                     {{ formatHourMinute(s.sleep_start_at, timezone) }} —
                     {{ formatHourMinute(s.wake_at, timezone) }}
@@ -1152,11 +1023,7 @@ onBeforeUnmount(() => {
                     <span class="entry__dur-main">
                       <template v-if="formatMinutes(s.sleep_minutes)">
                         {{ formatMinutes(s.sleep_minutes)!.hours }}h
-                        {{
-                          String(
-                            formatMinutes(s.sleep_minutes)!.minutes,
-                          ).padStart(2, "0")
-                        }}m
+                        {{ String(formatMinutes(s.sleep_minutes)!.minutes).padStart(2, "0") }}m
                       </template>
                       <template v-else>—</template>
                     </span>
@@ -1184,18 +1051,13 @@ onBeforeUnmount(() => {
                 aria-hidden="true"
               />
               <span class="acc__title">Calendar — Google</span>
-              <span class="acc__meta">
-                {{ summary.timeline.calendar.length }} events
-              </span>
+              <span class="acc__meta"> {{ summary.timeline.calendar.length }} events </span>
               <span class="acc__chev" aria-hidden="true">
                 {{ openAccordions.calendar ? "▾" : "▸" }}
               </span>
             </button>
             <div v-if="openAccordions.calendar" class="acc__body">
-              <p
-                v-if="summary.timeline.calendar.length === 0"
-                class="acc__empty"
-              >
+              <p v-if="summary.timeline.calendar.length === 0" class="acc__empty">
                 予定はありません。
               </p>
               <ul v-else class="entry-list">
@@ -1214,9 +1076,7 @@ onBeforeUnmount(() => {
                     <span v-if="ev.calendar_name" class="entry__tag">
                       {{ ev.calendar_name }}
                     </span>
-                    <span v-if="ev.is_excluded" class="entry__excluded-tag">
-                      除外
-                    </span>
+                    <span v-if="ev.is_excluded" class="entry__excluded-tag"> 除外 </span>
                   </span>
                   <span class="entry__dur">
                     {{ formatDuration(ev.start_at, ev.end_at) }}
@@ -1233,16 +1093,9 @@ onBeforeUnmount(() => {
               :aria-expanded="openAccordions.work"
               @click="openAccordions.work = !openAccordions.work"
             >
-              <img
-                :src="togglIcon"
-                alt=""
-                class="acc__icon acc__icon--img"
-                aria-hidden="true"
-              />
+              <img :src="togglIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" />
               <span class="acc__title">Work — Toggl</span>
-              <span class="acc__meta">
-                {{ summary.timeline.toggl.length }} entries
-              </span>
+              <span class="acc__meta"> {{ summary.timeline.toggl.length }} entries </span>
               <span class="acc__chev" aria-hidden="true">
                 {{ openAccordions.work ? "▾" : "▸" }}
               </span>
@@ -1252,16 +1105,10 @@ onBeforeUnmount(() => {
                 作業ログはありません。
               </p>
               <ul v-else class="entry-list">
-                <li
-                  v-for="t in summary.timeline.toggl"
-                  :key="t.id"
-                  class="entry"
-                >
+                <li v-for="t in summary.timeline.toggl" :key="t.id" class="entry">
                   <span class="entry__time">
                     {{ formatHourMinute(t.start_at, timezone) }} —
-                    {{
-                      t.end_at ? formatHourMinute(t.end_at, timezone) : "進行中"
-                    }}
+                    {{ t.end_at ? formatHourMinute(t.end_at, timezone) : "進行中" }}
                   </span>
                   <span class="entry__title">
                     {{ t.title || "(タイトル無し)" }}
