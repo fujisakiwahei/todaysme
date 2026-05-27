@@ -1800,24 +1800,24 @@ $font-en:
   &--sleep {
     color: $color-sleep;
     background: $color-sleep-bg;
-    border-left: 3px solid $color-sleep;
+    border: 1px solid $color-sleep;
   }
   &--calendar {
     color: $color-calendar;
     background: $color-calendar-bg;
-    border-left: 3px solid $color-calendar;
+    border: 1px solid $color-calendar;
   }
   &--work {
     color: $color-work;
     background: $color-work-bg;
-    border-left: 3px solid $color-work;
+    border: 1px solid $color-work;
   }
 
   // Issue #108: 稼働時間集計から除外されたカレンダーは「参考情報」として
   // 視覚的に薄く表示する。タップ/ホバーでツールチップは通常どおり出る。
   &--excluded {
+    border-style: dashed;
     opacity: 0.4;
-    border-left-style: dashed;
   }
 }
 
