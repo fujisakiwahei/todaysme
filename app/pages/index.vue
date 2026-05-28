@@ -1,14 +1,23 @@
 <script setup lang="ts">
-const supabase = useSupabaseClient();
+// ログイン済みで `/` に来た場合は LP を見せずに /daily/today へ直行する (Issue #197)。
+// SSR 側で user (JWT claims) が確定していれば setup 直下で await navigateTo して 302 を返し、
+// クライアント hydration 中に user.value が未確定なケースは watch で拾う
+// (/daily/today.vue と同じ流儀)。
+const user = useSupabaseUser();
 
-const hasSession = ref(false);
-const checkingSession = ref(true);
+async function redirectToDashboard() {
+  await navigateTo("/daily/today", { replace: true });
+}
 
-onMounted(async () => {
-  const { data } = await supabase.auth.getSession();
-  hasSession.value = !!data.session;
-  checkingSession.value = false;
-});
+if (user.value?.sub) {
+  await redirectToDashboard();
+} else if (import.meta.client) {
+  const stop = watch(user, async (u) => {
+    if (!u?.sub) return;
+    stop();
+    await redirectToDashboard();
+  });
+}
 </script>
 
 <template>
@@ -20,12 +29,7 @@ onMounted(async () => {
       </div>
       <nav class="top__nav-actions">
         <NuxtLink to="/demo" class="top__nav-link">デモを見る</NuxtLink>
-        <template v-if="!checkingSession">
-          <NuxtLink v-if="hasSession" to="/daily/today" class="top__nav-cta">
-            ダッシュボードへ →
-          </NuxtLink>
-          <NuxtLink v-else to="/login" class="top__nav-cta">ログイン</NuxtLink>
-        </template>
+        <NuxtLink to="/login" class="top__nav-cta">ログイン</NuxtLink>
       </nav>
     </header>
 
@@ -44,12 +48,7 @@ onMounted(async () => {
         </p>
         <div class="top__cta">
           <NuxtLink to="/demo" class="top__cta-primary">デモを見る</NuxtLink>
-          <template v-if="!checkingSession">
-            <NuxtLink v-if="hasSession" to="/daily/today" class="top__cta-secondary">
-              ダッシュボードへ →
-            </NuxtLink>
-            <NuxtLink v-else to="/login" class="top__cta-secondary"> ログイン </NuxtLink>
-          </template>
+          <NuxtLink to="/login" class="top__cta-secondary">ログイン</NuxtLink>
         </div>
       </div>
 
