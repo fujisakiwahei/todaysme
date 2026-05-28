@@ -1,36 +1,39 @@
 import * as Sentry from "@sentry/nuxt";
 
+// VERCEL_ENV: "production" | "preview" | "development" | undefined
+// undefined になるのは Vercel 外（ローカル開発・ローカルビルド）。
+// local 判定は VERCEL_ENV が無く NODE_ENV が development のときのみ。
+const vercelEnv = process.env.VERCEL_ENV;
+const nodeEnv = process.env.NODE_ENV;
+
+const isLocal = !vercelEnv && nodeEnv === "development";
+const isProduction = vercelEnv === "production";
+const isPreview = vercelEnv === "preview";
+
+const dsn = process.env.NUXT_PUBLIC_SENTRY_DSN;
+
 Sentry.init({
-  // If set up, you can use your runtime config here
-  // dsn: useRuntimeConfig().public.sentry.dsn,
-  dsn: "https://89190e85c1d77e9fae5885d64e314572@o4511402985324544.ingest.us.sentry.io/4511402987814912",
+  dsn,
 
-  // We recommend adjusting this value in production, or using tracesSampler
-  // for finer control
-  tracesSampleRate: 1.0,
+  enabled: !isLocal && Boolean(dsn),
 
-  // This sets the sample rate to be 10%. You may want this to be 100% while
-  // in development and sample at a lower rate in production
-  replaysSessionSampleRate: 0.1,
+  environment: vercelEnv ?? nodeEnv,
 
-  // If the entire session is not sampled, use the below sample rate to sample
-  // sessions when an error occurs.
-  replaysOnErrorSampleRate: 1.0,
+  tracesSampleRate: isProduction ? 0.05 : isPreview ? 0.01 : 0,
 
-  // If you don't want to use Session Replay, just remove the line below:
+  replaysSessionSampleRate: 0,
+  replaysOnErrorSampleRate: 0,
+
   integrations: [
-    Sentry.replayIntegration(),
-    // send console.log, console.warn, and console.error calls as logs to Sentry
-    Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
+    // Session Replay はコスト・プライバシー面の理由で一旦無効化
+    // Sentry.replayIntegration(),
+    // Logs も必要になるまで無効化
+    // Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] }),
   ],
 
-  // Enable logs to be sent to Sentry
-  enableLogs: true,
+  enableLogs: false,
 
-  // Enable sending of user PII (Personally Identifiable Information)
-  // https://docs.sentry.io/platforms/javascript/guides/nuxt/configuration/options/#sendDefaultPii
-  sendDefaultPii: true,
+  sendDefaultPii: false,
 
-  // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 });

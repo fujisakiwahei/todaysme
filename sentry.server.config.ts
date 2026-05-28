@@ -1,24 +1,32 @@
 import * as Sentry from "@sentry/nuxt";
 
-Sentry.init({
-  dsn: "https://89190e85c1d77e9fae5885d64e314572@o4511402985324544.ingest.us.sentry.io/4511402987814912",
+const vercelEnv = process.env.VERCEL_ENV;
+const nodeEnv = process.env.NODE_ENV;
 
-  // We recommend adjusting this value in production, or using tracesSampler
-  // for finer control
-  tracesSampleRate: 1.0,
+const isLocal = !vercelEnv && nodeEnv === "development";
+const isProduction = vercelEnv === "production";
+const isPreview = vercelEnv === "preview";
+
+// server 側は SENTRY_DSN を優先し、無ければ public 側と同じ DSN を使う
+const dsn = process.env.SENTRY_DSN ?? process.env.NUXT_PUBLIC_SENTRY_DSN;
+
+Sentry.init({
+  dsn,
+
+  enabled: !isLocal && Boolean(dsn),
+
+  environment: vercelEnv ?? nodeEnv,
+
+  tracesSampleRate: isProduction ? 0.05 : isPreview ? 0.01 : 0,
 
   integrations: [
-    // send console.log, console.warn, and console.error calls as logs to Sentry
-    Sentry.consoleLoggingIntegration({ levels: ["log", "warn", "error"] }),
+    // Logs は必要になるまで無効化
+    // Sentry.consoleLoggingIntegration({ levels: ["warn", "error"] }),
   ],
 
-  // Enable logs to be sent to Sentry
-  enableLogs: true,
+  enableLogs: false,
 
-  // Enable sending of user PII (Personally Identifiable Information)
-  // https://docs.sentry.io/platforms/javascript/guides/nuxt/configuration/options/#sendDefaultPii
-  sendDefaultPii: true,
+  sendDefaultPii: false,
 
-  // Setting this option to true will print useful information to the console while you're setting up Sentry.
   debug: false,
 });
