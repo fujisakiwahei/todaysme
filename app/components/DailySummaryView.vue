@@ -19,6 +19,7 @@ import type {
   SummaryResponse,
   TogglTimelineEntry,
 } from "~~/shared/schemas";
+import { isTogglRateLimitMessage } from "~~/shared/schemas";
 import { fetchWakeBasedToday, targetDateInTimezone } from "~/utils/wakeBasedToday";
 import ouraIcon from "~/assets/styles/images/oura.webp";
 import googleCalendarIcon from "~/assets/styles/images/google-calendar.webp";
@@ -131,6 +132,48 @@ const lastSyncedAt = computed<string | null>(() => {
   if (ms.length === 0) return null;
   return new Date(Math.max(...ms)).toISOString();
 });
+
+// =============================================================================
+// Toggl rate limit (Issue #185)
+//   Toggl API は 1 時間あたり 30 リクエストの制限を超えると 429 を返す。
+//   サーバ側 (runRefresh.ts) はその場合 error_message に
+//   `TOGGL_RATE_LIMIT_MARKER` を立てて記録するので、UI 側で識別して
+//   「少し待ってリロード」を促す専用バナーに切り替える。
+//   sync 一覧では生のマーカー付き文字列ではなく日本語に置換する。
+// =============================================================================
+function parseTogglRateLimitRetry(message: string | null | undefined): number | null {
+  if (!message) return null;
+  const m = message.match(/retry_after=(\d+)/);
+  if (!m) return null;
+  const n = Number.parseInt(m[1]!, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function formatRetryAfter(seconds: number | null): string | null {
+  if (seconds === null) return null;
+  if (seconds < 60) return `${seconds}秒後`;
+  const mins = Math.ceil(seconds / 60);
+  return `約${mins}分後`;
+}
+
+const togglRateLimitBanner = computed<{ retryHint: string | null } | null>(() => {
+  const status = props.summary?.sync_statuses.find(
+    (s) => s.source === "toggl" && isTogglRateLimitMessage(s.error_message)
+  );
+  if (!status) return null;
+  return { retryHint: formatRetryAfter(parseTogglRateLimitRetry(status.error_message)) };
+});
+
+function displaySyncErrorMessage(message: string | null): string | null {
+  if (!message) return null;
+  if (isTogglRateLimitMessage(message)) {
+    const hint = formatRetryAfter(parseTogglRateLimitRetry(message));
+    return hint
+      ? `Toggl のレート制限 (1 時間 30 回) に達しました。${hint}に再試行可能です。`
+      : "Toggl のレート制限 (1 時間 30 回) に達しました。少し待ってからリロードしてください。";
+  }
+  return message;
+}
 
 // =============================================================================
 // Today's ME aggregate (起床経過 / アクティブ / 未記録)
@@ -538,6 +581,22 @@ onBeforeUnmount(() => {
       </header>
 
       <p v-if="errorMessage" class="daily__error">{{ errorMessage }}</p>
+
+      <!-- Toggl レート制限バナー (Issue #185)。他サービスは同期継続中。 -->
+      <aside v-if="togglRateLimitBanner" class="daily__rate-limit" role="status">
+        <span class="daily__rate-limit-icon" aria-hidden="true">!</span>
+        <div class="daily__rate-limit-body">
+          <p class="daily__rate-limit-title">Toggl の利用回数上限に達しました</p>
+          <p class="daily__rate-limit-text">
+            Toggl API は 1 時間あたり 30 回までのリクエスト制限があります。
+            <template v-if="togglRateLimitBanner.retryHint">
+              {{ togglRateLimitBanner.retryHint }}を目安に再度ページをリロードしてください。
+            </template>
+            <template v-else> 少し時間をおいてからページをリロードしてください。 </template>
+            Oura / Google Calendar の同期は通常どおり継続しています。
+          </p>
+        </div>
+      </aside>
 
       <section v-if="loading && !summary" class="daily__loading">読み込み中...</section>
 
@@ -1143,7 +1202,7 @@ onBeforeUnmount(() => {
                 {{ formatHourMinute(s.last_synced_at, timezone) }}
               </span>
               <span v-if="s.error_message" class="sync__error">
-                {{ s.error_message }}
+                {{ displaySyncErrorMessage(s.error_message) }}
               </span>
             </li>
           </ul>
@@ -1353,6 +1412,51 @@ $font-en:
   background: $color-error-bg;
   border: 1px solid $color-error;
   border-radius: 8px;
+}
+
+// Issue #185: Toggl 429 専用バナー。エラーというより「待ってリロード」を
+// 促す情報通知なので warning 系のトーンで描く ($color-warning は #b7791f)。
+.daily__rate-limit {
+  margin-bottom: 24px;
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  background: #fdf4e0;
+  border: 1px solid $color-warning;
+  border-radius: 8px;
+}
+
+.daily__rate-limit-icon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  display: grid;
+  font-family: $font-en;
+  font-size: 14px;
+  font-weight: 700;
+  color: #fff;
+  background: $color-warning;
+  border-radius: 999px;
+  place-items: center;
+}
+
+.daily__rate-limit-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.daily__rate-limit-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: $color-warning;
+}
+
+.daily__rate-limit-text {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: $color-text-muted;
 }
 
 .daily__loading {

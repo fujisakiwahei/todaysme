@@ -35,6 +35,31 @@ const TOGGL_PAGE_LIMIT = 1000;
 // 通常到達しないが、Toggl の `at` が想定外の挙動をした際の保険として置く。
 const MAX_PAGE_ITERATIONS = 50;
 
+// Toggl API のレート制限 (公式ドキュメント: 1 IP / 1 トークンあたり概ね
+// 1 秒 1 リクエスト, 上限超過時は 429 Too Many Requests)。Issue #185。
+// 上位 (runRefresh.ts) で型分岐するために専用クラスを投げる。
+// retryAfterSeconds は Retry-After ヘッダがあれば数値を入れる (相対秒)。
+export class TogglRateLimitError extends Error {
+  public readonly retryAfterSeconds: number | null;
+  constructor(retryAfterSeconds: number | null) {
+    super("Toggl API rate limit exceeded (HTTP 429)");
+    this.name = "TogglRateLimitError";
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}
+
+function parseRetryAfter(header: string | null): number | null {
+  if (!header) return null;
+  const asInt = Number.parseInt(header, 10);
+  if (Number.isFinite(asInt) && asInt >= 0) return asInt;
+  const asDate = Date.parse(header);
+  if (Number.isFinite(asDate)) {
+    const diff = Math.ceil((asDate - Date.now()) / 1000);
+    return diff > 0 ? diff : 0;
+  }
+  return null;
+}
+
 export interface GetTogglDataOptions {
   apiToken: string;
   // target_date 算出用の IANA timezone (例: "Asia/Tokyo")
@@ -117,6 +142,9 @@ async function fetchPage(apiToken: string, params: FetchPageParams): Promise<Tog
     },
   });
 
+  if (res.status === 429) {
+    throw new TogglRateLimitError(parseRetryAfter(res.headers.get("Retry-After")));
+  }
   if (!res.ok) {
     throw new Error(`Toggl API request failed: HTTP ${res.status}`);
   }
@@ -210,6 +238,9 @@ export async function getTogglProjects(apiToken: string): Promise<TogglProject[]
     },
   });
 
+  if (res.status === 429) {
+    throw new TogglRateLimitError(parseRetryAfter(res.headers.get("Retry-After")));
+  }
   if (!res.ok) {
     throw new Error(`Toggl projects API request failed: HTTP ${res.status}`);
   }
