@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // OAuth / magic link callback。
-// PKCE フロー (`?code=...`) では exchangeCodeForSession を呼ぶ必要があり、
-// `@nuxtjs/supabase` 側の自動 redirect を `redirect: false` で無効化しているため
-// 自前で処理する。
+// `@nuxtjs/supabase` v2 は `@supabase/ssr` の createBrowserClient を使うため、
+// クライアント初期化時に `detectSessionInUrl` が `?code=...` を自動で交換し、
+// PKCE 検証子クッキーを消費する。自前で exchangeCodeForSession を呼ぶと検証子が
+// 既に消えていて必ず失敗するため、ここでは SIGNED_IN イベント (or getSession) を
+// 待ってセッション確立後に遷移する。Issue #200。
 definePageMeta({ layout: false });
 
 const supabase = useSupabaseClient();
@@ -17,30 +19,48 @@ function resolveNext(): string {
   return "/daily/today";
 }
 
+function waitForSignIn(timeoutMs: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session) {
+        subscription.unsubscribe();
+        clearTimeout(timer);
+        resolve(true);
+      }
+    });
+    const timer = setTimeout(() => {
+      subscription.unsubscribe();
+      resolve(false);
+    }, timeoutMs);
+  });
+}
+
 onMounted(async () => {
   try {
-    const code = route.query.code;
     const oauthError = route.query.error_description ?? route.query.error;
     if (typeof oauthError === "string") {
       errorMessage.value = oauthError;
       return;
     }
 
+    const { data: existing } = await supabase.auth.getSession();
+    if (existing.session) {
+      await navigateTo(resolveNext(), { replace: true });
+      return;
+    }
+
+    const code = route.query.code;
     if (typeof code === "string") {
-      const { error } = await supabase.auth.exchangeCodeForSession(code);
-      if (error) {
-        errorMessage.value = `認可コードの交換に失敗しました: ${error.message}`;
-        return;
-      }
-    } else {
-      const { data } = await supabase.auth.getSession();
-      if (!data.session) {
-        errorMessage.value = "サインインに失敗しました。再度お試しください。";
+      const signedIn = await waitForSignIn(5000);
+      if (signedIn) {
+        await navigateTo(resolveNext(), { replace: true });
         return;
       }
     }
 
-    await navigateTo(resolveNext(), { replace: true });
+    errorMessage.value = "サインインに失敗しました。再度お試しください。";
   } catch (e) {
     errorMessage.value = e instanceof Error ? e.message : "サインインに失敗しました";
   }
