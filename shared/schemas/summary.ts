@@ -92,12 +92,11 @@ export const todaysMeOuraSchema = z.object({
 
 export const todaysMeGoogleSchema = z.object({
   total_minutes: z.number().int(),
-  by_calendar: z.array(
-    z.object({
-      calendar_name: z.string(),
-      minutes: z.number().int(),
-    })
-  ),
+  // Issue #201: ダッシュボードの metric--calendar カードで「未到達 / 進行中 /
+  // 完了」を絵文字付きで一覧表示するため、target_date (ユーザータイムゾーン)
+  // の 00:00–24:00 に重なる予定を返す。wake range 外の未来予定もここに含めるが、
+  // 集計値 (total_minutes) は従来通り wake range 内のみで計算する。
+  events: z.array(calendarTimelineEntrySchema),
 });
 
 export const todaysMeTogglSchema = z.object({

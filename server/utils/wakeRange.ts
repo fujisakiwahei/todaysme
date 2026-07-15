@@ -53,6 +53,45 @@ export function targetDateOf(wakeAt: Date | string, timezone: string): string {
 }
 
 // =============================================================================
+// dayBoundsInTimezone
+//   YYYY-MM-DD を指定したタイムゾーンの 00:00 / 翌日 00:00 に対応する UTC
+//   インスタント (Date) として返す。Issue #201 のように「target_date の
+//   1 日分の予定」を抽出するときに使う。
+//
+//   実装メモ: tz offset を一度だけ計算するため、target_date の正午 UTC を
+//   tz でフォーマットしたものとの差分から offset(分) を求めている。DST 跨ぎ
+//   の日でも、その日の正午における offset を採用する単純実装で十分。
+// =============================================================================
+
+export function dayBoundsInTimezone(
+  targetDate: string,
+  timezone: string
+): { start: Date; end: Date } {
+  const [y, m, d] = targetDate.split("-").map(Number);
+  if (!y || !m || !d) {
+    throw new Error(`Invalid target_date: ${targetDate}`);
+  }
+  const noonUtc = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(noonUtc);
+  const hh = Number(parts.find((p) => p.type === "hour")?.value);
+  const mm = Number(parts.find((p) => p.type === "minute")?.value);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) {
+    throw new Error(`Failed to format noon in timezone ${timezone}`);
+  }
+  // hh:mm は「12:00 UTC が tz で何時に見えるか」。tz offset(分) = (tz local) - UTC
+  const offsetMin = hh * 60 + mm - 12 * 60;
+  // 00:00 (local) を UTC 換算: UTC = local 00:00 - offsetMin
+  const start = new Date(Date.UTC(y, m - 1, d, 0, -offsetMin, 0));
+  const end = new Date(Date.UTC(y, m - 1, d + 1, 0, -offsetMin, 0));
+  return { start, end };
+}
+
+// =============================================================================
 // computeWakeRange
 // 純粋関数版。テスト容易性のため I/O を分離している。
 //   - 当日:   その日の wake_at → 現在 (options.now)

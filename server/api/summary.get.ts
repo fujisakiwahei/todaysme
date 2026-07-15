@@ -25,6 +25,7 @@ import { listServiceConnections } from "../utils/serviceConnection";
 import { getSupabaseAdmin } from "../utils/supabaseAdmin";
 import { parseOrThrow } from "../utils/validation";
 import {
+  dayBoundsInTimezone,
   overlaps,
   targetDateOf,
   wakeRangeOf,
@@ -158,14 +159,28 @@ export default defineEventHandler(async (event) => {
     timezone,
   });
 
+  // Issue #201: 「ダッシュボードのカレンダー」で当日の未来予定まで一覧表示
+  // するため、target_date の 00:00–24:00 (ユーザータイムゾーン) も取得対象に
+  // 含める。wake range 内に閉じない future event を別途読み込むイメージ。
+  const dayBounds = dayBoundsInTimezone(date, timezone);
+  const dayBoundStartIso = dayBounds.start.toISOString();
+  const dayBoundEndIso = dayBounds.end.toISOString();
+
   // -- records (wake range と重なるもの) -----------------------------------
   let sleepRows: SleepRow[] = [];
   let calendarRows: CalendarRow[] = [];
+  let calendarRowsForDay: CalendarRow[] = [];
   let togglRows: TogglRow[] = [];
 
   if (internalRange) {
     const fromIso = internalRange.start.toISOString();
     const toIso = internalRange.end.toISOString();
+
+    // calendar は (a) wake range と重なる予定 + (b) target_date の 1 日に
+    // 重なる予定 を両方取りたい。日付バウンドは wake range とは独立して
+    // 拡張するため、上限/下限の最大集合で 1 回だけクエリする。
+    const calendarFromIso = fromIso < dayBoundStartIso ? fromIso : dayBoundStartIso;
+    const calendarToIso = toIso > dayBoundEndIso ? toIso : dayBoundEndIso;
 
     const [sleepRes, calendarRes, togglRes] = await Promise.all([
       // 睡眠は sleep_start_at..wake_at が wake range と重なるもの。
@@ -184,8 +199,8 @@ export default defineEventHandler(async (event) => {
         )
         .eq("user_id", userId)
         .eq("is_deleted", false)
-        .lte("start_at", toIso)
-        .gte("end_at", fromIso)
+        .lte("start_at", calendarToIso)
+        .gte("end_at", calendarFromIso)
         .order("start_at", { ascending: true }),
       // Toggl は end_at が null (進行中) を許容する。end_at IS NULL もしくは
       // end_at >= fromIso のものだけを DB 側で絞り込み、JS の overlaps() で最終判定する。
@@ -219,9 +234,17 @@ export default defineEventHandler(async (event) => {
       const e = new Date(r.wake_at).getTime();
       return s < rangeEndMs && e >= rangeStartMs;
     });
-    calendarRows = ((calendarRes.data ?? []) as CalendarRow[]).filter((r) =>
-      overlaps(internalRange, r.start_at, r.end_at)
-    );
+    // wake range と重なる予定 (timeline / 集計用)
+    const allCalendarRows = (calendarRes.data ?? []) as CalendarRow[];
+    calendarRows = allCalendarRows.filter((r) => overlaps(internalRange, r.start_at, r.end_at));
+    // target_date の 1 日に重なる予定 (Issue #201: ダッシュボードの予定一覧用)
+    const dayStartMs = dayBounds.start.getTime();
+    const dayEndMs = dayBounds.end.getTime();
+    calendarRowsForDay = allCalendarRows.filter((r) => {
+      const s = new Date(r.start_at).getTime();
+      const e = new Date(r.end_at).getTime();
+      return s < dayEndMs && e > dayStartMs;
+    });
     togglRows = ((togglRes.data ?? []) as TogglRow[]).filter((r) =>
       overlaps(internalRange, r.start_at, r.end_at)
     );
@@ -300,47 +323,18 @@ export default defineEventHandler(async (event) => {
     };
   }
 
-  // Google: wake range と重なる時間で集計。
+  // Google: 集計値 (total_minutes) は wake range と重なる時間で計算する。
   // 累積 drift を避けるため ms で足し上げ、最後にまとめて分へ丸める。
   // 除外対象 (Issue #131 Phase 5 で google_excluded_calendars テーブルに
   // 移行) は集計から外す (Issue #108)。
   //
-  // Issue #131 Phase 7: 複数 Google アカウント連携で同名カレンダー
-  // (例: "プライベート") が衝突するケースに備え、まず (calendar_name,
-  // connection_id) で集計し、衝突したラベルだけ "<name> (<email>)" に
-  // 接尾辞を付ける。1 接続しか登場しない名前は素のままにする。
+  // Issue #201: 予定一覧 (events) は wake range ではなく target_date (タイム
+  // ゾーン局所) の 00:00–24:00 で抽出する。ダッシュボードの metric--calendar
+  // カードで「未到達 / 進行中 / 完了」を絵文字付きで表示するため、wake range
+  // 外の未来予定も含める。除外カレンダーも is_excluded=true で残し、UI 側で
+  // fade 表示する。
   let google: TodaysMe["google"] = null;
   if (connected.has("google")) {
-    // connection_id → 表示用 email を引くマップを作る。account_email が無い
-    // 行 (= 旧データ / id_token から email を取れなかった) は provider_user_id
-    // の末尾 4 桁にフォールバックする。
-    const { data: googleConnRows, error: connErr } = await admin
-      .from("service_connections")
-      .select("id, provider_user_id, account_email")
-      .eq("user_id", userId)
-      .eq("provider", "google");
-    if (connErr) {
-      throw createError({
-        statusCode: 500,
-        statusMessage: `failed to load google connection labels: ${connErr.message}`,
-      });
-    }
-    const accountLabelByConn = new Map<string, string>();
-    for (const r of googleConnRows ?? []) {
-      const row = r as {
-        id: string;
-        provider_user_id: string | null;
-        account_email: string | null;
-      };
-      const label =
-        row.account_email ??
-        (row.provider_user_id ? `…${row.provider_user_id.slice(-4)}` : "unknown");
-      accountLabelByConn.set(row.id, label);
-    }
-
-    // (calendar_name, connection_id) ペア単位の集計 + name ごとに登場した
-    // connection_id の集合を別途持つ。
-    const byNameConnMs = new Map<string, Map<string, number>>();
     let totalMs = 0;
     if (internalRange) {
       for (const ev of calendarRows) {
@@ -348,37 +342,23 @@ export default defineEventHandler(async (event) => {
         const ms = overlappingMs(internalRange, ev.start_at, ev.end_at);
         if (ms <= 0) continue;
         totalMs += ms;
-        const name = ev.calendar_name ?? "";
-        let inner = byNameConnMs.get(name);
-        if (!inner) {
-          inner = new Map<string, number>();
-          byNameConnMs.set(name, inner);
-        }
-        inner.set(ev.connection_id, (inner.get(ev.connection_id) ?? 0) + ms);
       }
     }
 
-    const byCalendar: { calendar_name: string; minutes: number }[] = [];
-    for (const [name, perConn] of byNameConnMs) {
-      if (perConn.size <= 1) {
-        // 衝突なし → 名前のみで 1 エントリにまとめる。
-        const ms = Array.from(perConn.values()).reduce((a, b) => a + b, 0);
-        byCalendar.push({ calendar_name: name, minutes: msToMinutes(ms) });
-      } else {
-        // 衝突あり → アカウント別に "<name> (<email>)" を出す。
-        for (const [connId, ms] of perConn) {
-          const label = accountLabelByConn.get(connId) ?? "unknown";
-          byCalendar.push({
-            calendar_name: `${name} (${label})`,
-            minutes: msToMinutes(ms),
-          });
-        }
-      }
-    }
+    const events: CalendarTimelineEntry[] = calendarRowsForDay.map((r) => ({
+      id: r.id,
+      google_event_id: r.google_event_id,
+      calendar_id: r.calendar_id,
+      calendar_name: r.calendar_name,
+      title: r.title,
+      start_at: r.start_at,
+      end_at: r.end_at,
+      is_excluded: isExcluded(r.connection_id, r.calendar_id),
+    }));
 
     google = {
       total_minutes: msToMinutes(totalMs),
-      by_calendar: byCalendar,
+      events,
     };
   }
 

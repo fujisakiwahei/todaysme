@@ -123,6 +123,34 @@ function formatDuration(start: string, end: string | null): string {
   return `${h}h ${String(m).padStart(2, "0")}m`;
 }
 
+// =============================================================================
+// Calendar event status (Issue #201)
+//   ダッシュボードの metric--calendar カードで、target_date の予定を
+//   「未到達 / 進行中 / 完了」に分類して絵文字 + 透明度で見せ分けるための
+//   ヘルパ。now (1 分タイマで更新) と event の start/end を比較する。
+// =============================================================================
+type CalendarEventStatus = "done" | "ongoing" | "future";
+
+function eventStatus(ev: CalendarTimelineEntry): CalendarEventStatus {
+  const nowMs = now.value.getTime();
+  const startMs = new Date(ev.start_at).getTime();
+  const endMs = new Date(ev.end_at).getTime();
+  if (endMs <= nowMs) return "done";
+  if (startMs <= nowMs) return "ongoing";
+  return "future";
+}
+
+function eventEmoji(ev: CalendarTimelineEntry): string {
+  switch (eventStatus(ev)) {
+    case "done":
+      return "✅";
+    case "ongoing":
+      return "⏰";
+    case "future":
+      return "";
+  }
+}
+
 const lastSyncedAt = computed<string | null>(() => {
   if (!props.summary) return null;
   const ms = props.summary.sync_statuses
@@ -615,7 +643,7 @@ onBeforeUnmount(() => {
                   alt=""
                   class="metric__icon metric__icon--img"
                   aria-hidden="true"
-                />
+                >
                 Sleep
               </span>
               <span class="metric__tag">Oura</span>
@@ -674,7 +702,7 @@ onBeforeUnmount(() => {
                   alt=""
                   class="metric__icon metric__icon--img"
                   aria-hidden="true"
-                />
+                >
                 Calendar
               </span>
               <span class="metric__tag">Google</span>
@@ -690,15 +718,34 @@ onBeforeUnmount(() => {
                   )
                 }}<span class="unit">m</span>
               </div>
-              <dl class="metric__sub">
-                <div v-for="item in summary.todays_me.google.by_calendar" :key="item.calendar_name">
-                  <dt>{{ item.calendar_name || "（未分類）" }}</dt>
-                  <dd>
-                    {{ formatMinutes(item.minutes)?.hours }}h
-                    {{ String(formatMinutes(item.minutes)?.minutes ?? 0).padStart(2, "0") }}m
-                  </dd>
-                </div>
-              </dl>
+              <!-- Issue #201: target_date の予定一覧。未到達 (start > NOW) は
+                   opacity を落とし、進行中 (start ≤ NOW < end) は ⏰、終了済み
+                   (end ≤ NOW) は ✅ を冒頭に出す。NOW は now timer で 1 分毎に
+                   更新されるので、絵文字は自動で切り替わる。 -->
+              <ul v-if="summary.todays_me.google.events.length > 0" class="metric__events">
+                <li
+                  v-for="ev in summary.todays_me.google.events"
+                  :key="ev.id"
+                  class="metric__event"
+                  :class="{
+                    'metric__event--future': eventStatus(ev) === 'future',
+                    'metric__event--ongoing': eventStatus(ev) === 'ongoing',
+                    'metric__event--done': eventStatus(ev) === 'done',
+                    'metric__event--excluded': ev.is_excluded,
+                  }"
+                >
+                  <span class="metric__event-icon" aria-hidden="true">
+                    {{ eventEmoji(ev) }}
+                  </span>
+                  <span class="metric__event-time">
+                    {{ formatHourMinute(ev.start_at, timezone) }}
+                  </span>
+                  <span class="metric__event-title">
+                    {{ ev.title || ev.calendar_name || "(無題)" }}
+                  </span>
+                </li>
+              </ul>
+              <p v-else class="metric__events-empty">予定なし</p>
             </template>
             <p v-else class="metric__placeholder">
               <NuxtLink to="/settings">Google と接続する →</NuxtLink>
@@ -717,7 +764,7 @@ onBeforeUnmount(() => {
                   alt=""
                   class="metric__icon metric__icon--img"
                   aria-hidden="true"
-                />
+                >
                 Work
               </span>
               <span class="metric__tag">Toggl</span>
@@ -1062,7 +1109,7 @@ onBeforeUnmount(() => {
               :aria-expanded="openAccordions.sleep"
               @click="openAccordions.sleep = !openAccordions.sleep"
             >
-              <img :src="ouraIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" />
+              <img :src="ouraIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" >
               <span class="acc__title">Sleep — Oura</span>
               <span class="acc__meta"> {{ summary.timeline.sleep.length }} records </span>
               <span class="acc__chev" aria-hidden="true">
@@ -1110,7 +1157,7 @@ onBeforeUnmount(() => {
                 alt=""
                 class="acc__icon acc__icon--img"
                 aria-hidden="true"
-              />
+              >
               <span class="acc__title">Calendar — Google</span>
               <span class="acc__meta"> {{ summary.timeline.calendar.length }} events </span>
               <span class="acc__chev" aria-hidden="true">
@@ -1154,7 +1201,7 @@ onBeforeUnmount(() => {
               :aria-expanded="openAccordions.work"
               @click="openAccordions.work = !openAccordions.work"
             >
-              <img :src="togglIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" />
+              <img :src="togglIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" >
               <span class="acc__title">Work — Toggl</span>
               <span class="acc__meta"> {{ summary.timeline.toggl.length }} entries </span>
               <span class="acc__chev" aria-hidden="true">
@@ -1726,6 +1773,76 @@ $font-en:
       color: $color-accent-hover;
     }
   }
+}
+
+// -----------------------------------------------------------
+// Issue #201: metric--calendar の予定一覧
+//   従来の by_calendar (集計) は target_date の予定一覧に置き換えた。
+//   - done    (✅) : 通常表示
+//   - ongoing (⏰) : 通常表示
+//   - future  (未到達) : 絵文字無し + opacity 0.8
+//   - excluded: 稼働時間集計から除外されたカレンダー (Issue #108) は更に薄く
+// -----------------------------------------------------------
+.metric__events {
+  margin-top: 6px;
+  padding-left: 0;
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+
+.metric__event {
+  padding: 6px 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  color: $color-text;
+  border-top: 1px dashed $color-border-2;
+
+  &:first-child {
+    border-top: none;
+  }
+
+  &--future {
+    opacity: 0.8;
+  }
+
+  &--excluded {
+    opacity: 0.5;
+  }
+}
+
+.metric__event-icon {
+  flex-shrink: 0;
+  width: 1em;
+  font-size: 12px;
+  line-height: 1;
+  text-align: center;
+}
+
+.metric__event-time {
+  flex-shrink: 0;
+  font-family: $font-mono;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: $color-text-muted;
+}
+
+.metric__event-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metric__events-empty {
+  margin-top: 6px;
+  padding: 6px 0;
+  font-size: 12px;
+  color: $color-text-muted;
 }
 
 // -----------------------------------------------------------
