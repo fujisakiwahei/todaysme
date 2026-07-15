@@ -13,6 +13,7 @@ import type {
 import ouraIcon from "~/assets/styles/images/oura.webp";
 import googleCalendarIcon from "~/assets/styles/images/google-calendar.webp";
 import togglIcon from "~/assets/styles/images/toggl-track.webp";
+import todoistIcon from "~/assets/styles/images/todoist.svg";
 
 definePageMeta({
   middleware: ["auth"],
@@ -26,6 +27,7 @@ const connections = ref<ConnectionSummary[]>([]);
 const loading = ref(true);
 const submitting = ref<ServiceProvider | null>(null);
 const togglToken = ref("");
+const todoistToken = ref("");
 const errorMessage = ref<string | null>(null);
 const successMessage = ref<string | null>(null);
 
@@ -267,6 +269,30 @@ async function saveTogglToken() {
   }
 }
 
+// Issue #206: Todoist も Toggl と同じ API token 方式で接続する。
+async function saveTodoistToken() {
+  if (!todoistToken.value.trim()) return;
+  submitting.value = "todoist";
+  errorMessage.value = null;
+  successMessage.value = null;
+  try {
+    const headers = await bearerHeaders();
+    await $fetch("/api/connections/todoist", {
+      method: "POST",
+      headers,
+      body: { api_token: todoistToken.value.trim() },
+    });
+    todoistToken.value = "";
+    successMessage.value = "Todoist の API token を保存しました。";
+    await loadConnections();
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "failed to save token";
+    errorMessage.value = `Todoist token の保存に失敗しました: ${msg}`;
+  } finally {
+    submitting.value = null;
+  }
+}
+
 async function disconnect(provider: ServiceProvider) {
   if (!confirm(`${provider} の連携を解除しますか？`)) return;
   submitting.value = provider;
@@ -347,7 +373,7 @@ async function deleteGoogleAccount(account: GoogleAccount) {
 }
 
 type ProviderMeta = {
-  variant: "sleep" | "calendar" | "work";
+  variant: "sleep" | "calendar" | "work" | "task";
   name: string;
   icon: string;
   description: string;
@@ -391,6 +417,12 @@ const providerMeta: Record<ServiceProvider, ProviderMeta> = {
     icon: togglIcon,
     description: "作業ログを取得 (Work レーン)",
   },
+  todoist: {
+    variant: "task",
+    name: "Todoist",
+    icon: todoistIcon,
+    description: "完了タスクを取得 (日記用 Markdown コピー)",
+  },
 };
 
 function statusInfo(s: ConnectionSummary): {
@@ -420,6 +452,7 @@ const PROVIDER_LABEL_JA: Record<ServiceProvider, string> = {
   oura: "Oura",
   google: "Google Calendar",
   toggl: "Toggl Track",
+  todoist: "Todoist",
 };
 const requireConnectionsMissing = computed<ServiceProvider[]>(() => {
   const raw = route.query.require_connections;
@@ -558,6 +591,38 @@ onMounted(() => {
                   class="btn btn--ghost"
                   :disabled="submitting !== null"
                   @click="disconnect('toggl')"
+                >
+                  連携解除
+                </button>
+              </div>
+
+              <!-- Issue #206: Todoist も Toggl と同じ API token 方式。 -->
+              <div v-else-if="conn.provider === 'todoist'" class="conn__actions">
+                <form class="conn__form" @submit.prevent="saveTodoistToken">
+                  <label class="conn__field">
+                    <span class="conn__field-label">Todoist API token</span>
+                    <input
+                      v-model="todoistToken"
+                      type="password"
+                      autocomplete="off"
+                      spellcheck="false"
+                      placeholder="設定 → 連携機能 → API トークン から発行"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    class="btn btn--primary"
+                    :disabled="submitting !== null || !todoistToken.trim()"
+                  >
+                    {{ conn.has_token ? "更新する" : "保存する" }}
+                  </button>
+                </form>
+                <button
+                  v-if="conn.has_token"
+                  type="button"
+                  class="btn btn--ghost"
+                  :disabled="submitting !== null"
+                  @click="disconnect('todoist')"
                 >
                   連携解除
                 </button>
@@ -801,6 +866,8 @@ $color-calendar: #3e7b5a;
 $color-calendar-bg: #e5efe8;
 $color-work: #c2683a;
 $color-work-bg: #f5e7db;
+$color-task: #b23a2c;
+$color-task-bg: #f9e5e1;
 $color-success: #2f855a;
 $color-success-bg: #e6f4ec;
 $color-warning: #b7791f;
@@ -997,6 +1064,10 @@ $font-en:
     background: $color-work-bg;
     border-color: rgba(194, 104, 58, 0.15);
   }
+  .conn--task & {
+    background: $color-task-bg;
+    border-color: rgba(178, 58, 44, 0.15);
+  }
 
   img {
     width: 28px;
@@ -1022,6 +1093,9 @@ $font-en:
   }
   .conn--work & {
     color: $color-work;
+  }
+  .conn--task & {
+    color: $color-task;
   }
 }
 
@@ -1092,13 +1166,13 @@ $font-en:
   border-radius: 10px;
 
   &[data-status="needs_reauth"] {
-    border-color: $color-warning;
     background: #fff7e0;
+    border-color: $color-warning;
   }
 
   &[data-status="error"] {
-    border-color: $color-error;
     background: $color-error-bg;
+    border-color: $color-error;
   }
 
   &[data-status="disconnected"] {
@@ -1114,13 +1188,13 @@ $font-en:
 }
 
 .g-accounts__email {
-  flex: 1;
   min-width: 0;
+  flex: 1;
   overflow: hidden;
   font-family: $font-mono;
   font-size: 12px;
-  color: $color-text;
   word-break: break-all;
+  color: $color-text;
 }
 
 .g-accounts__badge {
@@ -1176,8 +1250,8 @@ $font-en:
   width: 100%;
   font-family: $font-mono;
   font-size: 12px;
-  color: $color-text-muted;
   word-break: break-all;
+  color: $color-text-muted;
 }
 
 .conn__actions {
@@ -1303,9 +1377,9 @@ $font-en:
   align-items: center;
   gap: 10px;
   font-size: 13px;
-  cursor: pointer;
   border-radius: 6px;
   transition: background 0.12s;
+  cursor: pointer;
 
   &:hover {
     background: #fff;

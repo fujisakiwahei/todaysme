@@ -291,7 +291,8 @@ export default defineEventHandler(async (event) => {
     target_date: date,
     timezone,
     wake_range,
-    todays_me: { oura, google, toggl },
+    // デモに Todoist データは無いため todoist レーンは常に null (Issue #206)。
+    todays_me: { oura, google, toggl, todoist: null },
     timeline,
     // デモは sync しないため常に空。
     sync_statuses: [],

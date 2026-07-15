@@ -15,6 +15,7 @@
 //     認証は cookie 経路 (`requireUserIdAllowCookie`) に統一。
 // =============================================================================
 import { isoDateSchema, type SummaryResponse } from "~~/shared/schemas";
+import { buildDiaryMarkdown } from "~/utils/diaryMarkdown";
 
 definePageMeta({
   middleware: ["auth", "require-connections"],
@@ -100,6 +101,37 @@ async function manualRefresh() {
     endAppLoading();
   }
 }
+
+// =============================================================================
+// 日記用 Markdown コピー (Issue #206)
+//   表示中の summary からデータブロックを生成してクリップボードへコピーする。
+//   成功時はアイコンを check に約 1.5 秒切り替えて完了を伝える。
+// =============================================================================
+const COPY_FEEDBACK_MS = 1500;
+const diaryCopied = ref(false);
+let diaryCopyResetTimer: ReturnType<typeof setTimeout> | null = null;
+
+async function copyDiaryMarkdown() {
+  const current = summary.value;
+  if (!current) return;
+  manualErrorMessage.value = null;
+  try {
+    await navigator.clipboard.writeText(buildDiaryMarkdown(current));
+    diaryCopied.value = true;
+    if (diaryCopyResetTimer) clearTimeout(diaryCopyResetTimer);
+    diaryCopyResetTimer = setTimeout(() => {
+      diaryCopied.value = false;
+    }, COPY_FEEDBACK_MS);
+  } catch (e) {
+    // clipboard API が使えない環境 (非 HTTPS 等) や権限拒否をエラーバナーで通知する。
+    const msg = e instanceof Error ? e.message : "failed to copy";
+    manualErrorMessage.value = `日記用 Markdown のコピーに失敗しました: ${msg}`;
+  }
+}
+
+onUnmounted(() => {
+  if (diaryCopyResetTimer) clearTimeout(diaryCopyResetTimer);
+});
 
 // 当日かつ stale なら裏で refresh する。
 // stale 判定 = sync_statuses が空、または last_synced_at が 30 分以上古い。
@@ -211,6 +243,19 @@ onMounted(() => {
           settings
         </span>
       </NuxtLink>
+      <button
+        type="button"
+        class="daily-copy-btn"
+        :class="{ 'daily-copy-btn--copied': diaryCopied }"
+        :disabled="loading || !summary"
+        aria-label="日記用 Markdown をコピー"
+        title="日記用 Markdown をコピー"
+        @click="copyDiaryMarkdown"
+      >
+        <span class="material-symbols-outlined daily-copy-btn__icon" aria-hidden="true">
+          {{ diaryCopied ? "check" : "content_copy" }}
+        </span>
+      </button>
     </template>
   </DailySummaryView>
 </template>
@@ -295,6 +340,47 @@ $color-accent-hover: #ecce5c;
 
 .daily-settings-btn__icon {
   font-size: 20px;
+  line-height: 1;
+}
+
+// 日記用 Markdown コピーボタン (Issue #206)。設定ギアと同トーンの丸ボタンで
+// 目立たせない。コピー成功時のみ check アイコン + 成功色で 1.5 秒フィードバック。
+.daily-copy-btn {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  color: $color-text;
+  background: #fff;
+  border: 1px solid rgba(26, 24, 20, 0.08);
+  border-radius: 999px;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    transform 0.08s;
+  cursor: pointer;
+
+  &:hover:not(:disabled) {
+    background: #f2f0ea;
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(1px);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  &--copied {
+    color: #2f855a;
+  }
+}
+
+.daily-copy-btn__icon {
+  font-size: 18px;
   line-height: 1;
 }
 </style>

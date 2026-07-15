@@ -37,6 +37,7 @@ import {
   tryAcquireSyncLock,
   type SyncStatusRow,
 } from "./syncLock";
+import { syncTodoistForDate } from "./syncTodoist";
 import { syncTogglForDate } from "./syncToggl";
 
 interface ProviderSyncContext {
@@ -65,9 +66,14 @@ const RUNNERS: Record<ServiceProvider, SyncRunner> = {
     if (!row) throw new ServiceNotConnectedError("toggl");
     return syncTogglForDate(userId, targetDate, timezone, row);
   },
+  todoist: ({ userId, targetDate, timezone }, connections) => {
+    const row = pickConnectedRow(connections, "todoist");
+    if (!row) throw new ServiceNotConnectedError("todoist");
+    return syncTodoistForDate(userId, targetDate, timezone, row);
+  },
 };
 
-const ALL_PROVIDERS: readonly ServiceProvider[] = ["oura", "google", "toggl"];
+const ALL_PROVIDERS: readonly ServiceProvider[] = ["oura", "google", "toggl", "todoist"];
 
 export interface RefreshUserDateResult {
   sync_statuses: SyncStatusEntry[];
@@ -107,7 +113,12 @@ export async function loadConnectedProviders(userId: string): Promise<Set<Servic
   const set = new Set<ServiceProvider>();
   for (const row of data ?? []) {
     const provider = (row as { provider: ServiceProvider }).provider;
-    if (provider === "oura" || provider === "google" || provider === "toggl") {
+    if (
+      provider === "oura" ||
+      provider === "google" ||
+      provider === "toggl" ||
+      provider === "todoist"
+    ) {
       set.add(provider);
     }
   }

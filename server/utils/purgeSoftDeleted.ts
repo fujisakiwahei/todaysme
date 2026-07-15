@@ -21,6 +21,7 @@ export const PURGE_TARGETS = [
   "oura_sleep_records",
   "google_calendar_events",
   "toggl_time_entries",
+  "todoist_completed_tasks",
 ] as const;
 
 export type PurgeTarget = (typeof PURGE_TARGETS)[number];

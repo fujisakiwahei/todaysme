@@ -45,6 +45,15 @@ export const togglConnectRequestSchema = z.object({
 });
 
 // -----------------------------------------------------------------------------
+// Todoist token 保存 (`POST /api/connections/todoist`) Issue #206
+// Toggl と同じく API token 方式 (設定 → 連携機能 → API トークン で発行)。
+// -----------------------------------------------------------------------------
+
+export const todoistConnectRequestSchema = z.object({
+  api_token: z.string().min(8).max(256),
+});
+
+// -----------------------------------------------------------------------------
 // 切断 (`DELETE /api/connections/:provider`)
 // -----------------------------------------------------------------------------
 
@@ -161,6 +170,7 @@ export const googleExcludedCalendarsUpdateResponseSchema = z.object({
 export type OauthStartResponse = z.infer<typeof oauthStartResponseSchema>;
 export type OauthCallbackQuery = z.infer<typeof oauthCallbackQuerySchema>;
 export type TogglConnectRequest = z.infer<typeof togglConnectRequestSchema>;
+export type TodoistConnectRequest = z.infer<typeof todoistConnectRequestSchema>;
 export type DisconnectParams = z.infer<typeof disconnectParamsSchema>;
 export type ConnectionSummary = z.infer<typeof connectionSummarySchema>;
 export type ConnectionListResponse = z.infer<typeof connectionListResponseSchema>;

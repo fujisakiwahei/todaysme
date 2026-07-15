@@ -61,6 +61,12 @@ interface TogglRow {
   end_at: string | null;
 }
 
+interface TodoistRow {
+  content: string | null;
+  project_name: string | null;
+  completed_at: string;
+}
+
 interface SyncStatusRow {
   source: SyncStatusEntry["source"];
   status: SyncStatusEntry["status"];
@@ -162,12 +168,13 @@ export default defineEventHandler(async (event) => {
   let sleepRows: SleepRow[] = [];
   let calendarRows: CalendarRow[] = [];
   let togglRows: TogglRow[] = [];
+  let todoistRows: TodoistRow[] = [];
 
   if (internalRange) {
     const fromIso = internalRange.start.toISOString();
     const toIso = internalRange.end.toISOString();
 
-    const [sleepRes, calendarRes, togglRes] = await Promise.all([
+    const [sleepRes, calendarRes, togglRes, todoistRes] = await Promise.all([
       // 睡眠は sleep_start_at..wake_at が wake range と重なるもの。
       admin
         .from("oura_sleep_records")
@@ -197,11 +204,23 @@ export default defineEventHandler(async (event) => {
         .lte("start_at", toIso)
         .or(`end_at.gte.${fromIso},end_at.is.null`)
         .order("start_at", { ascending: true }),
+      // Todoist 完了タスク (Issue #206) は「完了した瞬間」の点イベントなので、
+      // 期間 overlap ではなく completed_at が wake range に入るかで読む。
+      admin
+        .from("todoist_completed_tasks")
+        .select("content, project_name, completed_at")
+        .eq("user_id", userId)
+        .eq("is_deleted", false)
+        .gte("completed_at", fromIso)
+        .lte("completed_at", toIso)
+        .order("completed_at", { ascending: true }),
     ]);
 
     if (sleepRes.error) throw sleepRes.error;
     if (calendarRes.error) throw calendarRes.error;
     if (togglRes.error) throw togglRes.error;
+    if (todoistRes.error) throw todoistRes.error;
+    todoistRows = (todoistRes.data ?? []) as TodoistRow[];
 
     // DB クエリは inclusive bound のため、range.end に exact-touch する
     // 翌日分の sleep / 境界線上の calendar event が混入しうる。再フィルタで除外する。
@@ -225,6 +244,20 @@ export default defineEventHandler(async (event) => {
     togglRows = ((togglRes.data ?? []) as TogglRow[]).filter((r) =>
       overlaps(internalRange, r.start_at, r.end_at)
     );
+  } else {
+    // wake 記録が無い日は wake range を定義できないため、Todoist 完了タスクのみ
+    // ユーザー TZ の暦日 (= 同期時に targetDateOf で振った target_date) に
+    // フォールバックして読む (Issue #206)。他レーンは range 前提の集計なので
+    // 従来どおり空のまま。
+    const { data, error } = await admin
+      .from("todoist_completed_tasks")
+      .select("content, project_name, completed_at")
+      .eq("user_id", userId)
+      .eq("is_deleted", false)
+      .eq("target_date", date)
+      .order("completed_at", { ascending: true });
+    if (error) throw error;
+    todoistRows = (data ?? []) as TodoistRow[];
   }
 
   // -- sync statuses (Issue #143 で前段 Promise.all に移動済み) -----------
@@ -417,6 +450,19 @@ export default defineEventHandler(async (event) => {
     };
   }
 
+  // Todoist: 日記用 Markdown の「完了タスク」セクション用 (Issue #206)。
+  // タイムラインには出さない (ユーザー決定) ため、完了タスクの列挙のみ。
+  let todoist: TodaysMe["todoist"] = null;
+  if (connected.has("todoist")) {
+    todoist = {
+      completed: todoistRows.map((r) => ({
+        content: r.content ?? "",
+        project_name: r.project_name,
+        completed_at: r.completed_at,
+      })),
+    };
+  }
+
   // -- レスポンス -----------------------------------------------------------
   const wake_range: WakeRange | null = internalRange
     ? {
@@ -429,7 +475,7 @@ export default defineEventHandler(async (event) => {
     target_date: date,
     timezone,
     wake_range,
-    todays_me: { oura, google, toggl },
+    todays_me: { oura, google, toggl, todoist },
     timeline,
     sync_statuses,
   };
