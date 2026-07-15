@@ -268,19 +268,28 @@ export default defineEventHandler(async (event) => {
       overlaps(internalRange, r.start_at, r.end_at)
     );
   } else {
-    // wake 記録が無い日は wake range を定義できないため、Todoist 完了タスクのみ
-    // ユーザー TZ の暦日 (= 同期時に targetDateOf で振った target_date) に
-    // フォールバックして読む (Issue #206)。他レーンは range 前提の集計なので
-    // 従来どおり空のまま。
-    const { data, error } = await admin
-      .from("todoist_completed_tasks")
-      .select("content, project_name, completed_at")
-      .eq("user_id", userId)
-      .eq("is_deleted", false)
-      .eq("target_date", date)
-      .order("completed_at", { ascending: true });
-    if (error) throw error;
-    todoistRows = (data ?? []) as TodoistRow[];
+    // wake 記録が無い日は wake range を定義できないため、過去日に限り Todoist
+    // 完了タスクのみユーザー TZ の暦日 (= 同期時に targetDateOf で振った
+    // target_date) にフォールバックして読む (Issue #206)。リング非装着などで
+    // 睡眠データが欠けた過去日でも、日記用の完了タスクを出せるようにする。
+    //
+    // 当日 (以降) はフォールバックせず空のままにする。深夜 0 時過ぎ〜起床データ
+    // 同期前に暦日で読むと、就寝前に完了したタスクが「まだ始まっていない翌日」の
+    // ページへ漏れて、wake range 基準の Toggl / Calendar と日付の境界がズレる。
+    // その時間帯のタスクは前日ページの wake range (終端 = 現在時刻) 側に表示される。
+    // 他レーンは range 前提の集計なので従来どおり空のまま。
+    const todayInTz = targetDateOf(new Date(), timezone);
+    if (date < todayInTz) {
+      const { data, error } = await admin
+        .from("todoist_completed_tasks")
+        .select("content, project_name, completed_at")
+        .eq("user_id", userId)
+        .eq("is_deleted", false)
+        .eq("target_date", date)
+        .order("completed_at", { ascending: true });
+      if (error) throw error;
+      todoistRows = (data ?? []) as TodoistRow[];
+    }
   }
 
   // -- sync statuses (Issue #143 で前段 Promise.all に移動済み) -----------
