@@ -24,6 +24,7 @@ import { fetchWakeBasedToday, targetDateInTimezone } from "~/utils/wakeBasedToda
 import ouraIcon from "~/assets/styles/images/oura.webp";
 import googleCalendarIcon from "~/assets/styles/images/google-calendar.webp";
 import togglIcon from "~/assets/styles/images/toggl-track.webp";
+import todoistIcon from "~/assets/styles/images/todoist.webp";
 
 const props = withDefaults(
   defineProps<{
@@ -472,11 +473,17 @@ const openAccordions = reactive<{
   sleep: boolean;
   calendar: boolean;
   work: boolean;
+  task: boolean;
 }>({
   sleep: true,
   calendar: true,
   work: true,
+  task: true,
 });
+
+// Todoist 完了タスク一覧 (todays_me.todoist)。未連携 (null) のときは
+// アコーディオン自体を描画しない (日記用 Markdown と同じ「未連携は省略」ルール)。
+const todoistCompleted = computed(() => props.summary?.todays_me.todoist?.completed ?? []);
 
 // =============================================================================
 // Today button
@@ -643,7 +650,7 @@ onBeforeUnmount(() => {
                   alt=""
                   class="metric__icon metric__icon--img"
                   aria-hidden="true"
-                >
+                />
                 Sleep
               </span>
               <span class="metric__tag">Oura</span>
@@ -702,7 +709,7 @@ onBeforeUnmount(() => {
                   alt=""
                   class="metric__icon metric__icon--img"
                   aria-hidden="true"
-                >
+                />
                 Calendar
               </span>
               <span class="metric__tag">Google</span>
@@ -764,7 +771,7 @@ onBeforeUnmount(() => {
                   alt=""
                   class="metric__icon metric__icon--img"
                   aria-hidden="true"
-                >
+                />
                 Work
               </span>
               <span class="metric__tag">Toggl</span>
@@ -1109,7 +1116,7 @@ onBeforeUnmount(() => {
               :aria-expanded="openAccordions.sleep"
               @click="openAccordions.sleep = !openAccordions.sleep"
             >
-              <img :src="ouraIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" >
+              <img :src="ouraIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" />
               <span class="acc__title">Sleep — Oura</span>
               <span class="acc__meta"> {{ summary.timeline.sleep.length }} records </span>
               <span class="acc__chev" aria-hidden="true">
@@ -1157,7 +1164,7 @@ onBeforeUnmount(() => {
                 alt=""
                 class="acc__icon acc__icon--img"
                 aria-hidden="true"
-              >
+              />
               <span class="acc__title">Calendar — Google</span>
               <span class="acc__meta"> {{ summary.timeline.calendar.length }} events </span>
               <span class="acc__chev" aria-hidden="true">
@@ -1201,7 +1208,7 @@ onBeforeUnmount(() => {
               :aria-expanded="openAccordions.work"
               @click="openAccordions.work = !openAccordions.work"
             >
-              <img :src="togglIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" >
+              <img :src="togglIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" />
               <span class="acc__title">Work — Toggl</span>
               <span class="acc__meta"> {{ summary.timeline.toggl.length }} entries </span>
               <span class="acc__chev" aria-hidden="true">
@@ -1226,6 +1233,45 @@ onBeforeUnmount(() => {
                   </span>
                   <span class="entry__dur">
                     {{ formatDuration(t.start_at, t.end_at) }}
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </article>
+
+          <article v-if="summary.todays_me.todoist" class="acc acc--task">
+            <button
+              type="button"
+              class="acc__head"
+              :aria-expanded="openAccordions.task"
+              @click="openAccordions.task = !openAccordions.task"
+            >
+              <img :src="todoistIcon" alt="" class="acc__icon acc__icon--img" aria-hidden="true" />
+              <span class="acc__title">Tasks — Todoist</span>
+              <span class="acc__meta"> {{ todoistCompleted.length }} tasks </span>
+              <span class="acc__chev" aria-hidden="true">
+                {{ openAccordions.task ? "▾" : "▸" }}
+              </span>
+            </button>
+            <div v-if="openAccordions.task" class="acc__body">
+              <p v-if="todoistCompleted.length === 0" class="acc__empty">
+                完了タスクはありません。
+              </p>
+              <ul v-else class="entry-list">
+                <li
+                  v-for="(t, index) in todoistCompleted"
+                  :key="`${t.completed_at}-${index}`"
+                  class="entry"
+                >
+                  <span class="entry__time">
+                    {{ formatHourMinute(t.completed_at, timezone) }}
+                  </span>
+                  <span class="entry__title">
+                    <span aria-hidden="true">✔️</span>
+                    {{ t.content || "(無題のタスク)" }}
+                    <span v-if="t.project_name" class="entry__tag">
+                      {{ t.project_name }}
+                    </span>
                   </span>
                 </li>
               </ul>
@@ -1275,6 +1321,8 @@ $color-calendar: #3e7b5a;
 $color-calendar-bg: #e5efe8;
 $color-work: #c2683a;
 $color-work-bg: #f5e7db;
+$color-task: #b23a2c;
+$color-task-bg: #f9e5e1;
 $color-warning: #b7791f;
 $color-error: #c53030;
 $color-error-bg: #fbe9e9;
@@ -2539,6 +2587,10 @@ $font-en:
   .acc--work & {
     color: $color-work;
     background: $color-work-bg;
+  }
+  .acc--task & {
+    color: $color-task;
+    background: $color-task-bg;
   }
 }
 
