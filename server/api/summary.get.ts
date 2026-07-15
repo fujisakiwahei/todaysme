@@ -183,15 +183,13 @@ export default defineEventHandler(async (event) => {
     const fromIso = internalRange.start.toISOString();
     const toIso = internalRange.end.toISOString();
 
-
     // calendar は (a) wake range と重なる予定 + (b) target_date の 1 日に
     // 重なる予定 を両方取りたい。日付バウンドは wake range とは独立して
     // 拡張するため、上限/下限の最大集合で 1 回だけクエリする。
     const calendarFromIso = fromIso < dayBoundStartIso ? fromIso : dayBoundStartIso;
     const calendarToIso = toIso > dayBoundEndIso ? toIso : dayBoundEndIso;
 
-    const [sleepRes, calendarRes, togglRes] = await Promise.all([
-
+    const [sleepRes, calendarRes, togglRes, todoistRes] = await Promise.all([
       // 睡眠は sleep_start_at..wake_at が wake range と重なるもの。
       admin
         .from("oura_sleep_records")
