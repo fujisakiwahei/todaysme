@@ -14,3 +14,4 @@ export * from "./connections";
 export * from "./oura";
 export * from "./google";
 export * from "./toggl";
+export * from "./todoist";

@@ -630,6 +630,12 @@ export function pickConnectedRows(
   );
 }
 
+// API token 方式 (refresh 概念がない) のプロバイダ。Toggl / Todoist が該当し、
+// 期限チェック・refresh・401 リトライの対象から外す (Issue #206)。
+function isApiTokenProvider(provider: ServiceProvider): boolean {
+  return provider === "toggl" || provider === "todoist";
+}
+
 function decryptStoredToken(packed: string, label: string): string {
   let payload: EncryptedPayload;
   try {
@@ -691,7 +697,7 @@ async function callProviderRefresh(
       scopes: token.scope,
     };
   }
-  // Toggl はそもそも refresh の概念がない (API token 方式)。
+  // Toggl / Todoist はそもそも refresh の概念がない (API token 方式)。
   throw new OauthRefreshError(provider, "refresh is not supported");
 }
 
@@ -811,8 +817,11 @@ export async function getValidAccessTokenByConnectionId(connectionId: string): P
 }
 
 async function getValidAccessTokenFromRow(row: ServiceConnectionTokenRow): Promise<string> {
-  if (row.provider === "toggl") {
-    return decryptStoredToken(row.access_token_encrypted!, "toggl access_token_encrypted");
+  if (isApiTokenProvider(row.provider)) {
+    return decryptStoredToken(
+      row.access_token_encrypted!,
+      `${row.provider} access_token_encrypted`
+    );
   }
 
   const expiresAt = row.token_expires_at ? new Date(row.token_expires_at).getTime() : null;
@@ -827,8 +836,8 @@ async function getValidAccessTokenFromRow(row: ServiceConnectionTokenRow): Promi
 
 // 401 が来た直後など、保存中の expires に関係なく必ず refresh したいときに使う。
 async function forceRefreshAccessToken(row: ServiceConnectionTokenRow): Promise<string> {
-  if (row.provider === "toggl") {
-    // Toggl には refresh が無いので、これ以上できることがない。
+  if (isApiTokenProvider(row.provider)) {
+    // Toggl / Todoist には refresh が無いので、これ以上できることがない。
     throw new OauthRefreshError(row.provider, "refresh is not supported");
   }
   return performRefresh(row);
@@ -885,7 +894,7 @@ async function runWithRetry<T>(
     if (
       !(err instanceof OauthUnauthorizedError) ||
       err.provider !== row.provider ||
-      row.provider === "toggl"
+      isApiTokenProvider(row.provider)
     ) {
       throw err;
     }

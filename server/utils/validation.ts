@@ -60,7 +60,7 @@ export function parseOrThrow<S extends ZodType>(
 export function parseExternal<S extends ZodType>(
   schema: S,
   data: unknown,
-  service: "oura" | "google" | "toggl"
+  service: "oura" | "google" | "toggl" | "todoist"
 ): z.infer<S> {
   return parseOrThrow(schema, data, {
     statusCode: 502,

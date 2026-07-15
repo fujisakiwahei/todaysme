@@ -112,11 +112,24 @@ export const todaysMeTogglSchema = z.object({
   ),
 });
 
+// Issue #206: 日記用 Markdown の「完了タスク」セクション用。タイムラインには
+// 出さない (ユーザー決定) ため、集計値ではなく完了タスクの列挙のみを持つ。
+export const todaysMeTodoistSchema = z.object({
+  completed: z.array(
+    z.object({
+      content: z.string(),
+      project_name: z.string().nullable(),
+      completed_at: isoDateTimeSchema,
+    })
+  ),
+});
+
 export const todaysMeSchema = z.object({
   // 各サービス未連携時は null
   oura: todaysMeOuraSchema.nullable(),
   google: todaysMeGoogleSchema.nullable(),
   toggl: todaysMeTogglSchema.nullable(),
+  todoist: todaysMeTodoistSchema.nullable(),
 });
 
 // -----------------------------------------------------------------------------
@@ -170,5 +183,6 @@ export type CalendarTimelineEntry = z.infer<typeof calendarTimelineEntrySchema>;
 export type TogglTimelineEntry = z.infer<typeof togglTimelineEntrySchema>;
 export type Timeline = z.infer<typeof timelineSchema>;
 export type TodaysMe = z.infer<typeof todaysMeSchema>;
+export type TodaysMeTodoist = z.infer<typeof todaysMeTodoistSchema>;
 export type SyncStatusEntry = z.infer<typeof syncStatusEntrySchema>;
 export type WakeRange = z.infer<typeof wakeRangeSchema>;

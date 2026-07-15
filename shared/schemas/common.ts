@@ -18,7 +18,8 @@ export const uuidSchema = z.uuid();
 
 // 外部サービスの識別子。
 // service_connections.provider と daily_sync_statuses.source は同じ集合 (SPEC §11.x)
-export const serviceProviderSchema = z.enum(["oura", "google", "toggl"]);
+// todoist は Issue #206 (日記用 Markdown コピーの完了タスク) で追加。
+export const serviceProviderSchema = z.enum(["oura", "google", "toggl", "todoist"]);
 
 // daily_sync_statuses.status
 export const syncStatusSchema = z.enum(["idle", "in_progress", "success", "failed"]);
