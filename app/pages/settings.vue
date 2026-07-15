@@ -13,7 +13,7 @@ import type {
 import ouraIcon from "~/assets/styles/images/oura.webp";
 import googleCalendarIcon from "~/assets/styles/images/google-calendar.webp";
 import togglIcon from "~/assets/styles/images/toggl-track.webp";
-import todoistIcon from "~/assets/styles/images/todoist.svg";
+import todoistIcon from "~/assets/styles/images/todoist.webp";
 
 definePageMeta({
   middleware: ["auth"],
@@ -1070,8 +1070,8 @@ $font-en:
   }
 
   img {
-    width: 28px;
-    height: 28px;
+    width: 100%;
+    height: 100%;
     object-fit: contain;
   }
 }
