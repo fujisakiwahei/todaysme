@@ -28,6 +28,7 @@ import { getSupabaseAdmin } from "../../utils/supabaseAdmin";
 import { parseOrThrow } from "../../utils/validation";
 import {
   computeWakeRange,
+  dayBoundsInTimezone,
   overlaps,
   targetDateOf,
   type SleepRecordLike,
@@ -103,14 +104,24 @@ export default defineEventHandler(async (event) => {
     timezone,
   });
 
+  // Issue #201: 当日の予定一覧用に target_date の 1 日範囲を別途計算する。
+  const dayBounds = dayBoundsInTimezone(date, timezone);
+  const dayBoundStartIso = dayBounds.start.toISOString();
+  const dayBoundEndIso = dayBounds.end.toISOString();
+
   // -- records (wake range と重なるもの) -----------------------------------
   let sleepRows: SleepRow[] = [];
   let calendarRows: CalendarRow[] = [];
+  let calendarRowsForDay: CalendarRow[] = [];
   let togglRows: TogglRow[] = [];
 
   if (internalRange) {
     const fromIso = internalRange.start.toISOString();
     const toIso = internalRange.end.toISOString();
+
+    // Issue #201: wake range / target_date のいずれかに重なる予定を 1 回で取得。
+    const calendarFromIso = fromIso < dayBoundStartIso ? fromIso : dayBoundStartIso;
+    const calendarToIso = toIso > dayBoundEndIso ? toIso : dayBoundEndIso;
 
     const [sleepRes, calendarRes, togglRes] = await Promise.all([
       admin
@@ -124,8 +135,8 @@ export default defineEventHandler(async (event) => {
         .from("demo_google_calendar_events")
         .select("id, google_event_id, calendar_name, title, start_at, end_at")
         .eq("is_deleted", false)
-        .lte("start_at", toIso)
-        .gte("end_at", fromIso)
+        .lte("start_at", calendarToIso)
+        .gte("end_at", calendarFromIso)
         .order("start_at", { ascending: true }),
       // Toggl は end_at が null (進行中) を許容する。end_at IS NULL もしくは
       // end_at >= fromIso のものだけを DB 側で絞り込み、JS の overlaps() で最終判定する。
@@ -152,9 +163,16 @@ export default defineEventHandler(async (event) => {
       const e = new Date(r.wake_at).getTime();
       return s < rangeEndMs && e >= rangeStartMs;
     });
-    calendarRows = ((calendarRes.data ?? []) as CalendarRow[]).filter((r) =>
-      overlaps(internalRange, r.start_at, r.end_at)
-    );
+    const allCalendarRows = (calendarRes.data ?? []) as CalendarRow[];
+    calendarRows = allCalendarRows.filter((r) => overlaps(internalRange, r.start_at, r.end_at));
+    // Issue #201: target_date (タイムゾーン局所) の 00:00–24:00 と重なる予定。
+    const dayStartMs = dayBounds.start.getTime();
+    const dayEndMs = dayBounds.end.getTime();
+    calendarRowsForDay = allCalendarRows.filter((r) => {
+      const s = new Date(r.start_at).getTime();
+      const e = new Date(r.end_at).getTime();
+      return s < dayEndMs && e > dayStartMs;
+    });
     togglRows = ((togglRes.data ?? []) as TogglRow[]).filter((r) =>
       overlaps(internalRange, r.start_at, r.end_at)
     );
@@ -223,27 +241,38 @@ export default defineEventHandler(async (event) => {
     };
   }
 
-  // Google: wake range と重なる時間で集計。
+  // Google: 集計値 (total_minutes) は wake range と重なる時間で計算する。
   // 累積 drift を避けるため ms で足し上げ、最後にまとめて分へ丸める。
+  //
+  // Issue #201: 予定一覧 (events) は target_date (タイムゾーン局所) の
+  // 00:00–24:00 で抽出する。ダッシュボードの metric--calendar カードで
+  // 「未到達 / 進行中 / 完了」を絵文字付きで一覧表示するため、wake range
+  // 外の未来予定も含める。
   let google: TodaysMe["google"];
   {
-    const byCalendarMs = new Map<string, number>();
     let totalMs = 0;
     if (internalRange) {
       for (const ev of calendarRows) {
         const ms = overlappingMs(internalRange, ev.start_at, ev.end_at);
         if (ms <= 0) continue;
         totalMs += ms;
-        const name = ev.calendar_name ?? "";
-        byCalendarMs.set(name, (byCalendarMs.get(name) ?? 0) + ms);
       }
     }
+    const events: CalendarTimelineEntry[] = calendarRowsForDay.map((r) => ({
+      id: r.id,
+      google_event_id: r.google_event_id,
+      // デモテーブルは calendar_id を保持しないため、除外設定もデモでは
+      // 適用しない (timeline 側と同じ扱い)。
+      calendar_id: null,
+      calendar_name: r.calendar_name,
+      title: r.title,
+      start_at: r.start_at,
+      end_at: r.end_at,
+      is_excluded: false,
+    }));
     google = {
       total_minutes: msToMinutes(totalMs),
-      by_calendar: Array.from(byCalendarMs.entries()).map(([calendar_name, ms]) => ({
-        calendar_name,
-        minutes: msToMinutes(ms),
-      })),
+      events,
     };
   }
 
