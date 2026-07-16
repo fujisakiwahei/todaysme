@@ -23,6 +23,7 @@ import type {
 import { isTogglRateLimitMessage } from "~~/shared/schemas";
 import { circledNumber } from "~/utils/circledNumber";
 import { fetchWakeBasedToday, targetDateInTimezone } from "~/utils/wakeBasedToday";
+import { calculateMeAggregate } from "~/utils/meAggregate";
 import ouraIcon from "~/assets/styles/images/oura.webp";
 import googleCalendarIcon from "~/assets/styles/images/google-calendar.webp";
 import togglIcon from "~/assets/styles/images/toggl-track.webp";
@@ -245,38 +246,12 @@ function displaySyncErrorMessage(message: string | null): string | null {
 }
 
 // =============================================================================
-// Today's ME aggregate (起床経過 / アクティブ / 未記録)
-//   - 起床経過 = wake_range の長さ
-//   - アクティブ = calendar + work の wake range overlap 合計
-//     (重複は union ではなく合算。SPEC §4.1 の表示用近似値)
-//   - 未記録   = 起床経過 - アクティブ (下限 0)
+// Today's ME aggregate (覚醒時間 / アクティブ / 未記録)
+// 詳細な区間計算は日記 Markdown と共通の calculateMeAggregate に集約する。
 // =============================================================================
 const meAggregate = computed(() => {
-  if (!props.summary?.wake_range) return null;
-  const rs = new Date(props.summary.wake_range.start).getTime();
-  const re = new Date(props.summary.wake_range.end).getTime();
-  const elapsedMin = Math.max(0, Math.round((re - rs) / 60000));
-
-  const overlapMs = (start: string, end: string | null) => {
-    const s = Math.max(new Date(start).getTime(), rs);
-    const eMs = end == null ? re : new Date(end).getTime();
-    const e = Math.min(eMs, re);
-    return Math.max(0, e - s);
-  };
-
-  let activeMs = 0;
-  for (const ev of props.summary.timeline.calendar) {
-    // 除外設定 (Issue #108) されたカレンダーは稼働時間に含めない。
-    if (ev.is_excluded) continue;
-    activeMs += overlapMs(ev.start_at, ev.end_at);
-  }
-  for (const t of props.summary.timeline.toggl) {
-    activeMs += overlapMs(t.start_at, t.end_at);
-  }
-  const activeMin = Math.min(elapsedMin, Math.round(activeMs / 60000));
-  const unrecordedMin = Math.max(0, elapsedMin - activeMin);
-  const activeRatio = elapsedMin > 0 ? Math.round((activeMin / elapsedMin) * 100) : 0;
-  return { elapsedMin, activeMin, unrecordedMin, activeRatio };
+  if (!props.summary) return null;
+  return calculateMeAggregate(props.summary);
 });
 
 // =============================================================================
@@ -868,11 +843,11 @@ onBeforeUnmount(() => {
             <div class="metric--me__row">
               <div class="metric--me__value">
                 <div class="metric__value">
-                  {{ formatMinutes(meAggregate.elapsedMin)!.hours }}<span class="unit">h</span
-                  >{{ String(formatMinutes(meAggregate.elapsedMin)!.minutes).padStart(2, "0")
+                  {{ formatMinutes(meAggregate.awakeMin)!.hours }}<span class="unit">h</span
+                  >{{ String(formatMinutes(meAggregate.awakeMin)!.minutes).padStart(2, "0")
                   }}<span class="unit">m</span>
                 </div>
-                <p class="metric--me__caption">起床経過</p>
+                <p class="metric--me__caption">覚醒時間</p>
               </div>
               <dl class="metric--me__list">
                 <div>

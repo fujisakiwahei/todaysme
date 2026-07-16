@@ -19,6 +19,7 @@
 import type { SummaryResponse } from "~~/shared/schemas";
 
 import { circledNumber } from "./circledNumber";
+import { calculateMeAggregate } from "./meAggregate";
 
 function formatHourMinute(iso: string, timezone: string): string {
   return new Intl.DateTimeFormat("ja-JP", {
@@ -73,40 +74,17 @@ function buildSleepLines(summary: SummaryResponse): string[] {
 }
 
 // -----------------------------------------------------------------------------
-// 集計行 (起床経過 / アクティブ / 未記録)
-//   DailySummaryView の meAggregate と同一ロジック。wake 記録がない日
-//   (wake_range が null) はこの行を省略する。
+// 集計行 (覚醒時間 / アクティブ / 未記録)
+//   wake 記録がない日 (wake_range が null) はこの行を省略する。
 // -----------------------------------------------------------------------------
 function buildAggregateLine(summary: SummaryResponse): string | null {
-  if (!summary.wake_range) return null;
-
-  const rangeStart = new Date(summary.wake_range.start).getTime();
-  const rangeEnd = new Date(summary.wake_range.end).getTime();
-  const elapsedMin = Math.max(0, Math.round((rangeEnd - rangeStart) / 60000));
-
-  const overlapMs = (start: string, end: string | null) => {
-    const s = Math.max(new Date(start).getTime(), rangeStart);
-    const eMs = end == null ? rangeEnd : new Date(end).getTime();
-    const e = Math.min(eMs, rangeEnd);
-    return Math.max(0, e - s);
-  };
-
-  let activeMs = 0;
-  for (const ev of summary.timeline.calendar) {
-    // 除外設定 (Issue #108) されたカレンダーは稼働時間に含めない。
-    if (ev.is_excluded) continue;
-    activeMs += overlapMs(ev.start_at, ev.end_at);
-  }
-  for (const t of summary.timeline.toggl) {
-    activeMs += overlapMs(t.start_at, t.end_at);
-  }
-  const activeMin = Math.min(elapsedMin, Math.round(activeMs / 60000));
-  const unrecordedMin = Math.max(0, elapsedMin - activeMin);
+  const aggregate = calculateMeAggregate(summary);
+  if (!aggregate) return null;
 
   return [
-    `起床から ${formatDurationMinutes(elapsedMin)}`,
-    `アクティブ ${formatDurationMinutes(activeMin)}`,
-    `未記録 ${formatDurationMinutes(unrecordedMin)}`,
+    `覚醒時間 ${formatDurationMinutes(aggregate.awakeMin)}`,
+    `アクティブ ${formatDurationMinutes(aggregate.activeMin)}`,
+    `未記録 ${formatDurationMinutes(aggregate.unrecordedMin)}`,
   ].join(" ｜ ");
 }
 
