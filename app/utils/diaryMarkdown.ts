@@ -9,6 +9,7 @@
 //   フォーマット仕様の要点:
 //     - `###` 見出しスタイル。末尾は `---` + 空行で終わり、貼り付け直後に
 //       そのまま日記本文を書き始められる。
+//     - 冒頭のみ `## 睡眠とアクティブな時間` の H2 見出し。
 //     - 未連携サービス (todays_me.* が null) はセクションごと省略。
 //     - 連携済みだが 0 件のセクションは見出しを出して `- なし`。
 //     - 除外設定されたカレンダー予定 (is_excluded) は含めない。
@@ -149,7 +150,9 @@ export function buildDiaryMarkdown(summary: SummaryResponse): string {
   const headerLines = buildSleepLines(summary);
   const aggregateLine = buildAggregateLine(summary);
   if (aggregateLine) headerLines.push(aggregateLine);
-  if (headerLines.length > 0) blocks.push(headerLines.join("\n"));
+  if (headerLines.length > 0) {
+    blocks.push(`## 睡眠とアクティブな時間\n\n${headerLines.join("\n")}`);
+  }
 
   if (summary.todays_me.google !== null) {
     blocks.push(buildSection("予定", buildCalendarItems(summary)));

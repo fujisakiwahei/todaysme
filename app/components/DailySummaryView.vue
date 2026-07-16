@@ -2595,7 +2595,7 @@ $font-en:
 }
 
 .acc__icon--img {
-  padding: 3px;
+  padding: 0;
   object-fit: contain;
   background: #fff;
   border: 1px solid $color-border-2;
