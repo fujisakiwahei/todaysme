@@ -94,9 +94,12 @@ export function dayBoundsInTimezone(
 // =============================================================================
 // computeWakeRange
 // 純粋関数版。テスト容易性のため I/O を分離している。
-//   - 当日:   その日の wake_at → 現在 (options.now)
-//   - 過去日: その日の wake_at → 次の睡眠開始時刻
+//   - 当日:   その日の最初の wake_at → 現在 (options.now)
+//   - 過去日: その日の最初の wake_at → 「翌日以降に起床する睡眠」の開始時刻
 //             (まだ次の睡眠が無ければ「現在も起きている」とみなして現在時刻)
+//   - 同じ target_date 内で起床する睡眠 (二度寝・仮眠) は 1 日を区切らず、
+//     wake range 内の睡眠 (起床②③…) として扱う。
+//     例: 4時起床 → 6〜11時に二度寝 → 24時就寝 の日は 4:00–24:00 が range。
 //   - target_date に対応する wake_at がない場合は null
 // =============================================================================
 
@@ -124,13 +127,26 @@ export function computeWakeRange(
   if (isToday) {
     end = now;
   } else {
-    const nextSleep = sorted[idx + 1]?.sleep_start_at;
+    // 同じ target_date 内で起床する睡眠 (二度寝・仮眠) は日を区切らない。
+    // 「翌日以降に起床する睡眠」= 次の日へつながる夜の睡眠の開始時刻を終端にする。
+    // これを昼寝の開始で切ると、昼寝以降のカレンダー / Toggl / Todoist が
+    // その日のページから消えてしまう。
+    let nextDaySleepStart: Date | undefined;
+    for (let i = idx + 1; i < sorted.length; i++) {
+      const candidate = sorted[i]!;
+      // ISO (YYYY-MM-DD) 同士なので文字列比較で日付の前後を判定できる
+      if (targetDateOf(candidate.wake_at, options.timezone) > targetDate) {
+        nextDaySleepStart = candidate.sleep_start_at;
+        break;
+      }
+    }
     // 次の睡眠記録が無い場合、ユーザはその起床以降まだ寝ていない =
     // wake range は現在も続いていると扱う (Issue #113)。
     // 「24h 後で頭打ち」だと日跨ぎ直後に起床経過時間が 24h で固定されてしまう。
     // ただし古い日付でデータが欠落しているケースで経過時間が際限なく増えないよう
     // start から 24h を上限としてキャップする。
-    end = nextSleep ?? new Date(Math.min(now.getTime(), start.getTime() + 24 * 60 * 60 * 1000));
+    end =
+      nextDaySleepStart ?? new Date(Math.min(now.getTime(), start.getTime() + 24 * 60 * 60 * 1000));
   }
 
   return { start, end };

@@ -81,13 +81,29 @@ export const timelineSchema = z.object({
 // Today's ME (SPEC §4.1)
 // -----------------------------------------------------------------------------
 
+// 同一 target_date に起床した睡眠セッション 1 件分 (起床①②… の内訳)。
+// 二度寝・仮眠があると 1 日に複数セッションが並ぶ。
+export const todaysMeOuraSessionSchema = z.object({
+  sleep_start_at: isoDateTimeSchema,
+  wake_at: isoDateTimeSchema,
+  // Oura `total_sleep_duration` を分換算した「実際に寝た時間」。欠損は null。
+  sleep_minutes: z.number().int().nullable(),
+  // sleep_start_at → wake_at の長さ (ベッドにいた時間)。
+  time_in_bed_minutes: z.number().int(),
+});
+
 export const todaysMeOuraSchema = z.object({
   // Oura `total_sleep_duration` を分換算した「実際に寝た時間」。
+  // 同一 target_date に複数セッション (二度寝・仮眠) がある場合は合算値。
   sleep_minutes: z.number().int().nullable(),
   // bedtime_start → bedtime_end (= sleep_start_at → wake_at) の長さ。
   // 「ベッドにいた時間」として sleep_minutes と並べて表示する (dashboard Oura)。
+  // こちらも複数セッションある場合は合算値。
   time_in_bed_minutes: z.number().int().nullable(),
+  // その日最初の起床時刻 (= wake range の開始)。
   wake_at: isoDateTimeSchema.nullable(),
+  // 起床時刻の昇順。1 件のときも配列で返す (UI 側で「起床①②」表示に使う)。
+  sessions: z.array(todaysMeOuraSessionSchema),
 });
 
 export const todaysMeGoogleSchema = z.object({
@@ -179,6 +195,7 @@ export type SummaryResponse = z.infer<typeof summaryResponseSchema>;
 export type SummaryRefreshRequest = z.infer<typeof summaryRefreshRequestSchema>;
 export type SummaryRefreshResponse = z.infer<typeof summaryRefreshResponseSchema>;
 export type SleepTimelineEntry = z.infer<typeof sleepTimelineEntrySchema>;
+export type TodaysMeOuraSession = z.infer<typeof todaysMeOuraSessionSchema>;
 export type CalendarTimelineEntry = z.infer<typeof calendarTimelineEntrySchema>;
 export type TogglTimelineEntry = z.infer<typeof togglTimelineEntrySchema>;
 export type Timeline = z.infer<typeof timelineSchema>;

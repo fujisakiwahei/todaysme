@@ -22,6 +22,7 @@ import {
 } from "../../shared/schemas";
 import { requireUserIdAllowCookie } from "../utils/auth";
 import { listServiceConnections } from "../utils/serviceConnection";
+import { buildTodaysMeOura } from "../utils/summaryOura";
 import { getSupabaseAdmin } from "../utils/supabaseAdmin";
 import { parseOrThrow } from "../utils/validation";
 import {
@@ -332,37 +333,13 @@ export default defineEventHandler(async (event) => {
   };
 
   // -- Today's ME (SPEC §4.1) ----------------------------------------------
-  // Oura: 起床日 = target_date となる sleep を選ぶ。
+  // Oura: 起床日 = target_date となる sleep を全て採用する (起床①②…)。
   //   wake range には前日夜〜当日朝の睡眠が入るので、wake_at が target_date と
-  //   一致するレコードに絞る。同一日に複数 (仮眠等) が存在する場合は
-  //   sleep_minutes が最も長いものを main sleep とみなして採用する。
-  //   tie-break と sleep_minutes が null の場合は wake_at が最も遅いものを採用。
+  //   一致するレコードに絞る。同一日に複数 (二度寝・仮眠等) が存在する場合は
+  //   sleep_minutes / ベッドにいた時間を合算し、内訳を sessions に列挙する。
   let oura: TodaysMe["oura"] = null;
   if (connected.has("oura")) {
-    // wake_at → YYYY-MM-DD への変換は targetDateOf に一元化 (ICU 依存の
-    // `Intl.DateTimeFormat.format()` を直接使わないことで実装差異を回避する)。
-    const todayWake = sleepRows
-      .filter((r) => targetDateOf(r.wake_at, timezone) === date)
-      .sort((a, b) => {
-        const am = a.sleep_minutes ?? -1;
-        const bm = b.sleep_minutes ?? -1;
-        if (bm !== am) return bm - am;
-        return new Date(b.wake_at).getTime() - new Date(a.wake_at).getTime();
-      })[0];
-    // 「ベッドにいた時間」は wake_at − sleep_start_at の長さ。sleep_minutes は
-    // Oura の total_sleep_duration なので、入眠前/中途覚醒の「ベッドにいたが寝て
-    // いない時間」が落ちる。両方並べて見せたい (dashboard Oura)。
-    const timeInBedMinutes = todayWake
-      ? Math.round(
-          (new Date(todayWake.wake_at).getTime() - new Date(todayWake.sleep_start_at).getTime()) /
-            60000
-        )
-      : null;
-    oura = {
-      sleep_minutes: todayWake?.sleep_minutes ?? null,
-      time_in_bed_minutes: timeInBedMinutes,
-      wake_at: todayWake?.wake_at ?? null,
-    };
+    oura = buildTodaysMeOura(sleepRows, date, timezone);
   }
 
   // Google: 集計値 (total_minutes) は wake range と重なる時間で計算する。

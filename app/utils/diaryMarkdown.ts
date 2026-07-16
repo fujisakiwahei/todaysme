@@ -18,6 +18,8 @@
 // =============================================================================
 import type { SummaryResponse } from "~~/shared/schemas";
 
+import { circledNumber } from "./circledNumber";
+
 function formatHourMinute(iso: string, timezone: string): string {
   return new Intl.DateTimeFormat("ja-JP", {
     timeZone: timezone,
@@ -44,7 +46,8 @@ function minutesBetween(startIso: string, endIso: string): number {
 // -----------------------------------------------------------------------------
 // 睡眠ヘッダー行
 //   `23:45 就寝 → 06:30 起床（睡眠 6h45m・ベッド 7h02m）`
-//   睡眠記録が複数ある日 (仮眠等) は行を分けて列挙する。
+//   睡眠記録が複数ある日 (二度寝・仮眠等) は行を分けて列挙し、
+//   「起床①」「起床②」のラベルで区別する。
 // -----------------------------------------------------------------------------
 function buildSleepLines(summary: SummaryResponse): string[] {
   if (summary.todays_me.oura === null) return [];
@@ -53,9 +56,10 @@ function buildSleepLines(summary: SummaryResponse): string[] {
     (a, b) => new Date(a.wake_at).getTime() - new Date(b.wake_at).getTime()
   );
 
-  return sorted.map((s) => {
+  return sorted.map((s, index) => {
     const bedtime = formatHourMinute(s.sleep_start_at, summary.timezone);
     const wake = formatHourMinute(s.wake_at, summary.timezone);
+    const wakeLabel = sorted.length > 1 ? `起床${circledNumber(index)}` : "起床";
 
     // 睡眠 = Oura の実睡眠時間 (null の場合あり)、ベッド = 就寝〜起床の長さ。
     const parts: string[] = [];
@@ -64,7 +68,7 @@ function buildSleepLines(summary: SummaryResponse): string[] {
     }
     parts.push(`ベッド ${formatDurationMinutes(minutesBetween(s.sleep_start_at, s.wake_at))}`);
 
-    return `${bedtime} 就寝 → ${wake} 起床（${parts.join("・")}）`;
+    return `${bedtime} 就寝 → ${wake} ${wakeLabel}（${parts.join("・")}）`;
   });
 }
 
