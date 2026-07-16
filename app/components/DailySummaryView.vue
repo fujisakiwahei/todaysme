@@ -17,9 +17,11 @@ import type {
   CalendarTimelineEntry,
   SleepTimelineEntry,
   SummaryResponse,
+  TodaysMeOuraSession,
   TogglTimelineEntry,
 } from "~~/shared/schemas";
 import { isTogglRateLimitMessage } from "~~/shared/schemas";
+import { circledNumber } from "~/utils/circledNumber";
 import { fetchWakeBasedToday, targetDateInTimezone } from "~/utils/wakeBasedToday";
 import ouraIcon from "~/assets/styles/images/oura.webp";
 import googleCalendarIcon from "~/assets/styles/images/google-calendar.webp";
@@ -122,6 +124,44 @@ function formatDuration(start: string, end: string | null): string {
   const m = min % 60;
   if (h === 0) return `${m}m`;
   return `${h}h ${String(m).padStart(2, "0")}m`;
+}
+
+// =============================================================================
+// Oura 睡眠セッション (起床①②…)
+//   同一 target_date に複数の睡眠 (二度寝・仮眠) がある日は、メトリクスカード
+//   に起床ごとの内訳を出し、タイムライン / アコーディオンにもラベルを付ける。
+// =============================================================================
+const ouraSessions = computed<TodaysMeOuraSession[]>(
+  () => props.summary?.todays_me.oura?.sessions ?? []
+);
+
+// メトリクスカードの内訳 1 行分: 「07:30（6h 45m）」(睡眠時間欠損時は時刻のみ)
+function sessionWakeSummary(session: TodaysMeOuraSession): string {
+  const wake = formatHourMinute(session.wake_at, timezone.value);
+  const slept = formatMinutes(session.sleep_minutes);
+  if (!slept) return wake;
+  return `${wake}（${slept.hours}h ${String(slept.minutes).padStart(2, "0")}m）`;
+}
+
+// timeline.sleep (起床時刻の昇順) の中で何番目の睡眠か。
+// 単一セッションの日はラベル不要なので -1 を返す。
+function sleepSessionIndex(sleepId: string): number {
+  const list = props.summary?.timeline.sleep ?? [];
+  if (list.length <= 1) return -1;
+  return list.findIndex((s) => s.id === sleepId);
+}
+
+// Sleep レーンのメタ表示用: 「起床」or「起床①」
+function wakeLabel(sleepId: string): string {
+  const index = sleepSessionIndex(sleepId);
+  return index === -1 ? "起床" : `起床${circledNumber(index)}`;
+}
+
+// タイムラインバー / アコーディオン用のラベル。複数セッションの日だけ
+// 「睡眠（起床①）」の形で何番目の起床につながる睡眠かを示す。
+function sleepSessionLabel(sleepId: string): string {
+  const index = sleepSessionIndex(sleepId);
+  return index === -1 ? "睡眠" : `睡眠（起床${circledNumber(index)}）`;
 }
 
 // =============================================================================
@@ -670,7 +710,14 @@ onBeforeUnmount(() => {
                 <template v-else>—</template>
               </div>
               <dl class="metric__sub">
-                <div>
+                <!-- 複数セッション (二度寝・仮眠) の日は起床①②… の内訳を出す -->
+                <template v-if="ouraSessions.length > 1">
+                  <div v-for="(session, index) in ouraSessions" :key="session.wake_at">
+                    <dt>起床{{ circledNumber(index) }}</dt>
+                    <dd>{{ sessionWakeSummary(session) }}</dd>
+                  </div>
+                </template>
+                <div v-else>
                   <dt>起床</dt>
                   <dd>
                     {{ formatHourMinute(summary.todays_me.oura.wake_at, timezone) }}
@@ -939,7 +986,7 @@ onBeforeUnmount(() => {
                 <span v-if="preWakeSleep" class="tl-row__meta">
                   就寝
                   {{ formatHourMinute(preWakeSleep.sleep_start_at, timezone) }}
-                  → 起床
+                  → {{ wakeLabel(preWakeSleep.id) }}
                   {{ formatHourMinute(preWakeSleep.wake_at, timezone) }} ·
                   {{ formatDuration(preWakeSleep.sleep_start_at, preWakeSleep.wake_at) }}
                 </span>
@@ -951,12 +998,12 @@ onBeforeUnmount(() => {
                     'tl-bar--active': activeTooltipId === `sleep-${s.id}`,
                   }"
                   :style="barStyle(s.sleep_start_at, s.wake_at)"
-                  :aria-label="`仮眠 ${formatHourMinute(s.sleep_start_at, timezone)} - ${formatHourMinute(s.wake_at, timezone)}`"
+                  :aria-label="`${sleepSessionLabel(s.id)} ${formatHourMinute(s.sleep_start_at, timezone)} - ${formatHourMinute(s.wake_at, timezone)}`"
                   @click="toggleTooltip(`sleep-${s.id}`, $event)"
                 >
-                  <span class="tl-bar__text">仮眠</span>
+                  <span class="tl-bar__text">睡眠</span>
                   <span class="tl-bar__tooltip" role="tooltip" aria-hidden="true">
-                    <span class="tl-bar__tooltip-title">仮眠</span>
+                    <span class="tl-bar__tooltip-title">{{ sleepSessionLabel(s.id) }}</span>
                     <span class="tl-bar__tooltip-time">
                       {{ formatHourMinute(s.sleep_start_at, timezone) }} –
                       {{ formatHourMinute(s.wake_at, timezone) }}
@@ -1133,7 +1180,7 @@ onBeforeUnmount(() => {
                     {{ formatHourMinute(s.sleep_start_at, timezone) }} —
                     {{ formatHourMinute(s.wake_at, timezone) }}
                   </span>
-                  <span class="entry__title">睡眠</span>
+                  <span class="entry__title">{{ sleepSessionLabel(s.id) }}</span>
                   <span class="entry__dur entry__dur--sleep">
                     <span class="entry__dur-main">
                       <template v-if="formatMinutes(s.sleep_minutes)">

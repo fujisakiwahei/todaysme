@@ -24,13 +24,13 @@ import {
   type TogglTimelineEntry,
   type WakeRange,
 } from "../../../shared/schemas";
+import { buildTodaysMeOura } from "../../utils/summaryOura";
 import { getSupabaseAdmin } from "../../utils/supabaseAdmin";
 import { parseOrThrow } from "../../utils/validation";
 import {
   computeWakeRange,
   dayBoundsInTimezone,
   overlaps,
-  targetDateOf,
   type SleepRecordLike,
   type WakeRange as InternalWakeRange,
 } from "../../utils/wakeRange";
@@ -213,33 +213,9 @@ export default defineEventHandler(async (event) => {
   // デモでは 3 サービス全て「連携済み」相当として todays_me に値を返す。
   // サービス未連携の概念はデモには無い。
 
-  // Oura: target_date と一致する wake_at を持つ main sleep を選ぶ。
-  // wake_at → YYYY-MM-DD への変換は targetDateOf に一元化 (ICU 依存の
-  // `Intl.DateTimeFormat.format()` を直接使わないことで実装差異を回避する)。
-  let oura: TodaysMe["oura"];
-  {
-    const todayWake = sleepRows
-      .filter((r) => targetDateOf(r.wake_at, timezone) === date)
-      .sort((a, b) => {
-        const am = a.sleep_minutes ?? -1;
-        const bm = b.sleep_minutes ?? -1;
-        if (bm !== am) return bm - am;
-        return new Date(b.wake_at).getTime() - new Date(a.wake_at).getTime();
-      })[0];
-    // sleep_minutes が「実際に寝た時間」、time_in_bed_minutes が
-    // wake_at − sleep_start_at の「ベッドにいた時間」(dashboard Oura)。
-    const timeInBedMinutes = todayWake
-      ? Math.round(
-          (new Date(todayWake.wake_at).getTime() - new Date(todayWake.sleep_start_at).getTime()) /
-            60000
-        )
-      : null;
-    oura = {
-      sleep_minutes: todayWake?.sleep_minutes ?? null,
-      time_in_bed_minutes: timeInBedMinutes,
-      wake_at: todayWake?.wake_at ?? null,
-    };
-  }
+  // Oura: 起床日 = target_date の睡眠セッションを合算し、内訳を sessions に
+  // 列挙する (起床①②…)。集計は本番 /api/summary と共通のヘルパに委譲する。
+  const oura: TodaysMe["oura"] = buildTodaysMeOura(sleepRows, date, timezone);
 
   // Google: 集計値 (total_minutes) は wake range と重なる時間で計算する。
   // 累積 drift を避けるため ms で足し上げ、最後にまとめて分へ丸める。
