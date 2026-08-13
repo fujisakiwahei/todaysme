@@ -125,6 +125,18 @@ function buildTogglItems(summary: SummaryResponse): string[] {
   });
 }
 
+function buildFreeTimeNoteItems(summary: SummaryResponse): string[] {
+  return [...summary.free_time_notes]
+    .sort((a, b) => new Date(a.gap_start_at).getTime() - new Date(b.gap_start_at).getTime())
+    .map((note) => {
+      const start = formatHourMinute(note.gap_start_at, summary.timezone);
+      const end = formatHourMinute(note.gap_end_at, summary.timezone);
+      const duration = formatDurationMinutes(minutesBetween(note.gap_start_at, note.gap_end_at));
+      const content = note.content.split("\n").join("\n  ");
+      return `${start}–${end}（${duration}） ${content}`;
+    });
+}
+
 export function buildDiaryMarkdown(summary: SummaryResponse): string {
   const blocks: string[] = [];
 
@@ -144,6 +156,9 @@ export function buildDiaryMarkdown(summary: SummaryResponse): string {
   }
   if (summary.todays_me.toggl !== null) {
     blocks.push(buildSection("時間の使い方", buildTogglItems(summary)));
+  }
+  if (summary.free_time_notes.length > 0) {
+    blocks.push(buildSection("空き時間", buildFreeTimeNoteItems(summary)));
   }
 
   // 末尾は `---` + 空行。貼り付け直後にそのまま日記を書き始められるようにする。

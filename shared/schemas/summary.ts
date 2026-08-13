@@ -19,6 +19,7 @@ import {
   uuidSchema,
 } from "./common";
 import { apiErrorItemSchema } from "./errors";
+import { freeTimeNoteSchema } from "./freeTimeNotes";
 
 // -----------------------------------------------------------------------------
 // リクエスト
@@ -175,6 +176,8 @@ export const summaryResponseSchema = z.object({
   wake_range: wakeRangeSchema.nullable(),
   todays_me: todaysMeSchema,
   timeline: timelineSchema,
+  free_time_notes: z.array(freeTimeNoteSchema),
+  free_time_notes_available: z.boolean(),
   sync_statuses: z.array(syncStatusEntrySchema),
   // 部分失敗時に乗せる (SPEC §9.2)
   errors: z.array(apiErrorItemSchema).optional(),

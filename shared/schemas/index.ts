@@ -15,3 +15,4 @@ export * from "./oura";
 export * from "./google";
 export * from "./toggl";
 export * from "./todoist";
+export * from "./freeTimeNotes";

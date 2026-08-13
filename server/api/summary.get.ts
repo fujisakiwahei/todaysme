@@ -12,6 +12,7 @@ import {
   summaryRequestSchema,
   summaryResponseSchema,
   type CalendarTimelineEntry,
+  type FreeTimeNote,
   type SleepTimelineEntry,
   type SummaryResponse,
   type SyncStatusEntry,
@@ -76,6 +77,16 @@ interface SyncStatusRow {
   error_message: string | null;
 }
 
+interface FreeTimeNoteRow {
+  id: string;
+  target_date: string;
+  gap_start_at: string;
+  gap_end_at: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 // wake range と [start, end] の重なり部分の長さ (ミリ秒)。
 // end が null (進行中の Toggl エントリ) のときは range.end までで打ち切る。
 // 分への丸めは累積 drift を避けるため呼び出し側で sum 後に 1 度だけ行う。
@@ -98,13 +109,14 @@ export default defineEventHandler(async (event) => {
   const admin = getSupabaseAdmin();
 
   // -- 前段クエリ (Issue #143) ---------------------------------------------
-  // 以下 4 つは userId / date だけに依存し相互に独立しているので並列で叩く。
+  // 以下 5 つは userId / date だけに依存し相互に独立しているので並列で叩く。
   // wakeRangeOf は timezone を必要とするためここでは並行させず、結果を受けてから呼ぶ。
   //   1. users.timezone
   //   2. google_excluded_calendars
   //   3. listServiceConnections (todays_me の null 判定用)
   //   4. daily_sync_statuses (Timeline 構築後に消費するが date 既知なので前出し)
-  const [userRes, excludedRes, connections, syncRes] = await Promise.all([
+  //   5. free_time_notes
+  const [userRes, excludedRes, connections, syncRes, freeTimeNotesRes] = await Promise.all([
     admin.from("users").select("timezone").eq("id", userId).maybeSingle(),
     admin
       .from("google_excluded_calendars")
@@ -116,6 +128,12 @@ export default defineEventHandler(async (event) => {
       .select("source, status, last_synced_at, error_message")
       .eq("user_id", userId)
       .eq("target_date", date),
+    admin
+      .from("free_time_notes")
+      .select("id, target_date, gap_start_at, gap_end_at, content, created_at, updated_at")
+      .eq("user_id", userId)
+      .eq("target_date", date)
+      .order("gap_start_at", { ascending: true }),
   ]);
 
   // -- user (timezone) -----------------------------------------------------
@@ -303,6 +321,28 @@ export default defineEventHandler(async (event) => {
     error_message: r.error_message,
   }));
 
+  // アプリのデプロイが DB migration より先になっても既存の日次画面を壊さない。
+  // PostgreSQL 42P01 / PostgREST PGRST205 (= table missing) の間だけ空配列へ
+  // フォールバックし、
+  // migration 適用後は通常どおり読み込む。その他の DB エラーは隠さない。
+  const notesTableMissing =
+    freeTimeNotesRes.error?.code === "42P01" || freeTimeNotesRes.error?.code === "PGRST205";
+  if (freeTimeNotesRes.error && !notesTableMissing) {
+    throw freeTimeNotesRes.error;
+  }
+  const free_time_notes: FreeTimeNote[] = (
+    (freeTimeNotesRes.error ? [] : (freeTimeNotesRes.data ?? [])) as FreeTimeNoteRow[]
+  ).map((note) => ({
+    id: note.id,
+    target_date: note.target_date,
+    gap_start_at: note.gap_start_at,
+    gap_end_at: note.gap_end_at,
+    content: note.content,
+    created_at: note.created_at,
+    updated_at: note.updated_at,
+  }));
+  const free_time_notes_available = !notesTableMissing;
+
   // -- Timeline (SPEC §4.2) ------------------------------------------------
   const timeline: Timeline = {
     sleep: sleepRows.map<SleepTimelineEntry>((r) => ({
@@ -443,6 +483,8 @@ export default defineEventHandler(async (event) => {
     wake_range,
     todays_me: { oura, google, toggl, todoist },
     timeline,
+    free_time_notes,
+    free_time_notes_available,
     sync_statuses,
   };
 

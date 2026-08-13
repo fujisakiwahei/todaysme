@@ -15,6 +15,8 @@
 // =============================================================================
 import type {
   CalendarTimelineEntry,
+  FreeTimeNote,
+  FreeTimeNoteCreateRequest,
   SleepTimelineEntry,
   SummaryResponse,
   TodaysMeOuraSession,
@@ -36,9 +38,17 @@ const props = withDefaults(
     errorMessage: string | null;
     dateParam: string;
     basePath?: string;
+    readOnlyFreeTimeNotes?: boolean;
+    saveFreeTimeNote?: (
+      input: FreeTimeNoteCreateRequest & { note_id: string | null }
+    ) => Promise<void>;
+    deleteFreeTimeNote?: (noteId: string) => Promise<void>;
   }>(),
   {
     basePath: "/daily",
+    readOnlyFreeTimeNotes: false,
+    saveFreeTimeNote: undefined,
+    deleteFreeTimeNote: undefined,
   }
 );
 
@@ -401,28 +411,70 @@ interface FreeHoverInfo {
 }
 
 const freeHover = ref<FreeHoverInfo | null>(null);
+const selectedFreeTime = ref<FreeHoverInfo | null>(null);
+const freeTimeDialogOpen = ref(false);
+const freeTimeNoteSaving = ref(false);
+const freeTimeNoteError = ref<string | null>(null);
 
-function onTrackMouseMove(e: MouseEvent, lane: LaneKey) {
+function isCompactTimeline(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 640px)").matches;
+}
+
+function freeTimeNoteForRange(rangeStart: number, rangeEnd: number): FreeTimeNote | null {
+  return (
+    props.summary?.free_time_notes.find(
+      (note) =>
+        new Date(note.gap_start_at).getTime() === rangeStart &&
+        new Date(note.gap_end_at).getTime() === rangeEnd
+    ) ?? null
+  );
+}
+
+function activeFreeTimeNote(): FreeTimeNote | null {
+  if (!selectedFreeTime.value) return null;
+  return freeTimeNoteForRange(selectedFreeTime.value.rangeStart, selectedFreeTime.value.rangeEnd);
+}
+
+function canEditFreeTime(info: FreeHoverInfo): boolean {
+  const isOpenCurrentGap =
+    isToday.value && timelineSpan.value !== null && info.rangeEnd === timelineSpan.value.end;
+  return (
+    !props.readOnlyFreeTimeNotes &&
+    props.summary?.free_time_notes_available === true &&
+    typeof props.saveFreeTimeNote === "function" &&
+    info.rangeEnd <= now.value.getTime() &&
+    !isOpenCurrentGap
+  );
+}
+
+function freeTimeLabel(info: FreeHoverInfo): string {
+  const start = formatHourMinute(new Date(info.rangeStart).toISOString(), timezone.value);
+  const end = formatHourMinute(new Date(info.rangeEnd).toISOString(), timezone.value);
+  return `${start} → ${end}`;
+}
+
+function updateFreeHover(e: MouseEvent, lane: LaneKey) {
   if (!timelineSpan.value) return;
   const target = e.target as HTMLElement | null;
+  if (target?.closest(".tl-free__tooltip")) return;
   // 既存のバー上では空き時間ではないので非表示にする。
-  if (target && target.closest(".tl-bar")) {
+  if (target?.closest(".tl-bar")) {
     if (freeHover.value?.lane === lane) freeHover.value = null;
     return;
   }
+
   const trackEl = e.currentTarget as HTMLElement;
   const rect = trackEl.getBoundingClientRect();
-  if (rect.width <= 0) return;
-  const offsetX = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
-  const ratio = offsetX / rect.width;
+  const vertical = isCompactTimeline();
+  const trackLength = vertical ? rect.height : rect.width;
+  if (trackLength <= 0) return;
+  const pointerOffset = vertical ? e.clientY - rect.top : e.clientX - rect.left;
+  const clampedOffset = Math.max(0, Math.min(trackLength, pointerOffset));
+  const ratio = clampedOffset / trackLength;
   const { start, end, span } = timelineSpan.value;
   const cursorTime = start + ratio * span;
 
-  // 全レーンを横断してカーソル時刻を含む空き範囲の境界を求める:
-  //   prev = ev.end <= cursorTime のうち end が最も遅いイベント (= 空き開始)
-  //   next = ev.start >  cursorTime のうち start が最も早いイベント (= 空き終了)
-  // また、別レーンも含めて cursorTime がいずれかのバー内側にある場合は、
-  // 「いま走っている予定がある = 空きではない」のでオーバーレイを出さない。
+  // 全レーンを横断してカーソル時刻を含む空き範囲の境界を求める。
   let prev: TimelineEventLite | null = null;
   let next: TimelineEventLite | null = null;
   for (const ev of allTimelineEvents.value) {
@@ -436,6 +488,7 @@ function onTrackMouseMove(e: MouseEvent, lane: LaneKey) {
       if (!next || ev.start < next.start) next = ev;
     }
   }
+
   const rangeStart = prev ? prev.end : start;
   const rangeEnd = next ? next.start : end;
   const gapMs = Math.max(0, rangeEnd - rangeStart);
@@ -444,13 +497,11 @@ function onTrackMouseMove(e: MouseEvent, lane: LaneKey) {
     if (freeHover.value?.lane === lane) freeHover.value = null;
     return;
   }
-  const leftPct = ((rangeStart - start) / span) * 100;
-  const widthPct = (gapMs / span) * 100;
 
   freeHover.value = {
     lane,
-    leftPct,
-    widthPct,
+    leftPct: ((rangeStart - start) / span) * 100,
+    widthPct: (gapMs / span) * 100,
     rangeStart,
     rangeEnd,
     prevLane: prev?.lane ?? null,
@@ -461,8 +512,73 @@ function onTrackMouseMove(e: MouseEvent, lane: LaneKey) {
   };
 }
 
+function onTrackMouseMove(e: MouseEvent, lane: LaneKey) {
+  updateFreeHover(e, lane);
+}
+
+function onTrackClick(e: MouseEvent, lane: LaneKey) {
+  const target = e.target as HTMLElement | null;
+  if (target?.closest(".tl-bar") || target?.closest(".tl-free__tooltip")) return;
+  e.stopPropagation();
+  updateFreeHover(e, lane);
+}
+
 function onTrackMouseLeave(lane: LaneKey) {
+  if (isCompactTimeline() || freeTimeDialogOpen.value) return;
   if (freeHover.value?.lane === lane) freeHover.value = null;
+}
+
+function openFreeTimeDialog(info: FreeHoverInfo) {
+  if (!canEditFreeTime(info)) return;
+  selectedFreeTime.value = { ...info };
+  freeTimeNoteError.value = null;
+  freeTimeDialogOpen.value = true;
+}
+
+function closeFreeTimeDialog() {
+  if (freeTimeNoteSaving.value) return;
+  freeTimeDialogOpen.value = false;
+  freeTimeNoteError.value = null;
+}
+
+async function saveSelectedFreeTimeNote(content: string) {
+  const selection = selectedFreeTime.value;
+  if (!selection || !props.summary || !props.saveFreeTimeNote) return;
+  freeTimeNoteSaving.value = true;
+  freeTimeNoteError.value = null;
+  try {
+    const note = activeFreeTimeNote();
+    await props.saveFreeTimeNote({
+      note_id: note?.id ?? null,
+      target_date: props.summary.target_date,
+      gap_start_at: new Date(selection.rangeStart).toISOString(),
+      gap_end_at: new Date(selection.rangeEnd).toISOString(),
+      content,
+    });
+    freeTimeDialogOpen.value = false;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "failed to save free-time note";
+    freeTimeNoteError.value = `メモの保存に失敗しました: ${message}`;
+  } finally {
+    freeTimeNoteSaving.value = false;
+  }
+}
+
+async function deleteSelectedFreeTimeNote() {
+  const note = activeFreeTimeNote();
+  if (!note || !props.deleteFreeTimeNote) return;
+  freeTimeNoteSaving.value = true;
+  freeTimeNoteError.value = null;
+  try {
+    await props.deleteFreeTimeNote(note.id);
+    freeTimeDialogOpen.value = false;
+    selectedFreeTime.value = null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "failed to delete free-time note";
+    freeTimeNoteError.value = `メモの削除に失敗しました: ${message}`;
+  } finally {
+    freeTimeNoteSaving.value = false;
+  }
 }
 
 // 日付ナビなどで summary が差し替わったタイミングでオーバーレイ状態を残さない。
@@ -472,6 +588,7 @@ watch(
   () => props.summary,
   () => {
     freeHover.value = null;
+    if (!freeTimeDialogOpen.value) selectedFreeTime.value = null;
   }
 );
 
@@ -553,6 +670,7 @@ function toggleTooltip(id: string, e: MouseEvent) {
 
 function closeTooltip() {
   activeTooltipId.value = null;
+  if (!freeTimeDialogOpen.value) freeHover.value = null;
 }
 
 // =============================================================================
@@ -927,6 +1045,7 @@ onBeforeUnmount(() => {
                 class="tl-row__track"
                 @mousemove="onTrackMouseMove($event, 'sleep')"
                 @mouseleave="onTrackMouseLeave('sleep')"
+                @click="onTrackClick($event, 'sleep')"
               >
                 <div
                   v-if="freeHover && freeHover.lane === 'sleep'"
@@ -935,28 +1054,20 @@ onBeforeUnmount(() => {
                     '--tl-pos': `${freeHover.leftPct}%`,
                     '--tl-len': `${freeHover.widthPct}%`,
                   }"
-                  aria-hidden="true"
                 >
-                  <span class="tl-free__tooltip" role="tooltip">
-                    <span class="tl-free__tooltip-title">
-                      空き {{ formatGap(freeHover.gapMinutes) }}
-                    </span>
-                    <span class="tl-free__tooltip-time">
-                      {{ formatHourMinute(new Date(freeHover.rangeStart).toISOString(), timezone) }}
-                      →
-                      {{ formatHourMinute(new Date(freeHover.rangeEnd).toISOString(), timezone) }}
-                    </span>
-                    <span
-                      v-if="freeHover.nextTitle && freeHover.nextLane"
-                      class="tl-free__tooltip-next"
-                    >
-                      次:
-                      <span class="tl-free__tooltip-lane" :data-lane="freeHover.nextLane">
-                        {{ laneLabels[freeHover.nextLane] }}
-                      </span>
-                      {{ freeHover.nextTitle }}
-                    </span>
-                  </span>
+                  <FreeTimeTooltip
+                    :duration-label="formatGap(freeHover.gapMinutes)"
+                    :time-label="freeTimeLabel(freeHover)"
+                    :next-lane="freeHover.nextLane"
+                    :next-lane-label="freeHover.nextLane ? laneLabels[freeHover.nextLane] : null"
+                    :next-title="freeHover.nextTitle"
+                    :note-content="
+                      freeTimeNoteForRange(freeHover.rangeStart, freeHover.rangeEnd)?.content ??
+                      null
+                    "
+                    :can-edit="canEditFreeTime(freeHover)"
+                    @edit="openFreeTimeDialog(freeHover)"
+                  />
                 </div>
                 <span v-if="preWakeSleep" class="tl-row__meta">
                   就寝
@@ -995,6 +1106,7 @@ onBeforeUnmount(() => {
                 class="tl-row__track"
                 @mousemove="onTrackMouseMove($event, 'calendar')"
                 @mouseleave="onTrackMouseLeave('calendar')"
+                @click="onTrackClick($event, 'calendar')"
               >
                 <div
                   v-if="freeHover && freeHover.lane === 'calendar'"
@@ -1003,28 +1115,20 @@ onBeforeUnmount(() => {
                     '--tl-pos': `${freeHover.leftPct}%`,
                     '--tl-len': `${freeHover.widthPct}%`,
                   }"
-                  aria-hidden="true"
                 >
-                  <span class="tl-free__tooltip" role="tooltip">
-                    <span class="tl-free__tooltip-title">
-                      空き {{ formatGap(freeHover.gapMinutes) }}
-                    </span>
-                    <span class="tl-free__tooltip-time">
-                      {{ formatHourMinute(new Date(freeHover.rangeStart).toISOString(), timezone) }}
-                      →
-                      {{ formatHourMinute(new Date(freeHover.rangeEnd).toISOString(), timezone) }}
-                    </span>
-                    <span
-                      v-if="freeHover.nextTitle && freeHover.nextLane"
-                      class="tl-free__tooltip-next"
-                    >
-                      次:
-                      <span class="tl-free__tooltip-lane" :data-lane="freeHover.nextLane">
-                        {{ laneLabels[freeHover.nextLane] }}
-                      </span>
-                      {{ freeHover.nextTitle }}
-                    </span>
-                  </span>
+                  <FreeTimeTooltip
+                    :duration-label="formatGap(freeHover.gapMinutes)"
+                    :time-label="freeTimeLabel(freeHover)"
+                    :next-lane="freeHover.nextLane"
+                    :next-lane-label="freeHover.nextLane ? laneLabels[freeHover.nextLane] : null"
+                    :next-title="freeHover.nextTitle"
+                    :note-content="
+                      freeTimeNoteForRange(freeHover.rangeStart, freeHover.rangeEnd)?.content ??
+                      null
+                    "
+                    :can-edit="canEditFreeTime(freeHover)"
+                    @edit="openFreeTimeDialog(freeHover)"
+                  />
                 </div>
                 <span v-if="calendarEvents.length === 0" class="tl-row__empty"> 予定なし </span>
                 <div
@@ -1062,6 +1166,7 @@ onBeforeUnmount(() => {
                 class="tl-row__track"
                 @mousemove="onTrackMouseMove($event, 'work')"
                 @mouseleave="onTrackMouseLeave('work')"
+                @click="onTrackClick($event, 'work')"
               >
                 <div
                   v-if="freeHover && freeHover.lane === 'work'"
@@ -1070,28 +1175,20 @@ onBeforeUnmount(() => {
                     '--tl-pos': `${freeHover.leftPct}%`,
                     '--tl-len': `${freeHover.widthPct}%`,
                   }"
-                  aria-hidden="true"
                 >
-                  <span class="tl-free__tooltip" role="tooltip">
-                    <span class="tl-free__tooltip-title">
-                      空き {{ formatGap(freeHover.gapMinutes) }}
-                    </span>
-                    <span class="tl-free__tooltip-time">
-                      {{ formatHourMinute(new Date(freeHover.rangeStart).toISOString(), timezone) }}
-                      →
-                      {{ formatHourMinute(new Date(freeHover.rangeEnd).toISOString(), timezone) }}
-                    </span>
-                    <span
-                      v-if="freeHover.nextTitle && freeHover.nextLane"
-                      class="tl-free__tooltip-next"
-                    >
-                      次:
-                      <span class="tl-free__tooltip-lane" :data-lane="freeHover.nextLane">
-                        {{ laneLabels[freeHover.nextLane] }}
-                      </span>
-                      {{ freeHover.nextTitle }}
-                    </span>
-                  </span>
+                  <FreeTimeTooltip
+                    :duration-label="formatGap(freeHover.gapMinutes)"
+                    :time-label="freeTimeLabel(freeHover)"
+                    :next-lane="freeHover.nextLane"
+                    :next-lane-label="freeHover.nextLane ? laneLabels[freeHover.nextLane] : null"
+                    :next-title="freeHover.nextTitle"
+                    :note-content="
+                      freeTimeNoteForRange(freeHover.rangeStart, freeHover.rangeEnd)?.content ??
+                      null
+                    "
+                    :can-edit="canEditFreeTime(freeHover)"
+                    @edit="openFreeTimeDialog(freeHover)"
+                  />
                 </div>
                 <span v-if="togglEntries.length === 0" class="tl-row__empty"> 作業ログなし </span>
                 <div
@@ -1324,6 +1421,19 @@ onBeforeUnmount(() => {
         </section>
       </template>
     </div>
+
+    <FreeTimeNoteDialog
+      v-if="selectedFreeTime"
+      :open="freeTimeDialogOpen"
+      :time-label="freeTimeLabel(selectedFreeTime)"
+      :duration-label="formatGap(selectedFreeTime.gapMinutes)"
+      :note="activeFreeTimeNote()"
+      :saving="freeTimeNoteSaving"
+      :error-message="freeTimeNoteError"
+      @close="closeFreeTimeDialog"
+      @save="saveSelectedFreeTimeNote"
+      @delete="deleteSelectedFreeTimeNote"
+    />
   </main>
 </template>
 
@@ -2246,76 +2356,6 @@ $font-en:
   pointer-events: none;
 }
 
-.tl-free__tooltip {
-  position: absolute;
-  z-index: 6;
-  bottom: calc(100% + 6px);
-  left: 0;
-  padding: 8px 12px;
-  width: max-content;
-  max-width: min(260px, calc(100vw - 32px));
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-family: $font-en;
-  font-size: 12px;
-  font-weight: 500;
-  text-align: left;
-  color: #fff;
-  background: rgba(26, 24, 20, 0.94);
-  border-radius: 8px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
-
-  &::after {
-    content: "";
-    position: absolute;
-    top: 100%;
-    left: 14px;
-    border: 5px solid transparent;
-    border-top-color: rgba(26, 24, 20, 0.94);
-  }
-}
-
-.tl-free__tooltip-title {
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.35;
-}
-
-.tl-free__tooltip-time {
-  font-family: $font-mono;
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.78);
-  font-variant-numeric: tabular-nums;
-}
-
-.tl-free__tooltip-next {
-  font-size: 11px;
-  line-height: 1.35;
-  color: rgba(255, 255, 255, 0.82);
-}
-
-.tl-free__tooltip-lane {
-  margin-right: 4px;
-  padding: 1px 6px;
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 4px;
-
-  &[data-lane="sleep"] {
-    background: rgba(120, 145, 200, 0.55);
-  }
-  &[data-lane="calendar"] {
-    background: rgba(120, 175, 140, 0.55);
-  }
-  &[data-lane="work"] {
-    background: rgba(200, 130, 80, 0.55);
-  }
-}
-
 // -----------------------------------------------------------
 // Timeline — SP vertical layout (Issue #128)
 //   PC では横軸 (起床 = 左, NOW = 右) のタイムラインだが、SP では幅が足りず
@@ -2520,21 +2560,6 @@ $font-en:
     border-bottom: 1px dashed rgba(26, 24, 20, 0.45);
     border-left: none;
     transform: none;
-  }
-
-  .tl-free__tooltip {
-    top: 100%;
-    bottom: auto;
-    left: 0;
-    margin-top: 6px;
-
-    &::after {
-      top: auto;
-      bottom: 100%;
-      left: 14px;
-      border-top-color: transparent;
-      border-bottom-color: rgba(26, 24, 20, 0.94);
-    }
   }
 }
 

@@ -17,6 +17,7 @@ import {
   summaryRequestSchema,
   summaryResponseSchema,
   type CalendarTimelineEntry,
+  type FreeTimeNote,
   type SleepTimelineEntry,
   type SummaryResponse,
   type Timeline,
@@ -36,6 +37,18 @@ import {
 } from "../../utils/wakeRange";
 
 const DEMO_TIMEZONE = "Asia/Tokyo";
+
+const demoFreeTimeNotes: FreeTimeNote[] = [
+  {
+    id: "00000000-0000-4000-8000-000000000001",
+    target_date: "2026-05-17",
+    gap_start_at: "2026-05-16T23:00:00.000Z",
+    gap_end_at: "2026-05-17T00:30:00.000Z",
+    content: "朝食をとって、少し散歩",
+    created_at: "2026-05-17T00:35:00.000Z",
+    updated_at: "2026-05-17T00:35:00.000Z",
+  },
+];
 
 interface SleepRow {
   id: string;
@@ -299,6 +312,8 @@ export default defineEventHandler(async (event) => {
     // デモに Todoist データは無いため todoist レーンは常に null (Issue #206)。
     todays_me: { oura, google, toggl, todoist: null },
     timeline,
+    free_time_notes: demoFreeTimeNotes.filter((note) => note.target_date === date),
+    free_time_notes_available: true,
     // デモは sync しないため常に空。
     sync_statuses: [],
   };
