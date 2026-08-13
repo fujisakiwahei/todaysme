@@ -72,6 +72,7 @@ onMounted(async () => {
     :error-message="errorMessage"
     :date-param="dateParam"
     base-path="/demo/daily"
+    read-only-free-time-notes
   >
     <template #topbar-action>
       <span class="demo-badge" aria-label="デモデータ">DEMO</span>

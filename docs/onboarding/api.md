@@ -28,6 +28,9 @@
 | `DELETE` | `/api/connections/google/:connectionId/account`          | Bearer                       | Google の **接続 ID 単位** ハード削除。events / 除外設定も cascade で消える（Issue #139）                                        |
 | `GET`    | `/api/internal/connections-required`                     | **cookie**（read-only 例外） | `/daily/*` に必要な接続のうち未接続のものを返す                                                                                  |
 | `GET`    | `/api/demo/summary?date=YYYY-MM-DD`                      | なし                         | デモ用 summary（`demo_*` テーブルから読む）                                                                                      |
+| `POST`   | `/api/free-time-notes`                                   | Bearer                       | 終了済みの空き時間にメモを1件作成                                                                                                |
+| `PUT`    | `/api/free-time-notes/:id`                               | Bearer                       | 本人の空き時間メモ本文を更新                                                                                                     |
+| `DELETE` | `/api/free-time-notes/:id`                               | Bearer                       | 本人の空き時間メモを削除                                                                                                         |
 
 ---
 
@@ -93,6 +96,16 @@ return parseOrThrow(<responseSchema>, response);
 - `users.timezone` をもとに wake range を計算し、各サービスのレコードは `target_date` 完全一致ではなく `start_at`/`end_at` の重なりで読む。
 - サービス未連携時は `todays_me.<service>` を `null` にする。
 - 除外カレンダー（`users.excluded_google_calendar_ids`）は Timeline には出すが集計から外す（Issue #108）。
+- 対象日の `free_time_notes` を開始時刻順で返す。DB migration未適用時の既存画面停止を避けるため、テーブル未作成エラーに限り空配列と`free_time_notes_available: false`へフォールバックし、UIの編集導線も隠す。
+
+### `/api/free-time-notes`
+
+**責務**: 終了済みの空き時間に対する実績メモを作成・更新・削除する。
+
+- mutationのためBearer認証のみを許可する。
+- 作成時は`gap_start_at < gap_end_at`かつ`gap_end_at <= now`を検証する。
+- 本文はtrim後1〜1,000文字。ユーザーIDは認証情報から確定し、bodyから受け取らない。
+- 更新・削除は`id`と`user_id`の両方で絞り、他ユーザーの行は404として扱う。
 
 **Today's ME の集計ルール**:
 

@@ -193,6 +193,16 @@ erDiagram
 
 **旧仕様との関係**: 旧来は `users.excluded_google_calendar_ids text[]` で持っていたが、複数 Google アカウント連携で「同じ calendar_id がアカウント間で別物を指す」可能性が出たため、`(connection_id, calendar_id)` で識別するテーブルへ移行した。旧列はロールバック / 監査用に残してあるが、アプリ経路は本テーブルだけを参照する。
 
+### `free_time_notes`
+
+**役割**: 終了済みの空き時間に、実際に何をしていたかを記録するユーザー入力データ。
+
+- `unique(user_id, gap_start_at, gap_end_at)`で同一区間を1件に制限。
+- `gap_start_at` / `gap_end_at`は保存時点のスナップショット。外部サービスの再同期では更新しない。
+- `content`はtrim後1〜1,000文字。
+- index: `(user_id, target_date, gap_start_at)`。
+- RLS: 4ポリシー（`auth.uid() = user_id`）。
+
 ### `demo_*` テーブル群
 
 **役割**: 公開デモ用データ。本番テーブルと完全分離。

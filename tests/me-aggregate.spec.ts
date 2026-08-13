@@ -110,6 +110,8 @@ function createSummary(): SummaryResponse {
         },
       ],
     },
+    free_time_notes: [],
+    free_time_notes_available: true,
     sync_statuses: [],
   };
 }

@@ -117,6 +117,8 @@ Oura / Google Calendar / Toggl Track を統合した 1 本のタイムライン�
 
 タイムラインに載せるレコードは **wake range と `start_at`/`end_at` の重なり** で判定する（`target_date` 完全一致では取りこぼすため）。
 
+終了済みの空き区間には、実際に何をしていたかを1件の自由記述メモとして保存できる。PCはホバー、SPはタップで空き時間のツールチップを表示し、編集アイコンからダイアログを開く。保存時の開始・終了時刻はスナップショットとして保持し、後の同期で予定や作業ログが変わっても自動変更しない。
+
 ---
 
 ## 5. ページ構成
@@ -398,6 +400,7 @@ erDiagram
   users ||--o{ oura_sleep_records : has
   users ||--o{ google_calendar_events : has
   users ||--o{ toggl_time_entries : has
+  users ||--o{ free_time_notes : has
 
   users {
     uuid id PK
@@ -461,6 +464,17 @@ erDiagram
     timestamp end_at
     boolean is_deleted
   }
+
+  free_time_notes {
+    uuid id PK
+    uuid user_id FK
+    date target_date
+    timestamp gap_start_at
+    timestamp gap_end_at
+    text content
+    timestamp created_at
+    timestamp updated_at
+  }
 ```
 
 ### 11.2 各テーブルの制約・運用
@@ -503,6 +517,13 @@ erDiagram
 
 - `unique(user_id, toggl_entry_id)`
 - 表示時は wake range と `start_at`/`end_at` の重なりで読む。
+
+#### free_time_notes
+
+- `unique(user_id, gap_start_at, gap_end_at)`。
+- メモは改行可能な1〜1,000文字。開始時刻は終了時刻より前でなければならない。
+- 終了済みの空き区間だけ作成でき、区間は保存後に自動変更しない。
+- 本人の行だけ操作できるRLSを有効にする。
 
 ### 11.3 削除対応（物理削除しない）
 

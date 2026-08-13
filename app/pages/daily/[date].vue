@@ -14,7 +14,13 @@
 //     token 取得 (supabase.auth.getSession) の往復を省略する (Issue #141)。
 //     認証は cookie 経路 (`requireUserIdAllowCookie`) に統一。
 // =============================================================================
-import { isoDateSchema, type SummaryResponse } from "~~/shared/schemas";
+import {
+  isoDateSchema,
+  type FreeTimeNoteCreateRequest,
+  type FreeTimeNoteDeleteResponse,
+  type FreeTimeNoteMutationResponse,
+  type SummaryResponse,
+} from "~~/shared/schemas";
 import { buildDiaryMarkdown } from "~/utils/diaryMarkdown";
 
 definePageMeta({
@@ -22,6 +28,7 @@ definePageMeta({
 });
 
 const route = useRoute();
+const supabase = useSupabaseClient();
 const dateParam = computed(() => route.params.date as string);
 
 // 形式 (YYYY-MM-DD) だけでなく、2026-02-31 のような実在しない日付も弾く。
@@ -39,6 +46,12 @@ if (!isoDateSchema.safeParse(dateParam.value).success) {
 // (require-connections middleware と同じ流儀)
 function summaryFetchHeaders() {
   return useRequestHeaders(["cookie"]);
+}
+
+async function bearerHeaders(): Promise<HeadersInit> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
 // key を日付別 (関数形のリアクティブキー) にし、watch オプションで dateParam
@@ -100,6 +113,36 @@ async function manualRefresh() {
     refreshing.value = false;
     endAppLoading();
   }
+}
+
+async function saveFreeTimeNote(
+  input: FreeTimeNoteCreateRequest & { note_id: string | null }
+): Promise<void> {
+  const headers = await bearerHeaders();
+  const { note_id: noteId, ...body } = input;
+  if (noteId) {
+    await $fetch<FreeTimeNoteMutationResponse>(`/api/free-time-notes/${noteId}`, {
+      method: "PUT",
+      headers,
+      body: { content: body.content },
+    });
+  } else {
+    await $fetch<FreeTimeNoteMutationResponse>("/api/free-time-notes", {
+      method: "POST",
+      headers,
+      body,
+    });
+  }
+  await refreshSummary();
+}
+
+async function deleteFreeTimeNote(noteId: string): Promise<void> {
+  const headers = await bearerHeaders();
+  await $fetch<FreeTimeNoteDeleteResponse>(`/api/free-time-notes/${noteId}`, {
+    method: "DELETE",
+    headers,
+  });
+  await refreshSummary();
 }
 
 // =============================================================================
@@ -220,6 +263,8 @@ onMounted(() => {
     :error-message="errorMessage"
     :date-param="dateParam"
     base-path="/daily"
+    :save-free-time-note="saveFreeTimeNote"
+    :delete-free-time-note="deleteFreeTimeNote"
   >
     <template #topbar-action>
       <button
