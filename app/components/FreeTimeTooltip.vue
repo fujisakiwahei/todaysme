@@ -64,6 +64,10 @@ $font-en:
   font-size: 12px;
   font-weight: 500;
   text-align: left;
+  // 切れ目の無い長い文字列 (メールアドレス等) が max-width を無視して
+  // 右へ溢れると横スクロールの原因になるため、途中でも折り返す。
+  word-break: break-word;
+  overflow-wrap: anywhere;
   color: #fff;
   background: rgba(26, 24, 20, 0.94);
   border-radius: 8px;
@@ -162,12 +166,17 @@ $font-en:
   }
 }
 
+// SP ではレーンが縦カラムになり 1 カラムが狭いので、ツールチップは
+// カラム幅を無視して広がる。ラベル列 (36px) と .daily / .timeline の
+// padding を除いた実効幅に収め、右寄りのレーン (Calendar / Work) は
+// 左方向に開く。右にはみ出すとページの横スクロールになるため。
 @media (max-width: 640px) {
   .tl-free__tooltip {
     top: 100%;
     bottom: auto;
     left: 0;
     margin-top: 6px;
+    max-width: min(240px, calc(100vw - 150px));
 
     &::after {
       top: auto;
@@ -175,6 +184,17 @@ $font-en:
       left: 14px;
       border-top-color: transparent;
       border-bottom-color: rgba(26, 24, 20, 0.94);
+    }
+  }
+
+  .tl-row--calendar .tl-free__tooltip,
+  .tl-row--work .tl-free__tooltip {
+    right: 0;
+    left: auto;
+
+    &::after {
+      right: 14px;
+      left: auto;
     }
   }
 }
