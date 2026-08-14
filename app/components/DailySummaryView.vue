@@ -933,7 +933,7 @@ onBeforeUnmount(() => {
                   :key="`${item.title}|${item.project_name ?? ''}`"
                 >
                   <dt>
-                    {{ item.title || "（タイトル無し）" }}
+                    <span class="metric__sub-title">{{ item.title || "（タイトル無し）" }}</span>
                     <span v-if="item.project_name" class="metric__sub-project">
                       {{ item.project_name }}
                     </span>
@@ -1252,7 +1252,9 @@ onBeforeUnmount(() => {
                     {{ formatHourMinute(s.sleep_start_at, timezone) }} —
                     {{ formatHourMinute(s.wake_at, timezone) }}
                   </span>
-                  <span class="entry__title">{{ sleepSessionLabel(s.id) }}</span>
+                  <span class="entry__title">
+                    <span class="entry__title-text">{{ sleepSessionLabel(s.id) }}</span>
+                  </span>
                   <span class="entry__dur entry__dur--sleep">
                     <span class="entry__dur-main">
                       <template v-if="formatMinutes(s.sleep_minutes)">
@@ -1306,7 +1308,7 @@ onBeforeUnmount(() => {
                     {{ formatHourMinute(ev.end_at, timezone) }}
                   </span>
                   <span class="entry__title">
-                    {{ ev.title || "(無題)" }}
+                    <span class="entry__title-text">{{ ev.title || "(無題)" }}</span>
                     <span v-if="ev.calendar_name" class="entry__tag">
                       {{ ev.calendar_name }}
                     </span>
@@ -1345,7 +1347,7 @@ onBeforeUnmount(() => {
                     {{ t.end_at ? formatHourMinute(t.end_at, timezone) : "進行中" }}
                   </span>
                   <span class="entry__title">
-                    {{ t.title || "(タイトル無し)" }}
+                    <span class="entry__title-text">{{ t.title || "(タイトル無し)" }}</span>
                     <span v-if="t.project_name" class="entry__tag">
                       {{ t.project_name }}
                     </span>
@@ -1386,8 +1388,8 @@ onBeforeUnmount(() => {
                     {{ formatHourMinute(t.completed_at, timezone) }}
                   </span>
                   <span class="entry__title">
-                    <span aria-hidden="true">✔️</span>
-                    {{ t.content || "(無題のタスク)" }}
+                    <span class="entry__title-icon" aria-hidden="true">✔️</span>
+                    <span class="entry__title-text">{{ t.content || "(無題のタスク)" }}</span>
                     <span v-if="t.project_name" class="entry__tag">
                       {{ t.project_name }}
                     </span>
@@ -1695,22 +1697,27 @@ $font-en:
 // -----------------------------------------------------------
 // Metric grid
 // -----------------------------------------------------------
+// `1fr` (= minmax(auto, 1fr)) だとトラックの最小幅がカード内容の min-content に
+// 引きずられ、長いイベント名 / 作業ログ名がそのままトラック幅を押し広げて
+// ページ全体が横スクロールする。minmax(0, 1fr) でトラックを親幅に固定し、
+// はみ出しはカード内側の ellipsis で吸収する。
 .metrics-grid {
   margin-bottom: 40px;
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 
   @media (max-width: 880px) {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   @media (max-width: 560px) {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
 .metric {
   padding: 20px 22px;
+  min-width: 0;
   min-height: 148px;
   display: flex;
   flex-direction: column;
@@ -1898,6 +1905,8 @@ $font-en:
     padding: 6px 0;
     display: flex;
     justify-content: space-between;
+    align-items: center;
+    gap: 8px;
     border-top: 1px dashed $color-border-2;
 
     &:first-child {
@@ -1907,37 +1916,49 @@ $font-en:
 
   dt {
     min-width: 0;
-    flex: 1;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 6px;
   }
 
   dd {
-    margin-left: 8px;
+    flex: 0 0 auto;
     font-family: $font-en;
     font-size: 13px;
     font-weight: 600;
+    white-space: nowrap;
     color: $color-text;
     font-variant-numeric: tabular-nums;
   }
 }
 
+// タイトルは残り幅いっぱいに広がり、溢れたら ellipsis で省略する。
+.metric__sub-title {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 // Issue #112: Today's ME の Work `by_title` 内に紐づくプロジェクト名を
-// 小さなピル風で表示する。タイトルが省略される場合でも見えるよう
-// inline-block 扱いでタイトルの右に並べる。
+// 小さなピル風で表示する。タイトルがどれだけ長くてもピルは縮めず
+// (flex-shrink: 0)、タイトル側を省略して右の時間との間隔を保つ。
 .metric__sub-project {
-  display: inline-block;
-  margin-left: 6px;
   padding: 1px 8px;
+  max-width: 50%;
+  flex: 0 0 auto;
+  overflow: hidden;
   font-size: 11px;
   font-weight: 500;
   line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: $color-text-muted;
   background: $color-surface;
   border: 1px solid $color-border;
   border-radius: 999px;
-  vertical-align: 1px;
 }
 
 .metric__placeholder {
@@ -1964,19 +1985,19 @@ $font-en:
 //   - excluded: 稼働時間集計から除外されたカレンダー (Issue #108) は更に薄く
 // -----------------------------------------------------------
 .metric__events {
+  list-style: none;
   margin-top: 6px;
   padding-left: 0;
   display: flex;
   flex-direction: column;
-  list-style: none;
 }
 
 .metric__event {
   padding: 6px 0;
+  min-width: 0;
   display: flex;
   align-items: baseline;
   gap: 8px;
-  min-width: 0;
   font-size: 13px;
   color: $color-text;
   border-top: 1px dashed $color-border-2;
@@ -2259,6 +2280,10 @@ $font-en:
   font-weight: 500;
   text-align: left;
   white-space: normal;
+  // 長いメールアドレス等の切れ目が無い文字列は max-width を無視して
+  // 右へ溢れる (= 横スクロールの原因になる) ので、途中でも折り返す。
+  word-break: break-word;
+  overflow-wrap: anywhere;
   color: #fff;
   background: rgba(26, 24, 20, 0.94);
   border-radius: 8px;
@@ -2289,13 +2314,29 @@ $font-en:
 
   // SP では bar の幅が狭くなりがちなので、bar 左寄せにして
   // 画面右端ギリギリまで使えるようにする。
+  //   - max-width: ラベル列 (36px) と .daily / .timeline の padding を除いた
+  //     実効幅。opacity: 0 でもレイアウトは占有するため、ここが広すぎると
+  //     非表示のツールチップだけで横スクロールが出てしまう。
+  //   - Calendar / Work は右寄りのカラムなので、左方向に開かないと画面右へ
+  //     はみ出す。左側へのはみ出しはスクロールを生まないので bar 右端に揃える。
   @media (max-width: 640px) {
     left: 0;
-    max-width: calc(100vw - 32px);
+    max-width: min(240px, calc(100vw - 150px));
     transform: translate(0, 4px);
 
     &::after {
       left: 20px;
+    }
+
+    .tl-row--calendar &,
+    .tl-row--work & {
+      right: 0;
+      left: auto;
+
+      &::after {
+        right: 20px;
+        left: auto;
+      }
     }
 
     .tl-bar:hover &,
@@ -2321,8 +2362,8 @@ $font-en:
 // Issue #112: Toggl の Work バーのツールチップ内に表示するプロジェクト名。
 // タイトル直下に小さなピル風で出す。
 .tl-bar__tooltip-project {
-  align-self: flex-start;
   padding: 2px 8px;
+  align-self: flex-start;
   font-size: 11px;
   font-weight: 500;
   line-height: 1.2;
@@ -2686,7 +2727,7 @@ $font-en:
   display: grid;
   align-items: center;
   gap: 12px;
-  grid-template-columns: 140px 1fr auto;
+  grid-template-columns: 140px minmax(0, 1fr) auto;
   font-size: 14px;
   border-bottom: 1px dashed $color-border-2;
 
@@ -2696,7 +2737,7 @@ $font-en:
 
   @media (max-width: 560px) {
     gap: 8px;
-    grid-template-columns: 1fr auto;
+    grid-template-columns: minmax(0, 1fr) auto;
   }
 }
 
@@ -2711,37 +2752,49 @@ $font-en:
   }
 }
 
+// タイトル行は「タイトル (可変) + ピル型タグ (固定)」の 1 行 flex。
+// タイトルが長くても折り返さず ellipsis で省略し、タグと右側の時間は
+// 常に読める状態を保つ (折り返すと行が伸びる / はみ出すと横スクロールになる)。
 .entry__title {
   min-width: 0;
-  display: inline-flex;
-  flex-wrap: wrap;
+  display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
-  overflow: hidden;
   font-size: 16px;
   font-weight: 500;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: $color-text;
 
-  // SP では幅が足りずタイトルが省略されて読めなくなるため、
-  // ellipsis をやめて折り返し表示にする (長いメールアドレス等も break)。
   @media (max-width: 560px) {
-    overflow: visible;
     font-size: 15px;
-    text-overflow: clip;
-    white-space: normal;
-    word-break: break-word;
-    overflow-wrap: anywhere;
   }
 }
 
+.entry__title-text {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry__title-icon {
+  flex: 0 0 auto;
+}
+
+// ピルはタイトルに押し潰されない (flex-shrink: 0)。
+// ただしタグ自体が極端に長い場合 (カレンダー名にメールアドレスが入る等) に
+// 行を突き抜けないよう、上限だけ設けて内側で省略する。
 .entry__tag {
-  margin-left: 0;
   padding: 3px 10px;
+  max-width: 50%;
+  flex: 0 0 auto;
+  overflow: hidden;
   font-size: 14px;
   font-weight: 500;
   line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: $color-text-muted;
   background: $color-surface;
   border: 1px solid $color-border;
@@ -2760,11 +2813,13 @@ $font-en:
 
 .entry__excluded-tag {
   padding: 3px 10px;
+  flex: 0 0 auto;
   font-family: $font-mono;
   font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
   letter-spacing: 0.04em;
+  white-space: nowrap;
   color: $color-text-muted;
   background: $color-bg;
   border: 1px dashed $color-border;
@@ -2780,6 +2835,7 @@ $font-en:
   font-variant-numeric: tabular-nums;
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
   color: $color-text-muted;
 }
 
